@@ -39,10 +39,10 @@ def main():
     use_debug_env = not args.no_debug
     exe = nsmbu_exe()
     if not os.path.isfile(exe):
-        sys.exit(f"missing {exe}; run: just build")
+        sys.exit(f"missing {exe}; run: agent-nsmbu build")
     game = os.path.join(ROOT, "game")
     if not os.path.isdir(game):
-        sys.exit("missing game/; run: just extract")
+        sys.exit("missing game/; run: agent-nsmbu extract")
     env = os.environ.copy()
     user, save = devdata.apply_env(env, ROOT)
     if course_pack is not None:

@@ -1,0 +1,16 @@
+{
+  "name": "agent-nsmbu",
+  "version": "0.0.0",
+  "description": "NSMBU native port developer and agent CLI",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "agent-nsmbu": "./bin/agent-nsmbu.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "typescript": "^5.9.3"
+  }
+}

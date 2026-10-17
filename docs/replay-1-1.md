@@ -1,6 +1,6 @@
 # 1-1 replay profile
 
-This note records one Release run of `just replay 1-1` on 2026-10-17.
+This note records one Release run of `agent-nsmbu replay 1-1` on 2026-10-17.
 
 The course holds the 60 fps vsync limit.
 
@@ -16,19 +16,19 @@ The Vulkan driver is Mesa 26.2.4 (ANV).
 
 The binary is `build/rel/nsmbu` at commit `3240a61`.
 
-`just replay` launches `build/nsmbu`.
+`agent-nsmbu replay` launches `build/nsmbu`.
 
 That tree is a Debug build, so this run used the Release binary with the same launch settings.
 
 ## How the run was started
 
-The command matches `just replay 1-1`.
+The command matches `agent-nsmbu replay 1-1`.
 
 `NSMBU_REPLAY_INPUT` is `replays/1-1.replay`.
 
 The course pack is `1-1`.
 
-`just launch` also sets `NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, and `NSMBU_CRASH_RECOVERY`.
+`agent-nsmbu launch` also sets `NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, and `NSMBU_CRASH_RECOVERY`.
 
 The log is `.tmp/replay-11/nsmbu.log`.
 

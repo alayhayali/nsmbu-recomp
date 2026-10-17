@@ -140,32 +140,37 @@ The last merge from [ZeldaWWHDRecomp](https://github.com/ZeldaWWHDRecomp/ZeldaWW
 These commands are for a source checkout.
 Players use a [release](#install).
 
-Install `just`, CMake 3.20 or newer, Python 3, and Clang.
+Install Node 24 or newer, CMake 3.20 or newer, Python 3, and Clang.
+Link the developer CLI once: `cd cli && npm link`.
+
+Humans may also use `just run`, `just record <course>`, or `just replay <course>` as thin wrappers around the same Python tools.
 
 Put your dump in `game/`.
 The file layout is in [game/README.md](game/README.md).
 
 | Command | Result |
 |---------|--------|
-| `just` | List the commands |
-| `just extract` | Check `game/update/` (USA 1.3.0), extract `game/game.wux`, then apply the update |
-| `just build` | Configure `build/` in Debug and build `nsmbu` |
-| `just build-release` | Build in Release |
-| `just build-sanitizer` | Build with AddressSanitizer and UBSan |
-| `just launch` | Start `build/nsmbu` with `--game` set to `game/` |
-| `just launch-release` | Start without the debug environment defaults |
-| `just launch-trace` | Start with `--trace` for HLE logging |
-| `just run` | Run `just build`, then `just launch` |
-| `just run 3` | Same, and load save slot 3 |
-| `just installer` | Ninja Release under `build/rel`, package a real SDK, open setup |
-| `just recomp` | Translate `game/code/red-pro2.rpx` into `build/gen` |
-| `just gdb` | Start the game under gdb |
-| `just lldb` | Start the game under lldb |
+| `agent-nsmbu` | List commands (`agent-nsmbu` with no args prints help) |
+| `agent-nsmbu extract` | Check `game/update/` (USA 1.3.0), extract `game/game.wux`, then apply the update |
+| `agent-nsmbu build` | Configure `build/` in Debug and build `nsmbu` |
+| `agent-nsmbu build --release` | Build in Release |
+| `agent-nsmbu build --sanitizer` | Build with AddressSanitizer and UBSan |
+| `agent-nsmbu launch` | Start `build/nsmbu` with `--game` set to `game/` |
+| `agent-nsmbu launch --no-debug` | Start without the debug environment defaults |
+| `agent-nsmbu launch --trace` | Start with `--trace` for HLE logging |
+| `agent-nsmbu run` | Run `agent-nsmbu build`, then `agent-nsmbu launch` |
+| `agent-nsmbu run 3` | Same, and load save slot 3 |
+| `agent-nsmbu installer` | Ninja Release under `build/rel`, package a real SDK, open setup |
+| `agent-nsmbu recomp` | Translate `game/code/red-pro2.rpx` into `build/gen` |
+| `agent-nsmbu launch --gdb` | Start the game under gdb |
+| `agent-nsmbu launch --lldb` | Start the game under lldb |
 
-When `game/code/red-pro2.rpx` is newer than the generated code, `just build` runs the recompiler.
+When `game/code/red-pro2.rpx` is newer than the generated code, `agent-nsmbu build` runs the recompiler.
 When that file is absent, the build uses stubs so the tree can link.
 
-`just launch` sets `NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, and `NSMBU_CRASH_RECOVERY` when those variables are unset.
+`agent-nsmbu launch` sets `NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, and `NSMBU_CRASH_RECOVERY` when those variables are unset.
+
+Agent control and the full command list are in [docs/cli.md](docs/cli.md).
 
 Build notes and the upstream base are in [docs/nsmbu.md](docs/nsmbu.md).
 Changes are in [CHANGELOG.md](CHANGELOG.md).

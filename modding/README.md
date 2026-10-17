@@ -6,7 +6,7 @@
 | [examples/](examples/) | Example Luau packages for the mod manager |
 
 Format Luau with [StyLua](https://github.com/JohnnyMorganz/StyLua) (`cargo install stylua --features luau`).
-`just lint` formats then type-checks the examples.
+`nsmbu lint` formats then type-checks the examples.
 
 ```bash
 stylua --config-path modding/.stylua.toml modding/examples

@@ -13,14 +13,14 @@ Canonical addresses are USA v1.3.0 `red-pro2.rpx` (see `docs/names.md`).
 
 | | Game sampler (built in) | perf (external) |
 | --- | --- | --- |
-| Turn on | `NSMBU_GAME_SAMPLE=120`; `SIGUSR2` prints a report | `just perf` |
+| Turn on | `NSMBU_GAME_SAMPLE=120`; `SIGUSR2` prints a report | `agent-nsmbu perf` |
 | Get | per-PC histogram + per-thread table, in the game log | full stacks over every thread |
 | Ends up in | `nsmbu/logs/*.log` or `.tmp/repro/nsmbu.log` | `.tmp/perf/` |
 
-- `just replay 1-1`: full course from `replays/1-1.replay`. The 2026-10-17 Release profile is `docs/replay-1-1.md` (59.9 swaps/s; the 4.00 MiB texture upload is now a page update, textures phase ~0.33 ms).
-- `just profile`: fixed 1-1 scene (slot 2 at TV frame 700, exit at 1100), log `.tmp/repro/nsmbu.log`. The methods are in `docs/performance.md`.
-- `just perf`: same scene under `perf record`. Writes `.tmp/perf/nsmbu.data`, `game.log`, `report.txt`, `report_flat.txt`.
-- Attach to a live session: `just perf --attach PID --seconds 30`.
+- `agent-nsmbu replay 1-1`: full course from `replays/1-1.replay`. The 2026-10-17 Release profile is `docs/replay-1-1.md` (59.9 swaps/s; the 4.00 MiB texture upload is now a page update, textures phase ~0.33 ms).
+- `agent-nsmbu profile`: fixed 1-1 scene (slot 2 at TV frame 700, exit at 1100), log `.tmp/repro/nsmbu.log`. The methods are in `docs/performance.md`.
+- `agent-nsmbu perf`: same scene under `perf record`. Writes `.tmp/perf/nsmbu.data`, `game.log`, `report.txt`, `report_flat.txt`.
+- Attach to a live session: `agent-nsmbu perf --attach PID --seconds 30`.
 - Asks for sudo and sets `perf_event_paranoid` to 1 when the kernel refuses sampling (per boot).
 
 ## Read the artifacts

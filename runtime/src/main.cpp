@@ -34,6 +34,7 @@
 #include "build_info.h"
 #include "crashrec.h"
 #include "crash_context.h"
+#include "agent_ctl.h"
 #include "input.h"
 #include "mods/mods.h"
 #include "mods/packages.h"
@@ -420,6 +421,7 @@ int main(int argc, char** argv) {
     st32(argv_arr, arg0);
 
     render::init();
+    agent_ctl::init();
     mods::cemu::set_vulkan(render::active()==render::Api::Vulkan);
     if (warm_shaders) {
 

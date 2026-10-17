@@ -13,7 +13,8 @@ For a newer upstream commit, follow `.agents/skills/upstream-merge/SKILL.md`.
 
 Reach `.agents/skills/<name>/SKILL.md` when the branch matches:
 
-- **build** — compile, `just build` / `just launch` / `launch-release`, ctest, stubgen or missing RPX, wrong update RPX addresses, example mod symlinks, `nsmbu/` userdata
+- **build** — compile, `agent-nsmbu build` / `agent-nsmbu launch` / `agent-nsmbu run --release`, ctest, stubgen or missing RPX, wrong update RPX addresses, example mod symlinks, `nsmbu/` userdata
+- **agent-nsmbu** — global `agent-nsmbu` (`cd cli && npm link`), dev recipes, single-instance agent loop (`open` → `status` / `screenshot` → `press` → `wait` → `close`); see `docs/cli.md`
 - **guest** — `f_XXXXXXXX`, hooks, recomp `build/gen`, stubs, guest memory `ea`, `headers_names` / `names.py`, regional builds
 - **upstream-merge** — merge a newer Wind Waker HD recomp commit (user-invoked)
 - **perf** — profiling artifacts and profile lines (user-invoked)
@@ -23,8 +24,9 @@ Reach `.agents/skills/<name>/SKILL.md` when the branch matches:
 
 ## Docs
 
+- **cli** — `docs/cli.md` for the global `agent-nsmbu` command, dev recipes, and agent control loop
 - **env** — `docs/env.md` when you add, rename, or read an `NSMBU_*` variable (`runtime/src/env.h`: `env::NAME()`, `.name()`, typed reads, `env::unset`)
-- **automation** — `docs/automation.md` for `tools/scripted-run.sh`, headless boots, and scripted inputs or exit frames
+- **automation** — `docs/automation.md` for `agent-nsmbu scripted`, headless boots, and scripted inputs or exit frames; CLI overview in `docs/cli.md`
 - **names** — `docs/names.md` to name guest symbols (USA v1.3.0 address is the key)
 
 ## Code style

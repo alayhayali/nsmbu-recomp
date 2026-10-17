@@ -23,6 +23,7 @@
 #include "gx2/gx2.h"
 #include "input.h"
 #include "mods/mods.h"
+#include "agent_ctl.h"
 #include "overlay/hostui.h"
 #include "overlay/overlay.h"
 #ifdef NSMBU_SDL_HOST
@@ -950,9 +951,10 @@ static void make_swapchain(Screen &s) {
     throw std::runtime_error("Swapchain cannot receive scan-buffer blits");
   VkSwapchainCreateInfoKHR ci{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
   ci.surface = s.surface;
-  ci.minImageCount = std::max(caps.minImageCount, 2u);
+  ci.minImageCount = caps.minImageCount + 1;
   if (caps.maxImageCount)
     ci.minImageCount = std::min(ci.minImageCount, caps.maxImageCount);
+  ci.minImageCount = std::max(ci.minImageCount, caps.minImageCount);
   ci.imageFormat = format.format;
   ci.imageColorSpace = format.colorSpace;
   ci.imageExtent = extent;
@@ -1022,6 +1024,8 @@ static void make_swapchain(Screen &s) {
   vkGetSwapchainImagesKHR(R.device, sc, &n, nullptr);
   s.images.resize(n);
   vkGetSwapchainImagesKHR(R.device, sc, &n, s.images.data());
+  LOG("[vulkan] %s swapchain %u images, present mode %s", &s == &R.tv ? "TV" : "GamePad", n,
+      present_mode_name(s.presentMode));
   s.layouts.assign(n, VK_IMAGE_LAYOUT_UNDEFINED);
   s.imageUses.assign(n, {});
   prepare_present_screen(s,shaderPresentation,captureTransfer);
@@ -2560,6 +2564,7 @@ void run_main_loop() {
         }
     }
     input::update();
+    agent_ctl::service();
     ::hostui::run_posted();
     test_drc_key();
     test_fullscreen_key();

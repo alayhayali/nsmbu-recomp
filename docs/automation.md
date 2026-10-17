@@ -1,6 +1,6 @@
 # Automation runs
 
-Headless boots use `tools/scripted-run.sh <name>` from the repo root.
+Headless boots use `agent-nsmbu scripted <name>` from the repo root (wraps `tools/scripted-run.sh`).
 The script copies `nsmbu/save` into `.tmp/<name>/save`, then starts `build/nsmbu` with that save.
 Frame dumps land in `.tmp/<name>/` as `frame_<n>.png`.
 The repo `nsmbu/save` stays unread by the game.
@@ -11,7 +11,7 @@ The repo `nsmbu/save` stays unread by the game.
    Set `NSMBU_DUMP_FRAMES` to the frames you will look at.
    Set `NSMBU_PRESS` and `NSMBU_STICK` when the boot must press buttons.
    `NSMBU_RES_SCALE` defaults to 1.
-2. Run `tools/scripted-run.sh <name>` from the repo root.
+2. Run `agent-nsmbu scripted <name>` from the repo root.
    The run is done when the process exits and each dumped `frame_<n>.png` is in `.tmp/<name>`.
 3. Read one dumped frame.
    Continue only when that frame is the scene you mean.
@@ -112,7 +112,7 @@ These are separate from `scripted-run.sh` and appear in benches and device check
 
 `NSMBU_RECORD_INPUT` writes one line each time the pad changes.
 The step count starts when in-level play begins (`AreaTask` is live), then follows guest logic steps (one per simulation tick, not per rendered frame).
-New files use the `# nsmbu-replay` header and `replays/<course>.replay` paths from `just record` / `just replay`.
+New files use the `# nsmbu-replay` header and `replays/<course>.replay` paths from `agent-nsmbu record` / `agent-nsmbu replay`.
 Each pad line ends with the player position (`x y z`).
 A `# start` line records player index, lives, coins, course coins, power-up mode (0–8), and spawn position; replay checks that snapshot at step 0.
 Replay logs the first step where position differs by more than 5 cm, and a match or mismatch count when it finishes.
@@ -123,10 +123,10 @@ Live keyboard, mouse, and gamepad input is replaced for that run.
 Intro-skip button pulses stay outside the file, so play the file back with the same course pack.
 
 ```
-just record 1-1
-just replay 1-1
+agent-nsmbu record 1-1
+agent-nsmbu replay 1-1
 ```
 
-`just record 1-1` writes `replays/1-1.replay` from the start of that course.
-`just replay 1-1` plays `replays/1-1.replay`.
+`agent-nsmbu record 1-1` writes `replays/1-1.replay` from the start of that course.
+`agent-nsmbu replay 1-1` plays `replays/1-1.replay`.
 The game quits once the guest passes the last recorded step.

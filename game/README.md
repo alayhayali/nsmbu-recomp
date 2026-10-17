@@ -4,7 +4,7 @@ This folder holds **your** Wii U dump, keys, update, and extracted game files.
 
 Nothing here except this readme is in git.
 
-## Before `just extract`
+## Before `agent-nsmbu extract`
 
 Put these in **this** folder (`game/`):
 
@@ -30,7 +30,7 @@ Put these in **this** folder (`game/`):
 From the repository root:
 
 ```bash
-just extract
+agent-nsmbu extract
 ```
 
 That:

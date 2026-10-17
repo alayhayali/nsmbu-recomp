@@ -11,6 +11,7 @@
 #include "../savestate.h"
 #include "../screenshot.h"
 #include "../gfx/vulkan/settings.h"
+#include "../agent_ctl.h"
 #include "../overlay/hostui.h"
 #include "../overlay/overlay.h"
 #include "../overlay/text_entry.h"
@@ -960,6 +961,7 @@ PadState read() {
     s.buttons |= k.buttons;
     if (k.lx || k.ly) { s.lx = k.lx; s.ly = k.ly; }
     if (k.rx || k.ry) { s.rx = k.rx; s.ry = k.ry; }
+    agent_ctl::apply_pad(s);
     s.touch = g_touch;
     s.tx = g_tx;
     s.ty = g_ty;

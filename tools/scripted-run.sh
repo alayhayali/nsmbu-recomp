@@ -12,7 +12,7 @@ if [ ! -d "$user" ] && [ -d "$root/user" ]; then
 fi
 save_src="$user/save"
 if [ ! -d "$save_src" ]; then
-    echo "missing $root/nsmbu/save; run: just launch once, or copy a save there" >&2
+    echo "missing $root/nsmbu/save; run: agent-nsmbu launch once, or copy a save there" >&2
     exit 2
 fi
 run="$root/.tmp/$name"
