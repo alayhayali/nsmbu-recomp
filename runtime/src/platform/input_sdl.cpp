@@ -30,7 +30,6 @@
 #include <utility>
 #include <vector>
 #include "env.h"
-#include "guest_addr.h"
 namespace render { uint64_t frame_count(); }
 namespace gfxvk { bool graphics_hotkey(char key, bool activate); }
 namespace gfx { void display_plus_pressed(); }
@@ -919,31 +918,6 @@ static void apply_replay(PadState& s) {
     while (g_replay_index + 1 < samples.size() && samples[g_replay_index + 1].step <= step) g_replay_index++;
     const ReplaySample& cur = samples[g_replay_index];
     if (cur.step <= step) s = cur.pad;
-    if (step == 0 || step == 67) {
-        static uint64_t guest0 = 0, host0 = 0;
-        const uint64_t guest = timebase::guest_now();
-        const uint64_t host = timebase::now();
-        if (step == 0) {
-            guest0 = guest;
-            host0 = host;
-        }
-        const double guest_ms = guest0 ? (double)(guest - guest0) * 1000.0 / timebase::kTicksPerSec : 0;
-        const double host_ms = host0 ? (double)(host - host0) * 1000.0 / timebase::kTicksPerSec : 0;
-        float speed_f = 0, vx = 0, vy = 0;
-        int32_t actor_mode = -1;
-        const uint32_t field = ld32(GD(0x101D1604));
-        const uint32_t mgr = ld32(GD(0x101E6994));
-        const uint32_t actor = mgr ? ld32(mgr + 0x20u) : 0;
-        if (actor) {
-            speed_f = ldf32(actor + 0x58u);
-            vx = ldf32(actor + 0x78u);
-            vy = ldf32(actor + 0x7Cu);
-            actor_mode = (int32_t)ld32(actor + 0x500u);
-        }
-        int32_t slot_mode = field ? (int32_t)ld32(field + 0x2Cu) : -1;
-        LOG("[input] course step %llu guest %+.1f ms host %+.1f ms lx %.2f buttons %08X speed %.3f vel %.3f %.3f mode %d/%d",
-            (unsigned long long)step, guest_ms, host_ms, s.lx, s.buttons, speed_f, vx, vy, slot_mode, actor_mode);
-    }
     if (cur.step == step && cur.witness) {
         interp::PlayerSnapshot now;
         if (interp::player_snapshot(now, 0)) {

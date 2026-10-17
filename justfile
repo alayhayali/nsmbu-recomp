@@ -4,6 +4,9 @@ export NSMBU_USER_DIR := nsmbu_dir
 default:
     @just --list
 
+build *args:
+    python3 tools/build.py {{args}}
+
 run *args:
     python3 tools/build.py {{args}} && python3 tools/launch.py {{args}}
 

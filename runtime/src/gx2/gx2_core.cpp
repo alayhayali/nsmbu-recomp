@@ -672,7 +672,7 @@ HLE(gx2, GX2Init) {
     set_default_state();
     LOG("[gx2] initialized (native GX2 -> %s)", render::api_name(render::active()));
     if(uncapped_benchmark())
-        LOG("[gx2 benchmark] uncapped guest flips; GPU completion ordering retained; each swap advances guest time by one vsync so gameplay stays in step; audio stays on the wall clock");
+        LOG("[gx2 benchmark] uncapped guest flips; GPU completion ordering retained; each swap advances guest time by one vsync; audio stays on the wall clock");
 }
 
 HLE(gx2, GX2SetupContextStateEx) {
