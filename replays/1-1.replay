@@ -1,7 +1,7 @@
 # nsmbu-replay
 # course 1-1
 # clock course
-# start player 0 lives 5 coins 0 course_coins 0 mode 0 pos 600 -848 3000
+# start player 0 lives 5 coins 0 course_coins 0 mode 2 pos 600 -848 3000
 # step buttons lx ly rx ry touch tx ty x y z
 0 00000000 0 0 0 0 0 0 0 600 -848 3000
 60 00000000 1 0 0 0 0 0 0 600 -848 3000

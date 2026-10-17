@@ -7,6 +7,9 @@ default:
 run *args:
     python3 tools/build.py {{args}} && python3 tools/launch.py {{args}}
 
+launch *args:
+    python3 tools/launch.py {{args}}
+
 record course *args:
     mkdir -p "{{justfile_directory()}}/replays"
     NSMBU_RECORD_INPUT="{{justfile_directory()}}/replays/{{course}}.replay" python3 tools/launch.py {{course}} {{args}}

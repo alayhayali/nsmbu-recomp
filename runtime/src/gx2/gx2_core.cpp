@@ -562,10 +562,43 @@ void gx2::set_display_vsync_ns(int64_t ns) {
 }
 static int64_t vsync_period_ns() { return g_vsync_period_ns.load(std::memory_order_relaxed); }
 
+static uint64_t g_uncapped_guest_mark = 0;
+static uint64_t g_uncapped_paced_swaps = 0;
+static bool g_uncapped_pace_ready = false;
+static uint64_t g_last_flip_time = 0;
+
+static void reset_uncapped_guest_pace() {
+    g_uncapped_pace_ready = false;
+    g_uncapped_guest_mark = 0;
+    g_uncapped_paced_swaps = 0;
+}
+
+static uint64_t vsync_period_ticks() {
+    return (uint64_t)((unsigned __int128)vsync_period_ns() * timebase::kTicksPerSec / 1000000000ull);
+}
+
+static void advance_uncapped_guest_time() {
+    if (!g_uncapped_pace_ready) {
+        g_uncapped_pace_ready = true;
+        g_uncapped_paced_swaps = g_swap_count ? g_swap_count - 1 : 0;
+        g_uncapped_guest_mark = timebase::guest_now();
+    }
+    const uint64_t period = vsync_period_ticks();
+    if (!period) return;
+    while (g_uncapped_paced_swaps < g_swap_count) {
+        const uint64_t guest = timebase::guest_now();
+        const uint64_t next = g_uncapped_guest_mark + period;
+        if (guest < next) timebase::set_guest_now(next);
+        g_uncapped_guest_mark = timebase::guest_now();
+        g_uncapped_paced_swaps++;
+    }
+    const uint64_t guest = timebase::guest_now();
+    if (period < guest) g_last_flip_time = timebase::to_host(guest - period);
+}
+
 struct PendingFlip { uint64_t vsync, swap; };
 static std::deque<PendingFlip> g_pending_flips;
 static uint64_t g_last_flip_vsync = 0;
-static uint64_t g_last_flip_time = 0;
 static int64_t g_count_offset = 0;
 
 static uint64_t vsync_index() {
@@ -597,9 +630,11 @@ bool gx2::uncapped() {
     }
     return v == 1;
 }
+
 void gx2::set_uncapped(bool on) {
     if (uncapped() == on) return;
     g_uncapped = on ? 1 : 0;
+    if (!on) reset_uncapped_guest_pace();
     LOG("[gx2] uncapped %s", on ? "on (debug: no frame limit, no vsync; the game runs faster than real time)" : "off");
 }
 static bool uncapped_benchmark() { return gx2::uncapped(); }
@@ -612,7 +647,7 @@ static void update_flips() {
         at = now / vsync_granule() * vsync_granule();
         g_pending_flips.pop_front();
         g_last_flip_vsync = at;
-        g_last_flip_time = timebase::now();
+        if (!uncapped_benchmark()) g_last_flip_time = timebase::now();
         g_flip_count++;
     }
 }
@@ -637,7 +672,7 @@ HLE(gx2, GX2Init) {
     set_default_state();
     LOG("[gx2] initialized (native GX2 -> %s)", render::api_name(render::active()));
     if(uncapped_benchmark())
-        LOG("[gx2 benchmark] uncapped guest flips; GPU completion ordering retained; frame-based simulation accelerates while timebase/audio clocks remain real-time");
+        LOG("[gx2 benchmark] uncapped guest flips; GPU completion ordering retained; each swap advances guest time by one vsync so gameplay stays in step; audio stays on the wall clock");
 }
 
 HLE(gx2, GX2SetupContextStateEx) {
@@ -837,6 +872,7 @@ HLE(gx2, GX2WaitForVsync) {
         render_sync(kSyncVsyncUncapped);
         std::lock_guard<std::mutex> lk(g_flip_mutex);
         update_flips();
+        advance_uncapped_guest_time();
         return;
     }
 #ifdef NSMBU_HAS_VULKAN
@@ -1001,5 +1037,6 @@ void gx2_ss_load(ss::Reader& r) {
         std::lock_guard<std::mutex> fl(g_flip_mutex);
         g_count_offset = (int64_t)guest_swaps - (int64_t)g_swap_count;
     }
+    reset_uncapped_guest_pace();
     render::ss_reset();
 }

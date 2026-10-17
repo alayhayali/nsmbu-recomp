@@ -30,6 +30,7 @@
 #include <utility>
 #include <vector>
 #include "env.h"
+#include "guest_addr.h"
 namespace render { uint64_t frame_count(); }
 namespace gfxvk { bool graphics_hotkey(char key, bool activate); }
 namespace gfx { void display_plus_pressed(); }
@@ -609,20 +610,28 @@ static bool pad_same(const PadState& a, const PadState& b) {
 
 static bool g_course_clock_armed = false;
 static uint64_t g_course_clock_origin = 0;
+static bool g_replay_start_wait = false;
+static uint64_t g_replay_start_wait_from = 0;
+
+static bool replay_course_clock_ready();
 
 static void reset_course_input_clock() {
     g_course_clock_armed = false;
     g_course_clock_origin = 0;
+    g_replay_start_wait = false;
+    g_replay_start_wait_from = 0;
 }
 
 static bool course_relative_step(uint64_t& step) {
     const bool active = interp::course_play_active();
     if (!active) {
         g_course_clock_armed = false;
+        g_replay_start_wait = false;
         return false;
     }
     const uint64_t now = interp::logic_steps();
     if (!g_course_clock_armed) {
+        if (!replay_course_clock_ready()) return false;
         g_course_clock_armed = true;
         g_course_clock_origin = now;
     }
@@ -664,7 +673,7 @@ static bool parse_start_comment(const char* line, ReplayStart& start) {
     int32_t lives = 0, coins = 0, course_coins = 0, mode = 0;
     float x = 0, y = 0, z = 0;
     if (sscanf(p, " player %d lives %d coins %d course_coins %d mode %d pos %f %f %f", &player, &lives, &coins,
-            &course_coins, &mode, &x, &y, &z) < 9)
+            &course_coins, &mode, &x, &y, &z) != 8)
         return false;
     start.have = true;
     start.expect.player = player;
@@ -679,11 +688,6 @@ static bool parse_start_comment(const char* line, ReplayStart& start) {
 }
 
 static bool pos_near(float a, float b) { return std::fabs(a - b) <= 0.05f; }
-
-static bool snapshot_matches(const interp::PlayerSnapshot& a, const interp::PlayerSnapshot& b) {
-    return a.player == b.player && a.lives == b.lives && a.coins == b.coins && a.course_coins == b.course_coins
-        && a.mode == b.mode && pos_near(a.x, b.x) && pos_near(a.y, b.y) && pos_near(a.z, b.z);
-}
 
 static FILE* open_record_file(const char* path) {
     reset_course_input_clock();
@@ -846,6 +850,38 @@ static void replay_finished(uint64_t step) {
     SDL_PushEvent(&quit);
 }
 
+static bool replay_course_clock_ready() {
+    if (!g_replay_start.have) return true;
+    interp::PlayerSnapshot snap;
+    const bool positioned = interp::player_snapshot(snap, g_replay_start.expect.player)
+        && pos_near(snap.x, g_replay_start.expect.x) && pos_near(snap.y, g_replay_start.expect.y)
+        && pos_near(snap.z, g_replay_start.expect.z);
+    if (positioned) {
+        g_replay_start_wait = false;
+        return true;
+    }
+    const uint64_t now = interp::logic_steps();
+    if (!g_replay_start_wait) {
+        g_replay_start_wait = true;
+        g_replay_start_wait_from = now;
+        return false;
+    }
+    if (now - g_replay_start_wait_from < 180) return false;
+    if (!g_start_miss) {
+        g_start_miss = 1;
+        g_witness_first = 0;
+        if (interp::player_snapshot(snap, g_replay_start.expect.player))
+            LOG("[input] replay diverged before the course clock: recorded lives %d mode %d pos %.3f %.3f %.3f now lives %d mode %d pos %.3f %.3f %.3f",
+                g_replay_start.expect.lives, g_replay_start.expect.mode, g_replay_start.expect.x, g_replay_start.expect.y,
+                g_replay_start.expect.z, snap.lives, snap.mode, snap.x, snap.y, snap.z);
+        else
+            LOG("[input] replay diverged before the course clock: recorded %.3f %.3f %.3f now unavailable",
+                g_replay_start.expect.x, g_replay_start.expect.y, g_replay_start.expect.z);
+        replay_finished(0);
+    }
+    return false;
+}
+
 static bool replay_step(uint64_t& step) {
     if (g_replay_version < 2) {
         step = interp::logic_steps();
@@ -859,7 +895,9 @@ static void check_replay_start(uint64_t step) {
     g_replay_start_checked = true;
     interp::PlayerSnapshot now;
     if (!interp::player_snapshot(now, g_replay_start.expect.player)) return;
-    if (snapshot_matches(now, g_replay_start.expect)) return;
+    if (pos_near(now.x, g_replay_start.expect.x) && pos_near(now.y, g_replay_start.expect.y)
+        && pos_near(now.z, g_replay_start.expect.z))
+        return;
     g_start_miss = 1;
     if (!g_witness_first) g_witness_first = step;
     LOG("[input] replay start mismatch: recorded player %d lives %d coins %d course_coins %d mode %d pos %.3f %.3f %.3f now "
@@ -881,15 +919,42 @@ static void apply_replay(PadState& s) {
     while (g_replay_index + 1 < samples.size() && samples[g_replay_index + 1].step <= step) g_replay_index++;
     const ReplaySample& cur = samples[g_replay_index];
     if (cur.step <= step) s = cur.pad;
+    if (step == 0 || step == 67) {
+        static uint64_t guest0 = 0, host0 = 0;
+        const uint64_t guest = timebase::guest_now();
+        const uint64_t host = timebase::now();
+        if (step == 0) {
+            guest0 = guest;
+            host0 = host;
+        }
+        const double guest_ms = guest0 ? (double)(guest - guest0) * 1000.0 / timebase::kTicksPerSec : 0;
+        const double host_ms = host0 ? (double)(host - host0) * 1000.0 / timebase::kTicksPerSec : 0;
+        float speed_f = 0, vx = 0, vy = 0;
+        int32_t actor_mode = -1;
+        const uint32_t field = ld32(GD(0x101D1604));
+        const uint32_t mgr = ld32(GD(0x101E6994));
+        const uint32_t actor = mgr ? ld32(mgr + 0x20u) : 0;
+        if (actor) {
+            speed_f = ldf32(actor + 0x58u);
+            vx = ldf32(actor + 0x78u);
+            vy = ldf32(actor + 0x7Cu);
+            actor_mode = (int32_t)ld32(actor + 0x500u);
+        }
+        int32_t slot_mode = field ? (int32_t)ld32(field + 0x2Cu) : -1;
+        LOG("[input] course step %llu guest %+.1f ms host %+.1f ms lx %.2f buttons %08X speed %.3f vel %.3f %.3f mode %d/%d",
+            (unsigned long long)step, guest_ms, host_ms, s.lx, s.buttons, speed_f, vx, vy, slot_mode, actor_mode);
+    }
     if (cur.step == step && cur.witness) {
         interp::PlayerSnapshot now;
         if (interp::player_snapshot(now, 0)) {
             if (!pos_near(now.x, cur.wx) || !pos_near(now.y, cur.wy) || !pos_near(now.z, cur.wz)) {
-                if (!g_witness_miss)
+                const bool first = g_witness_miss == 0;
+                if (first)
                     LOG("[input] replay diverged at step %llu: recorded %.3f %.3f %.3f now %.3f %.3f %.3f",
                         (unsigned long long)step, cur.wx, cur.wy, cur.wz, now.x, now.y, now.z);
                 if (!g_witness_first) g_witness_first = step;
                 g_witness_miss++;
+                if (first) replay_finished(step);
             }
         }
     }
