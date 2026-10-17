@@ -1,6 +1,6 @@
 #include "aspect.h"
 #include "aspect_panes.h"
-#include "renderer.h"
+#include "gfx/renderer.h"
 #include <chrono>
 #include "env.h"
 extern "C" uint64_t g_shader_state_gen;

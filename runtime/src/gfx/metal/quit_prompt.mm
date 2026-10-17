@@ -6,9 +6,9 @@
 #include <cstdlib>
 #include <string>
 
-#include "../quit_prompt.h"
-#include "../savestate.h"
-#include "renderer.h"
+#include "../../quit_prompt.h"
+#include "../../savestate.h"
+#include "gfx/renderer.h"
 #include "runtime.h"
 
 namespace {

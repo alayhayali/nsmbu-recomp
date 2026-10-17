@@ -105,7 +105,7 @@ frame. Measured in R3 look on historical WWHD Outset (`NSMBU_TEST_GYRO`): a Game
   Controller's right stick) and its per-frame calibration. With the source off nothing changes.
 - Hosts: `platform/input_sdl.cpp` (SDL3 sensors, on only for the controller source; a watchdog turns a
   controller's sensors off and on again when they stay silent for 2 s while the game window has the
-  focus), `gfx/input.mm` (GameController.framework, macOS 11+; sensors that the system switched off
+  focus), `gfx/metal/input.mm` (GameController.framework, macOS 11+; sensors that the system switched off
   are switched on again), `platform/mouse_sdl.cpp` and `mods/mouse.mm` (mouse).
 
 ## Troubleshooting

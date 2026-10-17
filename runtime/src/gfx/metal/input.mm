@@ -11,12 +11,12 @@
 
 #include "input.h"
 #include "input_map.h"
-#include "renderer.h"
-#include "../runtime.h"
-#include "../savestate.h"
-#include "../screenshot.h"
-#include "../motion/motion.h"
-#include "../overlay/overlay.h"
+#include "gfx/renderer.h"
+#include "runtime.h"
+#include "../../savestate.h"
+#include "../../screenshot.h"
+#include "../../motion/motion.h"
+#include "../../overlay/overlay.h"
 
 #include <memory>
 #include <string>

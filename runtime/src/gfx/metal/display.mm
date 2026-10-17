@@ -12,23 +12,23 @@
 #include <tuple>
 #include <vector>
 
-#include "../aspect.h"
-#include "display.h"
-#include "display_modes.h"
+#include "../../aspect.h"
+#include "gfx/display.h"
+#include "gfx/display_modes.h"
 #include "gx2/gx2.h"
 #include "input.h"
 #include "metal.h"
-#include "renderer.h"
+#include "gfx/renderer.h"
 #include "runtime.h"
-#include "../interp.h"
+#include "../../interp.h"
 #ifdef NSMBU_HAS_VULKAN
-#include "vulkan/api.h"
+#include "gfx/vulkan/api.h"
 #endif
 #include "imgui.h"
 #include "backends/imgui_impl_metal.h"
-#include "../overlay/hostui.h"
-#include "../overlay/overlay.h"
-#include "../screenshot.h"
+#include "../../overlay/hostui.h"
+#include "../../overlay/overlay.h"
+#include "../../screenshot.h"
 
 namespace mods { bool mouse_captured(); }
 

@@ -22,7 +22,7 @@ A release folder contains `portable.txt`. Then everything stays in `<release>/da
 
 Runtime side: a `portable.txt` next to the game executable makes `host::config_dir()` return
 `<folder>/nsmbu` (`runtime/src/platform/host.h`); `main.cpp` points the macOS-only paths (save states,
-display settings, Metal shader cache) there through their existing overrides; `gfx/menu.mm` keeps the
+display settings, Metal shader cache) there through their existing overrides; `gfx/metal/menu.mm` keeps the
 graphics options in `nsmbu/graphics.plist` instead of NSUserDefaults; the Controls window does not
 autosave its frame. Without the marker (source builds) nothing changes. Shortcuts (Applications link,
 Start menu, applications menu) are only created when the player asks for one.

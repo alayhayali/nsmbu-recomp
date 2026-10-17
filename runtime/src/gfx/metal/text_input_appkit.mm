@@ -3,8 +3,8 @@
 #import <AppKit/AppKit.h>
 #include <Carbon/Carbon.h>
 
-#include "../overlay/overlay.h"
-#include "../overlay/text_entry.h"
+#include "../../overlay/overlay.h"
+#include "../../overlay/text_entry.h"
 
 namespace gfx { void* display_tv_window(); }
 

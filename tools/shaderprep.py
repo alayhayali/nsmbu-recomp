@@ -29,7 +29,7 @@ Where the shaders are (NSMBU, USA):
     GX2PixelShader: 41 register words (0x00..0xA0), shader size @0xA4, shader offset @0xA8.
   - .gsh (GFX2) files only hold the AGL primitive renderer's few shaders; not used by this tool.
 
-The head start is written in the runtime's recipe format (runtime/src/gfx/metal_draw.mm, cache_write):
+The head start is written in the runtime's recipe format (runtime/src/gfx/metal/metal_draw.mm, cache_write):
 records of {u32 type, u32 raw size, u32 compressed size, zlib(raw)}; a shader record is
 {u32 vertex, u32 size, u32 fsSize, u32 nregs, microcode, fetch microcode, (u32 reg, u32 value) * nregs};
 a pipeline record is the runtime's PipelineRecipe struct as is (u64 vsKey, psKey, fsKey, render target
@@ -45,7 +45,7 @@ own runtime cache after playing for a while (the further you get, the more it co
   shaderprep.py build
 `build` then writes:
   - type 1 records: programs from the template with their recorded states ("known"); the runtime
-    replays these at startup (runtime/src/gfx/shader_headstart.mm)
+    replays these at startup (runtime/src/gfx/metal/shader_headstart.mm)
   - type 2 records: the template's pipeline recipes. They name their shaders by the runtime's shader
     keys (a hash of the microcode, the translation-relevant registers and the fetch shader), which the
     known records reproduce exactly since they carry the recorded register state; the runtime builds

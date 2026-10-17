@@ -8,7 +8,7 @@ components under MPL-2.0; Cemu's emulator runtime is not needed.
 
 The default macOS build (`NSMBU_RENDERER=BOTH`) contains the Metal renderer and the Vulkan renderer.
 `runtime/src/gfx/renderer.h` is the interface: each renderer fills a table of entry points
-(`gfx/metal_backend.mm` for Metal, namespace `gfx`; `gfx/vulkan/backend_table.cpp` for Vulkan,
+(`gfx/metal/metal_backend.mm` for Metal, namespace `gfx`; `gfx/vulkan/backend_table.cpp` for Vulkan,
 namespace `gfxvk`), and the GX2 layer, save states, menus and input call `render::*`, which
 forward to the renderer chosen once at start-up:
 
@@ -24,7 +24,7 @@ the window title says "Metal (Vulkan unavailable)"): no Vulkan loader or glslang
 weak imports, so the app still starts without them), no driver (MoltenVK), no device with dynamic
 rendering. `NSMBU_VK_FORCE_INIT_FAIL=1` forces this path for testing.
 
-Both renderers use the same AppKit host (`gfx/display.mm`, `menu.mm`, `input.mm`,
+Both renderers use the same AppKit host (`gfx/metal/display.mm`, `menu.mm`, `input.mm`,
 `controls_ui.mm`, `mods/mouse.mm`): TV and GamePad windows, full screen, GamePad screen modes
 (separate window, picture-in-picture, automatic), scaling filters, aspect ratio, the Controls window,
 save states. Vulkan presents into

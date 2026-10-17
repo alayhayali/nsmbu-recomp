@@ -3,11 +3,11 @@
 #include "env.h"
 #import <AppKit/AppKit.h>
 
-#include "../input.h"
-#include "../overlay/hostui.h"
-#include "../overlay/overlay.h"
-#include "../runtime.h"
-#include "display_modes.h"
+#include "../../input.h"
+#include "../../overlay/hostui.h"
+#include "../../overlay/overlay.h"
+#include "runtime.h"
+#include "gfx/display_modes.h"
 #include <atomic>
 #include <cstdlib>
 

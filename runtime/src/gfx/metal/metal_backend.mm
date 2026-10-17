@@ -3,7 +3,7 @@
 #include <string>
 
 #include "gx2/gx2.h"
-#include "renderer.h"
+#include "gfx/renderer.h"
 
 namespace gfx {
 void peek_z(const uint32_t*, uint32_t);

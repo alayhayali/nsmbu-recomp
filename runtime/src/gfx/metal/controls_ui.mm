@@ -10,10 +10,10 @@
 #include <string>
 #include <vector>
 
-#include "../input.h"
-#include "../input_map.h"
-#include "../runtime.h"
-#include "../platform/host.h"
+#include "../../input.h"
+#include "../../input_map.h"
+#include "runtime.h"
+#include "platform/host.h"
 
 namespace gfx { void show_drc_window(bool on); }
 

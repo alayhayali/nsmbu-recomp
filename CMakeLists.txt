@@ -134,7 +134,7 @@ set(GFX_SOURCES runtime/src/gfx/renderer.cpp runtime/src/gfx/display_modes.cpp r
 set(MOD_GFX_SOURCES)
 if(NSMBU_HAS_METAL)
 
-  file(GLOB METAL_SOURCES CONFIGURE_DEPENDS runtime/src/gfx/*.mm)
+  file(GLOB METAL_SOURCES CONFIGURE_DEPENDS runtime/src/gfx/metal/*.mm)
   file(GLOB MOD_GFX_SOURCES CONFIGURE_DEPENDS runtime/src/mods/*.mm)
   list(APPEND GFX_SOURCES ${METAL_SOURCES})
   set_source_files_properties(${METAL_SOURCES} ${MOD_GFX_SOURCES} PROPERTIES COMPILE_FLAGS "-fobjc-arc")

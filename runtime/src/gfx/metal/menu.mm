@@ -3,22 +3,22 @@
 #include "env.h"
 #import <Cocoa/Cocoa.h>
 #include <Carbon/Carbon.h>
-#include "../input.h"
-#include "../platform/host.h"
+#include "../../input.h"
+#include "platform/host.h"
 #include <sys/stat.h>
 #include <ctime>
 
-#include "../interp.h"
-#include "../savestate.h"
-#include "../screenshot.h"
-#include "../input_map.h"
-#include "../overlay/hostui.h"
-#include "../overlay/overlay.h"
-#include "../crashrec.h"
-#include "../aspect.h"
-#include "renderer.h"
+#include "../../interp.h"
+#include "../../savestate.h"
+#include "../../screenshot.h"
+#include "../../input_map.h"
+#include "../../overlay/hostui.h"
+#include "../../overlay/overlay.h"
+#include "../../crashrec.h"
+#include "../../aspect.h"
+#include "gfx/renderer.h"
 #ifdef NSMBU_HAS_VULKAN
-#include "vulkan/settings.h"
+#include "gfx/vulkan/settings.h"
 #endif
 #include "runtime.h"
 
@@ -42,8 +42,8 @@ static void cycle_res() {
 }
 
 namespace gx2 { uint64_t flips_presented(); bool uncapped(); }
-#include "../mods/mods.h"
-#include "../overlay/overlay.h"
+#include "../../mods/mods.h"
+#include "../../overlay/overlay.h"
 namespace ax { void start_sound_trace(const char* path, double seconds); }
 namespace gfx { bool menu_hotkey(uint16_t code); NSMenuItem* controls_menu_item();  void install_overlay_input(); }
 

@@ -16,7 +16,7 @@
 #include "write_watch.h"
 #include "env.h"
 #define XXH_INLINE_ALL
-#include "../../third_party/xxhash/xxhash.h"
+#include "../../../third_party/xxhash/xxhash.h"
 
 Latte::E_GX2SURFFMT LatteTexture_ReconstructGX2Format(const Latte::LATTE_SQ_TEX_RESOURCE_WORD1_N&, const Latte::LATTE_SQ_TEX_RESOURCE_WORD4_N&);
 
