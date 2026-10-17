@@ -1,26 +1,14 @@
 # NSMBU native port
 
-Native port of New Super Mario Bros. U, USA v1.3.0 (title `00050000-10101d00`, title version 64).
+Native port of New Super Mario Bros. U, USA v1.3.0.
 `tools/recomp/` translates `red-pro2.rpx` to C ahead of time.
 `runtime/` implements Cafe OS and GX2 as native code.
 Linux and Windows render with Vulkan; macOS with Metal.
 The game dump, keys, and extracted files stay in `game/` on the machine that owns them; layout in `game/README.md`.
 
-Upstream base from ZeldaWWHDRecomp is in `README.md` and `docs/nsmbu.md`.
-For a newer upstream commit, follow `.agents/skills/upstream-merge/SKILL.md`.
+## Verify
 
-## Skills
-
-Reach `.agents/skills/<name>/SKILL.md` when the branch matches:
-
-- **build** — compile, `agent-nsmbu build` / `agent-nsmbu launch` / `agent-nsmbu run --release`, ctest, stubgen or missing RPX, wrong update RPX addresses, example mod symlinks, `nsmbu/` userdata
-- **agent-nsmbu** — global `agent-nsmbu` (`cd cli && npm link`), dev recipes, single-instance agent loop (`open` → `status` / `screenshot` → `press` → `wait` → `close`); see `docs/cli.md`
-- **guest** — `f_XXXXXXXX`, hooks, recomp `build/gen`, stubs, guest memory `ea`, `headers_names` / `names.py`, regional builds
-- **upstream-merge** — merge a newer Wind Waker HD recomp commit (user-invoked)
-- **perf** — profiling artifacts and profile lines (user-invoked)
-- **release** — cut a GitHub release, tag `v*`, watch release workflow
-- **changelog** — player-facing CHANGELOG summary
-- **logs** — `nsmbu/logs/nsmbu.log` and log files under `nsmbu/logs`
+The `agent-nsmbu` cli is installed and can be used to interact with the game.
 
 ## Docs
 
