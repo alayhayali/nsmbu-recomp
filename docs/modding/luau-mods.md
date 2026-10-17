@@ -510,7 +510,7 @@ Cemu packages load as they do now.
 
 Host tests can use a fake guest memory buffer.
 They do not need a game dump.
-One scripted play run (see `AGENTS.md`) should enable a tiny Luau status mod from a slot-1 state and check the log line.
+One scripted play run (see `docs/automation.md`) should enable a tiny Luau status mod from a slot-1 state and check the log line.
 
 ## Phases
 
