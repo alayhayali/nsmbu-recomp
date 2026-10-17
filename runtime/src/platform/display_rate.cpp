@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "../gx2/gx2.h"
 #include "../interp.h"
 #include "../runtime.h"
 
@@ -49,6 +50,13 @@ void request(float hz) {
     env->DeleteLocalRef(cls);
 }
 #endif
+
+int64_t period_ns(float hz, int numerator, int denominator) {
+    if (numerator > 0 && denominator > 0)
+        return (int64_t)(((uint64_t)denominator * 1000000000ull + (uint64_t)numerator / 2) / (uint64_t)numerator);
+    if (hz >= 1.f) return (int64_t)std::llround(1000000000.0 / hz);
+    return 0;
+}
 }
 
 void poll(SDL_Window* tv) {
@@ -63,11 +71,21 @@ void poll(SDL_Window* tv) {
         request((float)want);
         if (want) LOG("[display] %d fps frame interpolation: asking for a %d Hz display mode (the display offers up to %d Hz)", interp::fps(), want, maxHz);
     }
-    interp::set_display_hz((int)std::lround(call_float("displayRefreshRate")));
+    const float hz = call_float("displayRefreshRate");
+    interp::set_display_hz((int)std::lround(hz));
+    gx2::set_display_vsync_ns(period_ns(hz, 0, 0));
 #else
     const SDL_DisplayID id = tv ? SDL_GetDisplayForWindow(tv) : SDL_GetPrimaryDisplay();
     const SDL_DisplayMode* m = id ? SDL_GetCurrentDisplayMode(id) : nullptr;
     interp::set_display_hz(m ? (int)std::lround(m->refresh_rate) : 0);
+    const int64_t ns = m ? period_ns(m->refresh_rate, m->refresh_rate_numerator, m->refresh_rate_denominator) : 0;
+    static int64_t seen = -1;
+    if (ns != seen) {
+        seen = ns;
+        LOG("[display] mode %.3f Hz (%d/%d), period %lld ns", m ? m->refresh_rate : 0.f,
+            m ? m->refresh_rate_numerator : 0, m ? m->refresh_rate_denominator : 0, (long long)ns);
+    }
+    gx2::set_display_vsync_ns(ns);
 #endif
 }
 }

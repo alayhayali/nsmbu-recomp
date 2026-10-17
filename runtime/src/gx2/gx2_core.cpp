@@ -114,7 +114,7 @@ static void apply_small_regs(uint32 first, const uint32* v, uint32 n) {
             g_regs[reg] = value;
         }
 
-        if (g_shadow) g_shadow[reg] = value;
+        if (g_shadow && g_shadow[reg] != value) g_shadow[reg] = value;
     }
     if (actualBump) ++g_shader_state_gen;
     if (changed && collectStats) {
@@ -182,7 +182,7 @@ static void apply_regs(uint32 first, const uint32* v, uint32 n) {
             if (g_regs[first + i] != v[i] && !shader_irrelevant(first + i)) { g_shader_state_gen++; break; }
         memcpy(&g_regs[first], v, n * 4);
     }
-    if (g_shadow) memcpy(&g_shadow[first], v, n * 4);
+    if (g_shadow && memcmp(&g_shadow[first], v, n * 4) != 0) memcpy(&g_shadow[first], v, n * 4);
 }
 
 struct Recording {
@@ -549,8 +549,18 @@ namespace interp { uint32_t effective_swap_interval(uint32_t game); uint64_t log
 static std::mutex g_flip_mutex;
 namespace gx2 { uint64_t swap_count() { std::lock_guard<std::mutex> lk(g_flip_mutex); return g_swap_count; } }
 static const auto g_vsync_epoch = std::chrono::steady_clock::now();
-static constexpr std::chrono::nanoseconds kVsyncPeriod(16683333);
+static constexpr int64_t kDefaultVsyncNs = 16683333;
+static std::atomic<int64_t> g_vsync_period_ns{kDefaultVsyncNs};
 static constexpr uint64_t kTicksPerVsync = 4;
+
+void gx2::set_display_vsync_ns(int64_t ns) {
+    if (ns <= 0) return;
+    const int64_t reported = ns;
+    if (ns < 16000000 || ns > 17000000) ns = kDefaultVsyncNs;
+    const int64_t old = g_vsync_period_ns.exchange(ns, std::memory_order_relaxed);
+    if (old != ns) LOG("[gx2] vsync period %lld ns (display reported %lld ns)", (long long)ns, (long long)reported);
+}
+static int64_t vsync_period_ns() { return g_vsync_period_ns.load(std::memory_order_relaxed); }
 
 struct PendingFlip { uint64_t vsync, swap; };
 static std::deque<PendingFlip> g_pending_flips;
@@ -559,14 +569,14 @@ static uint64_t g_last_flip_time = 0;
 static int64_t g_count_offset = 0;
 
 static uint64_t vsync_index() {
-    return uint64_t((std::chrono::steady_clock::now() - g_vsync_epoch).count()) * kTicksPerVsync / uint64_t(kVsyncPeriod.count());
+    return uint64_t((std::chrono::steady_clock::now() - g_vsync_epoch).count()) * kTicksPerVsync / uint64_t(vsync_period_ns());
 }
 static uint64_t vsync_granule() {
     const int rate = interp::vsync_rate();
     return rate >= 4 ? 1 : rate >= 2 ? 2 : kTicksPerVsync;
 }
 static std::chrono::steady_clock::time_point tick_time(uint64_t tick) {
-    return g_vsync_epoch + std::chrono::nanoseconds(tick * uint64_t(kVsyncPeriod.count()) / kTicksPerVsync);
+    return g_vsync_epoch + std::chrono::nanoseconds(tick * uint64_t(vsync_period_ns()) / kTicksPerVsync);
 }
 
 static uint64_t flip_due(const PendingFlip& f) {

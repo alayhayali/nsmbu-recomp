@@ -1619,7 +1619,10 @@ void upload_surface(Surface* s) {
         }
         hash=(hash^hashes[level])*1099511628211ull;
     }
-    if(!anyPartial&&hash==s->contentHash)return;
+    if(!anyPartial&&hash==s->contentHash) {
+        if(wwatch::active()) s->dirty=false;
+        return;
+    }
     struct Thin1Copy { uint32_t level; Buffer staging; std::vector<VkBufferImageCopy> copies; size_t bytes; };
     std::vector<Thin1Copy> partials;
     bool needGpu=false;
@@ -1644,7 +1647,10 @@ void upload_surface(Surface* s) {
         bool hashMatched=!s->dirty&&s->mips<=16&&(s->levelHashValid&hashBit)&&s->levelHash[level]==hashes[level];
         if(!hashMatched) needGpu=true;
     }
-    if(!needGpu) return;
+    if(!needGpu) {
+        if(wwatch::active()) s->dirty=false;
+        return;
+    }
     const bool scaleGuest=s->imageType==VK_IMAGE_TYPE_2D&&s->mips==1&&(s->extent.width!=s->width||s->extent.height!=s->height);
     Surface guest;
     Surface* dst=s;
