@@ -24,8 +24,8 @@ static bool g_course=true;
 namespace interp {
 void set_mode(int){}
 uint64_t logic_steps(){return g_logic_steps;}
-uint64_t executed_steps(){return g_logic_steps;}
 bool course_play_active(){return g_course;}
+bool player_witness(float&, float&, float&){return false;}
 }
 namespace timebase { uint64_t now(){return 0;} }
 void log_msg(const char*,...){}
@@ -159,13 +159,13 @@ int main(){
   char buf[512]={};
   assert(fread(buf,1,sizeof buf-1,rf)>0);
   fclose(rf);
-  assert(strstr(buf,"# nsmbu-input 2"));
+  assert(strstr(buf,"# nsmbu-input 3"));
   assert(strstr(buf,"\n0 "));
   remove(rec);
   const char* rep="input_replay_test.txt";
   FILE* wf=fopen(rep,"w");
   assert(wf);
-  fputs("# nsmbu-input 2\n0 00000000 0 0 0 0 0 0 0\n10 00008000 0.5 -1 0 0 1 0.25 0.5\n",wf);
+  fputs("# nsmbu-input 2\n0 00000000 0 0 0 0 0 0 0\n10 00008000 0.5 -1 0 0 1 0.25 0.5\n20 00000000 0 0 0 0 0 0 0\n",wf);
   fclose(wf);
   set_env(env::REPLAY_INPUT,rep);
   g_logic_steps=0;
@@ -176,6 +176,11 @@ int main(){
   assert(played.buttons==input::kA&&played.lx==0.5f&&played.ly==-1.f&&played.touch&&played.tx==0.25f&&played.ty==0.5f);
   g_logic_steps=11;
   assert(input::read().buttons==input::kA);
+  g_logic_steps=12;
+  assert(input::read().buttons==input::kA);
+  g_logic_steps=20;
+  auto done=input::read();
+  assert(done.buttons==0&&done.lx==0);
   remove(rep);
  }
  SDL_DestroyWindow(controls);SDL_DestroyWindow(game);input::set_prompt_window(nullptr);

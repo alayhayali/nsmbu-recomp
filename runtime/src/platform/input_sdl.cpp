@@ -592,28 +592,42 @@ struct Scenario {
 };
 }
 }
-namespace interp { void set_mode(int m); uint64_t logic_steps(); uint64_t executed_steps(); bool course_play_active(); }
+namespace interp { void set_mode(int m); uint64_t logic_steps(); bool course_play_active(); bool player_witness(float& x, float& y, float& z); }
 namespace input {
 static bool pad_same(const PadState& a, const PadState& b) {
     return a.buttons == b.buttons && a.lx == b.lx && a.ly == b.ly && a.rx == b.rx && a.ry == b.ry
         && a.touch == b.touch && a.tx == b.tx && a.ty == b.ty;
 }
 
-static bool course_step(uint64_t& step) {
-    if (!interp::course_play_active()) return false;
-    static uint64_t origin = 0;
-    static bool armed = false;
-    const uint64_t now = interp::executed_steps();
-    if (!armed) { armed = true; origin = now; }
-    step = now - origin;
+static bool g_course_clock_armed = false;
+static uint64_t g_course_clock_origin = 0;
+
+static void reset_course_input_clock() {
+    g_course_clock_armed = false;
+    g_course_clock_origin = 0;
+}
+
+static bool course_relative_step(uint64_t& step) {
+    const bool active = interp::course_play_active();
+    if (!active) {
+        g_course_clock_armed = false;
+        return false;
+    }
+    const uint64_t now = interp::logic_steps();
+    if (!g_course_clock_armed) {
+        g_course_clock_armed = true;
+        g_course_clock_origin = now;
+    }
+    step = now - g_course_clock_origin;
     return true;
 }
 
 static FILE* open_record_file(const char* path) {
+    reset_course_input_clock();
     FILE* f = fopen(path, "w");
     if (!f) { LOG("[input] can't write %s", path); return nullptr; }
     setvbuf(f, nullptr, _IONBF, 0);
-    fprintf(f, "# nsmbu-input 2\n# step is executed steps since in-level play started\n# step buttons lx ly rx ry touch tx ty\n");
+    fprintf(f, "# nsmbu-input 3\n# step is guest logic steps since in-level play started\n# step buttons lx ly rx ry touch tx ty\n# @ step x y z   player position when the pad changed\n");
     LOG("[input] recording %s from in-level play", path);
     return f;
 }
@@ -622,7 +636,7 @@ static void record_pad(const PadState& s) {
     const char* path = env::path(env::RECORD_INPUT);
     if (!path || !path[0] || env::REPLAY_INPUT()) return;
     uint64_t step = 0;
-    if (!course_step(step)) return;
+    if (!course_relative_step(step)) return;
     static FILE* f = nullptr;
     static bool opened = false;
     static PadState prev{};
@@ -631,15 +645,25 @@ static void record_pad(const PadState& s) {
         opened = true;
         f = open_record_file(path);
     }
-    if (!f || (have && pad_same(prev, s))) return;
+    if (!f) return;
+    if (have && pad_same(prev, s)) return;
     prev = s;
     have = true;
+    float x, y, z;
+    if (interp::player_witness(x, y, z))
+        fprintf(f, "@ %llu %.9g %.9g %.9g\n", (unsigned long long)step, x, y, z);
     fprintf(f, "%llu %08X %.9g %.9g %.9g %.9g %d %.9g %.9g\n",
         (unsigned long long)step, s.buttons, s.lx, s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty);
 }
 
 struct ReplaySample { uint64_t step; PadState pad; };
+struct Witness { uint64_t step; float x, y, z; };
 static int g_replay_version = 2;
+static size_t g_replay_index = 0;
+static std::vector<Witness> g_witness;
+static size_t g_witness_index = 0;
+static int g_witness_miss = 0;
+static uint64_t g_witness_first = 0;
 static const std::vector<ReplaySample>& replay_samples() {
     static std::vector<ReplaySample> samples;
     static bool loaded = false;
@@ -647,6 +671,7 @@ static const std::vector<ReplaySample>& replay_samples() {
     const char* path = env::path(env::REPLAY_INPUT);
     if (!path || !path[0]) return samples;
     loaded = true;
+    g_witness.clear();
     FILE* f = fopen(path, "r");
     if (!f) { LOG("[input] can't read %s", path); return samples; }
     char line[256];
@@ -657,6 +682,12 @@ static const std::vector<ReplaySample>& replay_samples() {
             continue;
         }
         if (line[0] == '\n') continue;
+        if (line[0] == '@') {
+            unsigned long long step; float x, y, z;
+            if (sscanf(line, "@ %llu %f %f %f", &step, &x, &y, &z) == 4)
+                g_witness.push_back({step, x, y, z});
+            continue;
+        }
         unsigned long long step; unsigned buttons; float lx, ly, rx, ry, tx, ty; int touch;
         if (sscanf(line, "%llu %x %f %f %f %f %d %f %f", &step, &buttons, &lx, &ly, &rx, &ry, &touch, &tx, &ty) != 9) continue;
         PadState p;
@@ -664,14 +695,25 @@ static const std::vector<ReplaySample>& replay_samples() {
         samples.push_back({step, p});
     }
     fclose(f);
-    LOG("[input] replaying %zu samples from %s", samples.size(), path);
+    g_replay_index = 0;
+    g_witness_index = 0;
+    g_witness_miss = 0;
+    g_witness_first = 0;
+    reset_course_input_clock();
+    LOG("[input] replaying %zu samples from %s (%zu position checks)", samples.size(), path, g_witness.size());
     return samples;
 }
 
 static void replay_finished(uint64_t step) {
     static std::atomic<bool> sent{false};
     if (sent.exchange(true)) return;
-    LOG("[input] replay finished at step %llu", (unsigned long long)step);
+    if (g_witness.empty())
+        LOG("[input] replay finished at step %llu", (unsigned long long)step);
+    else if (g_witness_miss)
+        LOG("[input] replay finished at step %llu, %d position mismatches, first at step %llu",
+            (unsigned long long)step, g_witness_miss, (unsigned long long)g_witness_first);
+    else
+        LOG("[input] replay finished at step %llu, player position matched", (unsigned long long)step);
     SDL_Event quit{};
     quit.type = SDL_EVENT_QUIT;
     SDL_PushEvent(&quit);
@@ -682,13 +724,7 @@ static bool replay_step(uint64_t& step) {
         step = interp::logic_steps();
         return true;
     }
-    if (!interp::course_play_active()) return false;
-    static uint64_t origin = 0;
-    static bool armed = false;
-    const uint64_t now = interp::executed_steps();
-    if (!armed) { armed = true; origin = now; }
-    step = now - origin;
-    return true;
+    return course_relative_step(step);
 }
 
 static void apply_replay(PadState& s) {
@@ -699,9 +735,23 @@ static void apply_replay(PadState& s) {
         s = PadState{};
         return;
     }
-    static size_t i = 0;
-    while (i + 1 < samples.size() && samples[i + 1].step <= step) i++;
-    if (samples[i].step <= step) s = samples[i].pad;
+    while (g_replay_index + 1 < samples.size() && samples[g_replay_index + 1].step <= step) g_replay_index++;
+    if (samples[g_replay_index].step <= step) s = samples[g_replay_index].pad;
+    while (g_witness_index < g_witness.size() && g_witness[g_witness_index].step < step) g_witness_index++;
+    if (g_witness_index < g_witness.size() && g_witness[g_witness_index].step == step) {
+        float x, y, z;
+        if (interp::player_witness(x, y, z)) {
+            const Witness& w = g_witness[g_witness_index];
+            if (std::fabs(x - w.x) > 0.05f || std::fabs(y - w.y) > 0.05f || std::fabs(z - w.z) > 0.05f) {
+                if (!g_witness_miss)
+                    LOG("[input] replay diverged at step %llu: recorded %.3f %.3f %.3f now %.3f %.3f %.3f",
+                        (unsigned long long)step, w.x, w.y, w.z, x, y, z);
+                if (!g_witness_first) g_witness_first = step;
+                g_witness_miss++;
+            }
+            g_witness_index++;
+        }
+    }
     if (step > samples.back().step) replay_finished(step);
 }
 
@@ -740,6 +790,11 @@ bool pro_controller() { return g_pro.load(std::memory_order_relaxed); }
 void set_pro_controller(bool on) { g_pro = on; LOG("[input] keyboard/controller act as %s", on ? "Pro Controller" : "GamePad"); }
 
 PadState read() {
+    if (env::REPLAY_INPUT()) {
+        PadState s{};
+        apply_replay(s);
+        return s;
+    }
     static const std::vector<Press> script = scripted();
     static const std::vector<Stick> sticks = scripted_stick();
     static const std::vector<KeyPress> keys = scripted_keys();
@@ -777,7 +832,6 @@ PadState read() {
     }
     if (overlay::blocks_input()) s = PadState{};
     record_pad(s);
-    apply_replay(s);
     return s;
 }
 

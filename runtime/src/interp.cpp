@@ -903,6 +903,17 @@ bool course_play_active() {
     return ld32(GD(0x101D1598)) != 0;
 }
 
+bool player_witness(float& x, float& y, float& z) {
+    const uint32_t mgr = ld32(GD(0x101E6994));
+    if (!mgr) return false;
+    const uint32_t actor = ld32(mgr + 0x20);
+    if (!actor) return false;
+    x = (float)ldf32(actor + 0x6C);
+    y = (float)ldf32(actor + 0x70);
+    z = (float)ldf32(actor + 0x74);
+    return true;
+}
+
 bool logic_pass() { return g_logic_pass; }
 
 bool blend_draw() { return g_blend_draw; }

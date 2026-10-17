@@ -111,8 +111,10 @@ These are separate from `scripted-run.sh` and appear in benches and device check
 ## Input replays
 
 `NSMBU_RECORD_INPUT` writes one line each time the pad changes.
-The step count starts when in-level play begins (`AreaTask` is live), then follows executed simulation steps.
-A slow boot or a dropped frame does not shift later lines.
+The step count starts when in-level play begins (`AreaTask` is live), then follows guest logic steps (one per simulation tick, not per rendered frame).
+Each pad change also stores the player position.
+Replay logs the first step where that position differs by more than 5 cm, and a match or mismatch count when it finishes.
+A slow boot does not shift later lines.
 Files that start with `# nsmbu-input 1` still use boot logic steps.
 `NSMBU_REPLAY_INPUT` applies the latest line whose step is at or before the current step.
 Live keyboard, mouse, and gamepad input is replaced for that run.
