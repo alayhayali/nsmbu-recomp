@@ -12,6 +12,7 @@
 #include "rumble.h"
 #include "platform/input_sdl.h"
 #include "env.h"
+#include "interp.h"
 static int savedSlot=0, loadedSlot=0, saveRequests=0, loadRequests=0;
 namespace ss { void request_save(int slot){savedSlot=slot;++saveRequests;} void request_load(int slot){loadedSlot=slot;++loadRequests;} }
 static int graphicsRequests=0; static char graphicsKey=0;
@@ -26,6 +27,7 @@ void set_mode(int){}
 uint64_t logic_steps(){return g_logic_steps;}
 bool course_play_active(){return g_course;}
 bool player_witness(float&, float&, float&){return false;}
+bool player_snapshot(interp::PlayerSnapshot&, int){return false;}
 }
 namespace timebase { uint64_t now(){return 0;} }
 void log_msg(const char*,...){}
@@ -159,7 +161,7 @@ int main(){
   char buf[512]={};
   assert(fread(buf,1,sizeof buf-1,rf)>0);
   fclose(rf);
-  assert(strstr(buf,"# nsmbu-input 3"));
+  assert(strstr(buf,"# nsmbu-replay"));
   assert(strstr(buf,"\n0 "));
   remove(rec);
   const char* rep="input_replay_test.txt";

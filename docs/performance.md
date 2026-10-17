@@ -81,6 +81,10 @@ and the actual-device renderer smoke test passed in the local build.
 
 ## How to profile
 
+A full course measurement uses `just replay 1-1`.
+
+Read `docs/replay-1-1.md` for the 2026-10-17 Release profile.
+
 Load slot 1 to reach 1-1.
 Do this before you play through the title screen.
 Slot 1 is `nsmbu/states/slot1.bin` when you use `just run` / `just launch`.

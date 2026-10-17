@@ -8,6 +8,18 @@ void record_executed_step();
 uint64_t executed_steps();
 bool course_play_active();
 bool player_witness(float& x, float& y, float& z);
+
+struct PlayerSnapshot {
+    int player = 0;
+    int32_t lives = 0;
+    int32_t coins = 0;
+    int32_t course_coins = 0;
+    int32_t mode = 0;
+    float x = 0;
+    float y = 0;
+    float z = 0;
+};
+bool player_snapshot(PlayerSnapshot& out, int player = 0);
 uint64_t logic_steps();
 int mode();
 void set_mode(int m);

@@ -5,6 +5,7 @@
 #include "../input.h"
 #include "../input_map.h"
 #include "../motion/motion.h"
+#include "../interp.h"
 #include "../rumble.h"
 #include "../runtime.h"
 #include "../savestate.h"
@@ -17,11 +18,13 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <map>
 #include <mutex>
 #include <set>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -592,7 +595,11 @@ struct Scenario {
 };
 }
 }
-namespace interp { void set_mode(int m); uint64_t logic_steps(); bool course_play_active(); bool player_witness(float& x, float& y, float& z); }
+namespace interp {
+void set_mode(int m);
+uint64_t logic_steps();
+bool course_play_active();
+}
 namespace input {
 static bool pad_same(const PadState& a, const PadState& b) {
     return a.buttons == b.buttons && a.lx == b.lx && a.ly == b.ly && a.rx == b.rx && a.ry == b.ry
@@ -622,12 +629,71 @@ static bool course_relative_step(uint64_t& step) {
     return true;
 }
 
+static std::string replay_course_from_path(const char* path) {
+    if (!path || !path[0]) return {};
+    const char* base = path;
+    for (const char* p = path; *p; ++p) {
+        if (*p == '/' || *p == '\\') base = p + 1;
+    }
+    std::string name(base);
+    const char* dot = strrchr(name.c_str(), '.');
+    if (dot && dot != name.c_str()) name.resize((size_t)(dot - name.c_str()));
+    return name;
+}
+
+struct ReplayStart {
+    bool have = false;
+    interp::PlayerSnapshot expect{};
+};
+
+struct ReplaySample {
+    uint64_t step = 0;
+    PadState pad{};
+    float wx = 0;
+    float wy = 0;
+    float wz = 0;
+    bool witness = false;
+};
+
+static bool parse_start_comment(const char* line, ReplayStart& start) {
+    const char* p = line;
+    if (strncmp(p, "# start", 7) != 0) return false;
+    p += 7;
+    int player = 0;
+    int32_t lives = 0, coins = 0, course_coins = 0, mode = 0;
+    float x = 0, y = 0, z = 0;
+    if (sscanf(p, " player %d lives %d coins %d course_coins %d mode %d pos %f %f %f", &player, &lives, &coins,
+            &course_coins, &mode, &x, &y, &z) < 9)
+        return false;
+    start.have = true;
+    start.expect.player = player;
+    start.expect.lives = lives;
+    start.expect.coins = coins;
+    start.expect.course_coins = course_coins;
+    start.expect.mode = mode;
+    start.expect.x = x;
+    start.expect.y = y;
+    start.expect.z = z;
+    return true;
+}
+
+static bool pos_near(float a, float b) { return std::fabs(a - b) <= 0.05f; }
+
+static bool snapshot_matches(const interp::PlayerSnapshot& a, const interp::PlayerSnapshot& b) {
+    return a.player == b.player && a.lives == b.lives && a.coins == b.coins && a.course_coins == b.course_coins
+        && a.mode == b.mode && pos_near(a.x, b.x) && pos_near(a.y, b.y) && pos_near(a.z, b.z);
+}
+
 static FILE* open_record_file(const char* path) {
     reset_course_input_clock();
     FILE* f = fopen(path, "w");
     if (!f) { LOG("[input] can't write %s", path); return nullptr; }
     setvbuf(f, nullptr, _IONBF, 0);
-    fprintf(f, "# nsmbu-input 3\n# step is guest logic steps since in-level play started\n# step buttons lx ly rx ry touch tx ty\n# @ step x y z   player position when the pad changed\n");
+    const std::string course = replay_course_from_path(path);
+    fprintf(f, "# nsmbu-replay\n");
+    if (!course.empty()) fprintf(f, "# course %s\n", course.c_str());
+    fprintf(f, "# clock course\n");
+    fprintf(f, "# step buttons lx ly rx ry touch tx ty x y z\n");
     LOG("[input] recording %s from in-level play", path);
     return f;
 }
@@ -639,6 +705,7 @@ static void record_pad(const PadState& s) {
     if (!course_relative_step(step)) return;
     static FILE* f = nullptr;
     static bool opened = false;
+    static bool start_written = false;
     static PadState prev{};
     static bool have = false;
     if (!opened) {
@@ -649,21 +716,31 @@ static void record_pad(const PadState& s) {
     if (have && pad_same(prev, s)) return;
     prev = s;
     have = true;
-    float x, y, z;
-    if (interp::player_witness(x, y, z))
-        fprintf(f, "@ %llu %.9g %.9g %.9g\n", (unsigned long long)step, x, y, z);
-    fprintf(f, "%llu %08X %.9g %.9g %.9g %.9g %d %.9g %.9g\n",
-        (unsigned long long)step, s.buttons, s.lx, s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty);
+    interp::PlayerSnapshot snap;
+    const bool have_snap = interp::player_snapshot(snap, 0);
+    if (!start_written && have_snap) {
+        fprintf(f, "# start player %d lives %d coins %d course_coins %d mode %d pos %.9g %.9g %.9g\n", snap.player,
+            snap.lives, snap.coins, snap.course_coins, snap.mode, snap.x, snap.y, snap.z);
+        start_written = true;
+    }
+    if (have_snap)
+        fprintf(f, "%llu %08X %.9g %.9g %.9g %.9g %d %.9g %.9g %.9g %.9g %.9g\n", (unsigned long long)step,
+            s.buttons, s.lx, s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty, snap.x, snap.y, snap.z);
+    else
+        fprintf(f, "%llu %08X %.9g %.9g %.9g %.9g %d %.9g %.9g\n", (unsigned long long)step, s.buttons, s.lx,
+            s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty);
 }
 
-struct ReplaySample { uint64_t step; PadState pad; };
-struct Witness { uint64_t step; float x, y, z; };
 static int g_replay_version = 2;
+static bool g_replay_modern = false;
+static ReplayStart g_replay_start;
+static std::string g_replay_course;
 static size_t g_replay_index = 0;
-static std::vector<Witness> g_witness;
-static size_t g_witness_index = 0;
 static int g_witness_miss = 0;
 static uint64_t g_witness_first = 0;
+static bool g_replay_start_checked = false;
+static int g_start_miss = 0;
+
 static const std::vector<ReplaySample>& replay_samples() {
     static std::vector<ReplaySample> samples;
     static bool loaded = false;
@@ -671,49 +748,98 @@ static const std::vector<ReplaySample>& replay_samples() {
     const char* path = env::path(env::REPLAY_INPUT);
     if (!path || !path[0]) return samples;
     loaded = true;
-    g_witness.clear();
+    g_replay_start = {};
+    g_replay_course.clear();
+    g_replay_modern = false;
     FILE* f = fopen(path, "r");
     if (!f) { LOG("[input] can't read %s", path); return samples; }
-    char line[256];
+    char line[512];
+    uint64_t pending_step = 0;
+    float pending_x = 0, pending_y = 0, pending_z = 0;
+    bool have_pending = false;
+    size_t witness_count = 0;
     while (fgets(line, sizeof line, f)) {
         if (line[0] == '#') {
+            if (strstr(line, "nsmbu-replay")) {
+                g_replay_modern = true;
+                g_replay_version = 3;
+            }
             int ver = 0;
             if (sscanf(line, "# nsmbu-input %d", &ver) == 1) g_replay_version = ver;
+            char course[128];
+            if (sscanf(line, "# course %127s", course) == 1) g_replay_course = course;
+            parse_start_comment(line, g_replay_start);
             continue;
         }
         if (line[0] == '\n') continue;
         if (line[0] == '@') {
-            unsigned long long step; float x, y, z;
-            if (sscanf(line, "@ %llu %f %f %f", &step, &x, &y, &z) == 4)
-                g_witness.push_back({step, x, y, z});
+            unsigned long long step;
+            float x, y, z;
+            if (sscanf(line, "@ %llu %f %f %f", &step, &x, &y, &z) == 4) {
+                pending_step = step;
+                pending_x = x;
+                pending_y = y;
+                pending_z = z;
+                have_pending = true;
+            }
             continue;
         }
-        unsigned long long step; unsigned buttons; float lx, ly, rx, ry, tx, ty; int touch;
-        if (sscanf(line, "%llu %x %f %f %f %f %d %f %f", &step, &buttons, &lx, &ly, &rx, &ry, &touch, &tx, &ty) != 9) continue;
+        unsigned long long step;
+        unsigned buttons;
+        float lx, ly, rx, ry, tx, ty;
+        float wx = 0, wy = 0, wz = 0;
+        int touch;
+        int n = sscanf(line, "%llu %x %f %f %f %f %d %f %f %f %f %f", &step, &buttons, &lx, &ly, &rx, &ry, &touch, &tx,
+            &ty, &wx, &wy, &wz);
+        if (n != 9 && n != 12) continue;
         PadState p;
-        p.buttons = buttons; p.lx = lx; p.ly = ly; p.rx = rx; p.ry = ry; p.touch = touch != 0; p.tx = tx; p.ty = ty;
-        samples.push_back({step, p});
+        p.buttons = buttons;
+        p.lx = lx;
+        p.ly = ly;
+        p.rx = rx;
+        p.ry = ry;
+        p.touch = touch != 0;
+        p.tx = tx;
+        p.ty = ty;
+        ReplaySample sample{step, p, 0, 0, 0, false};
+        if (n == 12) {
+            sample.wx = wx;
+            sample.wy = wy;
+            sample.wz = wz;
+            sample.witness = true;
+            witness_count++;
+        } else if (have_pending && pending_step == step) {
+            sample.wx = pending_x;
+            sample.wy = pending_y;
+            sample.wz = pending_z;
+            sample.witness = true;
+            witness_count++;
+            have_pending = false;
+        }
+        samples.push_back(sample);
     }
     fclose(f);
     g_replay_index = 0;
-    g_witness_index = 0;
     g_witness_miss = 0;
     g_witness_first = 0;
+    g_replay_start_checked = false;
+    g_start_miss = 0;
     reset_course_input_clock();
-    LOG("[input] replaying %zu samples from %s (%zu position checks)", samples.size(), path, g_witness.size());
+    LOG("[input] replaying %zu samples from %s (%zu position checks)", samples.size(), path, witness_count);
     return samples;
 }
 
 static void replay_finished(uint64_t step) {
     static std::atomic<bool> sent{false};
     if (sent.exchange(true)) return;
-    if (g_witness.empty())
-        LOG("[input] replay finished at step %llu", (unsigned long long)step);
-    else if (g_witness_miss)
-        LOG("[input] replay finished at step %llu, %d position mismatches, first at step %llu",
-            (unsigned long long)step, g_witness_miss, (unsigned long long)g_witness_first);
+    const int misses = g_witness_miss + g_start_miss;
+    if (!misses)
+        LOG("[input] replay finished at step %llu, player state matched", (unsigned long long)step);
+    else if (g_start_miss && !g_witness_miss)
+        LOG("[input] replay finished at step %llu, start state mismatch", (unsigned long long)step);
     else
-        LOG("[input] replay finished at step %llu, player position matched", (unsigned long long)step);
+        LOG("[input] replay finished at step %llu, %d position mismatches, first at step %llu",
+            (unsigned long long)step, misses, (unsigned long long)g_witness_first);
     SDL_Event quit{};
     quit.type = SDL_EVENT_QUIT;
     SDL_PushEvent(&quit);
@@ -727,6 +853,21 @@ static bool replay_step(uint64_t& step) {
     return course_relative_step(step);
 }
 
+static void check_replay_start(uint64_t step) {
+    if (g_replay_start_checked || !g_replay_start.have || step != 0) return;
+    g_replay_start_checked = true;
+    interp::PlayerSnapshot now;
+    if (!interp::player_snapshot(now, g_replay_start.expect.player)) return;
+    if (snapshot_matches(now, g_replay_start.expect)) return;
+    g_start_miss = 1;
+    if (!g_witness_first) g_witness_first = step;
+    LOG("[input] replay start mismatch: recorded player %d lives %d coins %d course_coins %d mode %d pos %.3f %.3f %.3f now "
+        "player %d lives %d coins %d course_coins %d mode %d pos %.3f %.3f %.3f",
+        g_replay_start.expect.player, g_replay_start.expect.lives, g_replay_start.expect.coins,
+        g_replay_start.expect.course_coins, g_replay_start.expect.mode, g_replay_start.expect.x, g_replay_start.expect.y,
+        g_replay_start.expect.z, now.player, now.lives, now.coins, now.course_coins, now.mode, now.x, now.y, now.z);
+}
+
 static void apply_replay(PadState& s) {
     const std::vector<ReplaySample>& samples = replay_samples();
     if (samples.empty()) return;
@@ -735,21 +876,20 @@ static void apply_replay(PadState& s) {
         s = PadState{};
         return;
     }
+    check_replay_start(step);
     while (g_replay_index + 1 < samples.size() && samples[g_replay_index + 1].step <= step) g_replay_index++;
-    if (samples[g_replay_index].step <= step) s = samples[g_replay_index].pad;
-    while (g_witness_index < g_witness.size() && g_witness[g_witness_index].step < step) g_witness_index++;
-    if (g_witness_index < g_witness.size() && g_witness[g_witness_index].step == step) {
-        float x, y, z;
-        if (interp::player_witness(x, y, z)) {
-            const Witness& w = g_witness[g_witness_index];
-            if (std::fabs(x - w.x) > 0.05f || std::fabs(y - w.y) > 0.05f || std::fabs(z - w.z) > 0.05f) {
+    const ReplaySample& cur = samples[g_replay_index];
+    if (cur.step <= step) s = cur.pad;
+    if (cur.step == step && cur.witness) {
+        interp::PlayerSnapshot now;
+        if (interp::player_snapshot(now, 0)) {
+            if (!pos_near(now.x, cur.wx) || !pos_near(now.y, cur.wy) || !pos_near(now.z, cur.wz)) {
                 if (!g_witness_miss)
                     LOG("[input] replay diverged at step %llu: recorded %.3f %.3f %.3f now %.3f %.3f %.3f",
-                        (unsigned long long)step, w.x, w.y, w.z, x, y, z);
+                        (unsigned long long)step, cur.wx, cur.wy, cur.wz, now.x, now.y, now.z);
                 if (!g_witness_first) g_witness_first = step;
                 g_witness_miss++;
             }
-            g_witness_index++;
         }
     }
     if (step > samples.back().step) replay_finished(step);

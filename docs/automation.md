@@ -112,10 +112,12 @@ These are separate from `scripted-run.sh` and appear in benches and device check
 
 `NSMBU_RECORD_INPUT` writes one line each time the pad changes.
 The step count starts when in-level play begins (`AreaTask` is live), then follows guest logic steps (one per simulation tick, not per rendered frame).
-Each pad change also stores the player position.
-Replay logs the first step where that position differs by more than 5 cm, and a match or mismatch count when it finishes.
+New files use the `# nsmbu-replay` header and `replays/<course>.replay` paths from `just record` / `just replay`.
+Each pad line ends with the player position (`x y z`).
+A `# start` line records player index, lives, coins, course coins, power-up mode (0–8), and spawn position; replay checks that snapshot at step 0.
+Replay logs the first step where position differs by more than 5 cm, and a match or mismatch count when it finishes.
 A slow boot does not shift later lines.
-Files that start with `# nsmbu-input 1` still use boot logic steps.
+Legacy `# nsmbu-input` files (including version 1 boot logic steps and v3 `@` witness lines) still load when pointed at by `NSMBU_REPLAY_INPUT`.
 `NSMBU_REPLAY_INPUT` applies the latest line whose step is at or before the current step.
 Live keyboard, mouse, and gamepad input is replaced for that run.
 Intro-skip button pulses stay outside the file, so play the file back with the same course pack.
@@ -125,6 +127,6 @@ just record 1-1
 just replay 1-1
 ```
 
-`just record 1-1` writes `replays/1-1.txt` from the start of that course.
-`just replay 1-1` plays `replays/1-1.txt`.
+`just record 1-1` writes `replays/1-1.replay` from the start of that course.
+`just replay 1-1` plays `replays/1-1.replay`.
 The game quits once the guest passes the last recorded step.

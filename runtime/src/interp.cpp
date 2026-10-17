@@ -904,13 +904,34 @@ bool course_play_active() {
 }
 
 bool player_witness(float& x, float& y, float& z) {
+    PlayerSnapshot snap;
+    if (!player_snapshot(snap, 0)) return false;
+    x = snap.x;
+    y = snap.y;
+    z = snap.z;
+    return true;
+}
+
+bool player_snapshot(PlayerSnapshot& out, int player) {
+    if (player < 0 || player > 3) return false;
+    const uint32_t field = ld32(GD(0x101D1604));
+    if (!field) return false;
     const uint32_t mgr = ld32(GD(0x101E6994));
     if (!mgr) return false;
-    const uint32_t actor = ld32(mgr + 0x20);
+    const uint32_t slot = field + 0x24u + (uint32_t)player * 0x48u;
+    const uint32_t actor = ld32(mgr + 0x20u + (uint32_t)player * 4u);
     if (!actor) return false;
-    x = (float)ldf32(actor + 0x6C);
-    y = (float)ldf32(actor + 0x70);
-    z = (float)ldf32(actor + 0x74);
+    out.player = player;
+    out.lives = (int32_t)ld32(slot + 0x4u);
+    out.coins = (int32_t)ld32(slot + 0x34u);
+    out.course_coins = (int32_t)ld32(field + 0x144u);
+    int32_t mode = (int32_t)ld32(slot + 0x8u);
+    const int32_t actor_mode = (int32_t)ld32(actor + 0x500u);
+    if (actor_mode >= 0 && actor_mode <= 8) mode = actor_mode;
+    out.mode = mode;
+    out.x = (float)ldf32(actor + 0x6Cu);
+    out.y = (float)ldf32(actor + 0x70u);
+    out.z = (float)ldf32(actor + 0x74u);
     return true;
 }
 
