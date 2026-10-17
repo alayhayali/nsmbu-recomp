@@ -58,6 +58,11 @@ installer *args:
     fi
     exec "$rel/nsmbu-setup" --setup
 
+# Record a pad log to replays/<course>.txt (for example: just record 1-1).
+record course *args:
+    mkdir -p "{{justfile_directory()}}/replays"
+    NSMBU_RECORD_INPUT="{{justfile_directory()}}/replays/{{course}}.txt" just launch {{course}} {{args}}
+
 # Play replays/<course>.txt with that course pack (for example: just replay 1-1).
 replay course *args:
     NSMBU_REPLAY_INPUT="{{justfile_directory()}}/replays/{{course}}.txt" just launch {{course}} {{args}}

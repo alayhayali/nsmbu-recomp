@@ -20,7 +20,13 @@ namespace gfxvk { bool graphics_hotkey(char key,bool activate){if(activate){++gr
 namespace gfx { int plusPresses=0; void display_plus_pressed(){++plusPresses;} }
 namespace mods { double game_time(){return 0;} }
 static uint64_t g_logic_steps=0;
-namespace interp { void set_mode(int){} uint64_t logic_steps(){return g_logic_steps;} }
+static bool g_course=true;
+namespace interp {
+void set_mode(int){}
+uint64_t logic_steps(){return g_logic_steps;}
+uint64_t executed_steps(){return g_logic_steps;}
+bool course_play_active(){return g_course;}
+}
 namespace timebase { uint64_t now(){return 0;} }
 void log_msg(const char*,...){}
 
@@ -153,13 +159,13 @@ int main(){
   char buf[512]={};
   assert(fread(buf,1,sizeof buf-1,rf)>0);
   fclose(rf);
-  assert(strstr(buf,"# nsmbu-input 1"));
-  assert(strstr(buf,"\n4 "));
+  assert(strstr(buf,"# nsmbu-input 2"));
+  assert(strstr(buf,"\n0 "));
   remove(rec);
   const char* rep="input_replay_test.txt";
   FILE* wf=fopen(rep,"w");
   assert(wf);
-  fputs("# nsmbu-input 1\n0 00000000 0 0 0 0 0 0 0\n10 00008000 0.5 -1 0 0 1 0.25 0.5\n",wf);
+  fputs("# nsmbu-input 2\n0 00000000 0 0 0 0 0 0 0\n10 00008000 0.5 -1 0 0 1 0.25 0.5\n",wf);
   fclose(wf);
   set_env(env::REPLAY_INPUT,rep);
   g_logic_steps=0;

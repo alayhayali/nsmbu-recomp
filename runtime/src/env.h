@@ -36,6 +36,9 @@ struct Var {
     }
 };
 
+const char* expand_path(const char* path);
+const char* path(const Var& var);
+
 #define ENV(id, lit) inline const Var id{lit};
 
 // Session. Userdata, language, the log file, the renderer choice, and process hints.

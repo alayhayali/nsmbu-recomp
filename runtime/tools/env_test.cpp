@@ -36,6 +36,13 @@ int main() {
     env::unset(env::NO_HOST_INPUT);
     check(env::NO_HOST_INPUT() == nullptr, "unset");
 
+    check(std::strcmp(env::expand_path("/abs"), "/abs") == 0, "expand absolute");
+    put_env("HOME", "/home/test", 1);
+    check(std::strcmp(env::expand_path("~/git/foo"), "/home/test/git/foo") == 0, "expand tilde");
+    put_env(env::RECORD_INPUT.name(), "~/rec.txt", 1);
+    check(std::strcmp(env::path(env::RECORD_INPUT), "/home/test/rec.txt") == 0, "path from env");
+    env::unset(env::RECORD_INPUT);
+
     if (failures) return 1;
     std::printf("env_test: all checks passed\n");
     return 0;

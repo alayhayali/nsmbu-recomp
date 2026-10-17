@@ -105,20 +105,24 @@ These are separate from `scripted-run.sh` and appear in benches and device check
 - `NSMBU_RECORD_INPUT` — path of a text log of pad changes, keyed by guest logic step
 - `NSMBU_REPLAY_INPUT` — play that log back and ignore the live pad
 - `NSMBU_TEST_ORIGIN`, `NSMBU_TEST_PRESS`, `NSMBU_TEST_STICK`, `NSMBU_TEST_RSTICK`, `NSMBU_TEST_MODE`, `NSMBU_TEST_END` — timed scenarios after a logic-step origin
+- `NSMBU_DUMP_PRESENT`, `NSMBU_DUMP_LOAD_FRAMES`, `NSMBU_CAPTURE` — present / load-path captures (see `docs/vulkan.md`)
+- `NSMBU_STATE_LOAD_AT`, `NSMBU_PORTABLE_SAVE_AT` — save-state load points (see `docs/portable-save-states.md`)
 
 ## Input replays
 
 `NSMBU_RECORD_INPUT` writes one line each time the pad changes.
-The clock is the guest logic step, the same clock on a later run.
+The step count starts when in-level play begins (`AreaTask` is live), then follows executed simulation steps.
+A slow boot or a dropped frame does not shift later lines.
+Files that start with `# nsmbu-input 1` still use boot logic steps.
 `NSMBU_REPLAY_INPUT` applies the latest line whose step is at or before the current step.
 Live keyboard, mouse, and gamepad input is replaced for that run.
 Intro-skip button pulses stay outside the file, so play the file back with the same course pack.
 
 ```
-NSMBU_RECORD_INPUT=.tmp/replay/1-1.txt just launch 1-1
-NSMBU_REPLAY_INPUT=replays/1-1.txt just launch 1-1
+just record 1-1
+just replay 1-1
 ```
 
+`just record 1-1` writes `replays/1-1.txt` from the start of that course.
 `just replay 1-1` plays `replays/1-1.txt`.
-- `NSMBU_DUMP_PRESENT`, `NSMBU_DUMP_LOAD_FRAMES`, `NSMBU_CAPTURE` — present / load-path captures (see `docs/vulkan.md`)
-- `NSMBU_STATE_LOAD_AT`, `NSMBU_PORTABLE_SAVE_AT` — save-state load points (see `docs/portable-save-states.md`)
+The game quits once the guest passes the last recorded step.

@@ -1,10 +1,34 @@
 #include "env.h"
 
+#include <string>
+
 #if defined(_WIN32)
 #include <stdlib.h>
 #endif
 
 namespace env {
+
+const char* expand_path(const char* path) {
+    if (!path || !path[0]) return path;
+    if (path[0] != '~') return path;
+    if (path[1] && path[1] != '/') return path;
+    const char* home = nullptr;
+#if defined(_WIN32)
+    home = getenv("USERPROFILE");
+    if (!home) home = getenv("HOME");
+#else
+    home = getenv("HOME");
+#endif
+    if (!home) home = ".";
+    static thread_local std::string out;
+    out = path[1] == '/' ? std::string(home) + (path + 1) : home;
+    return out.c_str();
+}
+
+const char* path(const Var& var) {
+    const char* e = var();
+    return expand_path(e);
+}
 
 const Var vulkan_cpu_paths[vulkan_cpu_path_count] = {
     VK_REUSE_UNIFORM_SNAPSHOTS,

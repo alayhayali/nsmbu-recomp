@@ -899,6 +899,10 @@ uint64_t executed_steps() {
     return hooked ? hooked : guest_logic_ticks();
 }
 
+bool course_play_active() {
+    return ld32(GD(0x101D1598)) != 0;
+}
+
 bool logic_pass() { return g_logic_pass; }
 
 bool blend_draw() { return g_blend_draw; }

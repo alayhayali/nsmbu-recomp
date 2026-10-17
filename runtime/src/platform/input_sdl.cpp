@@ -592,48 +592,71 @@ struct Scenario {
 };
 }
 }
-namespace interp { void set_mode(int m); uint64_t logic_steps(); }
+namespace interp { void set_mode(int m); uint64_t logic_steps(); uint64_t executed_steps(); bool course_play_active(); }
 namespace input {
 static bool pad_same(const PadState& a, const PadState& b) {
     return a.buttons == b.buttons && a.lx == b.lx && a.ly == b.ly && a.rx == b.rx && a.ry == b.ry
         && a.touch == b.touch && a.tx == b.tx && a.ty == b.ty;
 }
 
+static bool course_step(uint64_t& step) {
+    if (!interp::course_play_active()) return false;
+    static uint64_t origin = 0;
+    static bool armed = false;
+    const uint64_t now = interp::executed_steps();
+    if (!armed) { armed = true; origin = now; }
+    step = now - origin;
+    return true;
+}
+
+static FILE* open_record_file(const char* path) {
+    FILE* f = fopen(path, "w");
+    if (!f) { LOG("[input] can't write %s", path); return nullptr; }
+    setvbuf(f, nullptr, _IONBF, 0);
+    fprintf(f, "# nsmbu-input 2\n# step is executed steps since in-level play started\n# step buttons lx ly rx ry touch tx ty\n");
+    LOG("[input] recording %s from in-level play", path);
+    return f;
+}
+
 static void record_pad(const PadState& s) {
-    const char* path = env::RECORD_INPUT();
+    const char* path = env::path(env::RECORD_INPUT);
     if (!path || !path[0] || env::REPLAY_INPUT()) return;
+    uint64_t step = 0;
+    if (!course_step(step)) return;
     static FILE* f = nullptr;
     static bool opened = false;
     static PadState prev{};
     static bool have = false;
     if (!opened) {
         opened = true;
-        f = fopen(path, "w");
-        if (!f) { LOG("[input] can't write %s", path); return; }
-        setvbuf(f, nullptr, _IONBF, 0);
-        fprintf(f, "# nsmbu-input 1\n# step buttons lx ly rx ry touch tx ty\n");
-        LOG("[input] recording %s", path);
+        f = open_record_file(path);
     }
     if (!f || (have && pad_same(prev, s))) return;
     prev = s;
     have = true;
     fprintf(f, "%llu %08X %.9g %.9g %.9g %.9g %d %.9g %.9g\n",
-        (unsigned long long)interp::logic_steps(), s.buttons, s.lx, s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty);
+        (unsigned long long)step, s.buttons, s.lx, s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty);
 }
 
 struct ReplaySample { uint64_t step; PadState pad; };
+static int g_replay_version = 2;
 static const std::vector<ReplaySample>& replay_samples() {
     static std::vector<ReplaySample> samples;
     static bool loaded = false;
     if (loaded) return samples;
-    const char* path = env::REPLAY_INPUT();
+    const char* path = env::path(env::REPLAY_INPUT);
     if (!path || !path[0]) return samples;
     loaded = true;
     FILE* f = fopen(path, "r");
     if (!f) { LOG("[input] can't read %s", path); return samples; }
     char line[256];
     while (fgets(line, sizeof line, f)) {
-        if (line[0] == '#' || line[0] == '\n') continue;
+        if (line[0] == '#') {
+            int ver = 0;
+            if (sscanf(line, "# nsmbu-input %d", &ver) == 1) g_replay_version = ver;
+            continue;
+        }
+        if (line[0] == '\n') continue;
         unsigned long long step; unsigned buttons; float lx, ly, rx, ry, tx, ty; int touch;
         if (sscanf(line, "%llu %x %f %f %f %f %d %f %f", &step, &buttons, &lx, &ly, &rx, &ry, &touch, &tx, &ty) != 9) continue;
         PadState p;
@@ -645,13 +668,41 @@ static const std::vector<ReplaySample>& replay_samples() {
     return samples;
 }
 
+static void replay_finished(uint64_t step) {
+    static std::atomic<bool> sent{false};
+    if (sent.exchange(true)) return;
+    LOG("[input] replay finished at step %llu", (unsigned long long)step);
+    SDL_Event quit{};
+    quit.type = SDL_EVENT_QUIT;
+    SDL_PushEvent(&quit);
+}
+
+static bool replay_step(uint64_t& step) {
+    if (g_replay_version < 2) {
+        step = interp::logic_steps();
+        return true;
+    }
+    if (!interp::course_play_active()) return false;
+    static uint64_t origin = 0;
+    static bool armed = false;
+    const uint64_t now = interp::executed_steps();
+    if (!armed) { armed = true; origin = now; }
+    step = now - origin;
+    return true;
+}
+
 static void apply_replay(PadState& s) {
     const std::vector<ReplaySample>& samples = replay_samples();
     if (samples.empty()) return;
-    const uint64_t step = interp::logic_steps();
+    uint64_t step = 0;
+    if (!replay_step(step)) {
+        s = PadState{};
+        return;
+    }
     static size_t i = 0;
     while (i + 1 < samples.size() && samples[i + 1].step <= step) i++;
     if (samples[i].step <= step) s = samples[i].pad;
+    if (step > samples.back().step) replay_finished(step);
 }
 
 static void apply_scenario(PadState& s) {
