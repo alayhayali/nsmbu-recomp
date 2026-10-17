@@ -5,6 +5,8 @@
 #include "buffer_cache.h"
 #include "render_prof.h"
 #include "write_watch.h"
+#include "platform/host.h"
+#include "Cafe/HW/Latte/LatteAddrLib/LatteAddrLib.h"
 #include "shaders.h"
 #include "gx2/gx2.h"
 #include "Cafe/HW/Latte/ISA/RegDefines.h"
@@ -24,7 +26,7 @@
 
 #include "env.h"
 namespace gfxvk {
-extern uint64_t g_stat_full_checks, g_stat_uploads;
+extern uint64_t g_stat_full_checks, g_stat_uploads, g_stat_upload_bytes;
 void request_tv_dump(const std::string&,int);
 namespace {
 void require(bool condition,const char* message) { if(!condition)throw std::runtime_error(message); }
@@ -640,6 +642,74 @@ int renderer_smoke_test() {
     auto px=read_image(*big,VK_IMAGE_ASPECT_COLOR_BIT,4);
     require(!memcmp(px.data()+(256+5)*4,texel,4)&&!memcmp(px.data(),rgba,4),"unannounced texel change readback differs");
     fprintf(stderr,"[renderer smoke] unannounced in-place texel change between sampled words uploaded next frame\n");
+   }
+   {
+    require(wwatch::active(),"write tracking is inactive");
+    LatteAddrLib::AddrSurfaceInfo_OUT info{};
+    const uint32_t tw=1024,th=512;
+    LatteAddrLib::GX2CalculateSurfaceInfo(static_cast<Latte::E_GX2SURFFMT>(0x1a),tw,th,1,Latte::E_DIM::DIM_2D,
+        Latte::MakeGX2TileMode(Latte::E_HWTILEMODE::TM_2D_TILED_THIN1),0,0,&info);
+    require(info.surfSize>=tw*th*4&&info.surfSize<8u*1024*1024,"thin1 surface size differs");
+    SurfaceDesc tiled;
+    tiled.addr=mem::host_alloc((uint32_t)info.surfSize,256);
+    tiled.width=tw;tiled.height=th;tiled.pitch=info.pitch;tiled.slices=1;tiled.mips=1;
+    tiled.format=0x1a;tiled.dim=1;tiled.tileMode=(uint32_t)Latte::E_HWTILEMODE::TM_2D_TILED_THIN1;
+    for(uint32_t i=0;i<info.surfSize;++i)mem::ptr(tiled.addr)[i]=(uint8_t)(i*13+1);
+    auto* tex=find_or_create_surface(tiled,false);
+    auto next=[&]{
+     ++R.frame;
+     if(((R.frame+(tex->addr>>12))&63)==0)++R.frame;
+    };
+    auto poke=[&](uint32_t pages){
+     uint32_t ps=(uint32_t)host::page_size();
+     for(uint32_t p=0;p<pages;++p){
+      uint32_t off=p*ps;
+      if(off+4>info.surfSize) break;
+      mem::ptr(tiled.addr)[off]^=0x5a;
+      mem::ptr(tiled.addr)[off+1]^=0xa5;
+     }
+    };
+    auto matches=[&](const char* message){
+     Surface ref;
+     ref.addr=tiled.addr;ref.width=tw;ref.height=th;ref.pitch=info.pitch;ref.slices=1;ref.mips=1;
+     ref.format=0x1a;ref.dim=1;ref.tileMode=tiled.tileMode;ref.fmt=format_info(0x1a,false);
+     create_surface_image(&ref,false);
+     upload_surface(&ref);
+     auto got=read_image(*tex,VK_IMAGE_ASPECT_COLOR_BIT,4);
+     auto want=read_image(ref,VK_IMAGE_ASPECT_COLOR_BIT,4);
+     destroy_surface_image(&ref);
+     require(got==want,message);
+    };
+    upload_surface(tex);
+    const size_t full=(size_t)tw*th*4;
+    poke(2);
+    next();
+    upload_surface(tex);
+    poke(2);
+    next();
+    uint64_t before=g_stat_upload_bytes;
+    upload_surface(tex);
+    uint64_t delta=g_stat_upload_bytes-before;
+    require(delta>0&&delta<full/8,"thin1 page update uploaded the whole surface");
+    matches("thin1 partial upload readback differs");
+    poke(110);
+    next();
+    before=g_stat_upload_bytes;
+    upload_surface(tex);
+    delta=g_stat_upload_bytes-before;
+    require(delta>full/2,"thin1 wide update did not upload the surface");
+    matches("thin1 wide update readback differs");
+    poke(2);
+    next();
+    upload_surface(tex);
+    poke(2);
+    next();
+    before=g_stat_upload_bytes;
+    upload_surface(tex);
+    delta=g_stat_upload_bytes-before;
+    require(delta>0&&delta<full/8,"thin1 page update after a wide rewrite uploaded the whole surface");
+    matches("thin1 partial upload after a wide rewrite differs");
+    fprintf(stderr,"[renderer smoke] thin1 partial page upload passed\n");
    }
    Image color(16,16,0x1a);const float green[4]={0,1,0,1};const uint8_t greenBytes[4]={0,255,0,255};clear_image(color.s,green);rgba_is(read_image(color.s,VK_IMAGE_ASPECT_COLOR_BIT,4),greenBytes,"color clear differs");
    Image scaled(32,32,0x1a);resample(&color.s,&scaled.s,1);rgba_is(read_image(scaled.s,VK_IMAGE_ASPECT_COLOR_BIT,4),greenBytes,"scaled blit differs");

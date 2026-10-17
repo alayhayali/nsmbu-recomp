@@ -184,3 +184,17 @@ Together those five rows are 25.9% of the P-core samples.
 `f_02A15500` and `f_02A157FC` are the unnamed guest stream loop.
 
 On this perf run the player position matched.
+
+## After the page upload (same day)
+
+A later Release run of the same replay kept the vsync limit once the course was warm.
+
+From TV frame 1800 through frame 2760, each 120-frame window stays at 16.67–16.70 ms and 59.6–60.0 swaps/s.
+
+At TV frame 2760 the textures phase is 0.33 ms and texture uploads are 0.00 MiB/frame.
+
+Render-thread CPU in that window is 1.68 ms.
+
+The game thread waits 0.72 ms on DrawDone.
+
+The replay again reports 7 position mismatches, and the first is still step 1036 (recorded Y -768.000, replay Y -767.016).

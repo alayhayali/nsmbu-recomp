@@ -69,6 +69,14 @@ int main() {
     g_mem[t.base + 0x400 * 5 + 100] ^= 0xFF;
     assert(old_sparse_hash(t.base, t.baseSize) == sparse);
     assert(t.changed());
+    uint32_t found[4];
+    uint32_t shift = 0, first = 0, count = 0;
+    assert(wwatch::page_span(t.base, t.baseSize, shift, first, count));
+    uint32_t n = wwatch::collect_written_pages(t.base, t.baseSize, t.stamp, found, 4);
+    uint32_t expect = ((t.base + 0x400 * 5 + 100) >> shift) - first;
+    assert(n == 1 && found[0] == expect);
+    g_mem[t.base + 0x400 * 5 + 100 + (1u << shift)] ^= 0xFF;
+    assert(wwatch::collect_written_pages(t.base, t.baseSize, t.stamp, found, 1) == 0xffffffffu);
     uint64_t before = t.hash;
     t.check();
     assert(t.hash != before && !t.changed());

@@ -249,7 +249,7 @@ Surface* surface_from_depth_buffer(uint32_t addr, uint32_t* firstSlice, uint32_t
 }
 
 static uint64_t sparse_hash(Surface* s);
-uint64_t g_stat_full_checks, g_stat_uploads, g_stat_invalidates, g_stat_invalidated_surfaces;
+uint64_t g_stat_full_checks, g_stat_uploads, g_stat_invalidates, g_stat_invalidated_surfaces, g_stat_upload_bytes;
 
 static Surface* with_mip_chain(Surface* s, const SurfaceDesc& d) {
     static const bool off = env::NO_RT_MIPS() != nullptr;
@@ -515,15 +515,18 @@ static void copy_thin1_row(uint8_t* dst, const uint8_t* srcTile, const uint16_t*
     }
 }
 template<uint32_t B>
+static void copy_thin1_tile(uint8_t* dst, const uint8_t* src, const uint16_t* sliceRows, const bool* packedRow,
+                            LatteAddrLib::CachedSurfaceAddrInfo* ci, uint32_t bw, uint32_t bx, uint32_t by) {
+    const uint8_t* srcTile = src + LatteAddrLib::ComputeSurfaceAddrFromCoordMacroTiledCached(bx, by, ci);
+    for (uint32_t ry = 0; ry < 8; ry++)
+        copy_thin1_row<B>(dst + ((size_t)(by + ry) * bw + bx) * B, srcTile, sliceRows + (ry << 3), packedRow[ry]);
+}
+template<uint32_t B>
 static void copy_thin1_tiles(uint8_t* dst, const uint8_t* src, const uint16_t* sliceRows, const bool* packedRow,
                              LatteAddrLib::CachedSurfaceAddrInfo* ci, uint32_t bw, uint32_t bxEnd, uint32_t byEnd) {
-    for (uint32_t by = 0; by < byEnd; by += 8) {
-        for (uint32_t bx = 0; bx < bxEnd; bx += 8) {
-            const uint8_t* srcTile = src + LatteAddrLib::ComputeSurfaceAddrFromCoordMacroTiledCached(bx, by, ci);
-            for (uint32_t ry = 0; ry < 8; ry++)
-                copy_thin1_row<B>(dst + ((size_t)(by + ry) * bw + bx) * B, srcTile, sliceRows + (ry << 3), packedRow[ry]);
-        }
-    }
+    for (uint32_t by = 0; by < byEnd; by += 8)
+        for (uint32_t bx = 0; bx < bxEnd; bx += 8)
+            copy_thin1_tile<B>(dst, src, sliceRows, packedRow, ci, bw, bx, by);
 }
 static bool decode_level_fast(Surface* s, uint32_t level, uint32_t base, uint8_t* out, uint32_t bw, uint32_t bh, uint32_t slices) {
     const FormatInfo& f = s->fmt;
@@ -606,6 +609,10 @@ static bool decode_level_fast(Surface* s, uint32_t level, uint32_t base, uint8_t
     return false;
 }
 
+static bool decode_check() {
+    static const bool on = [] { const char* e = env::DECODE_CHECK(); return e && *e == '1'; }();
+    return on;
+}
 static void decode_level(Surface* s, uint32_t level, uint32_t base, std::vector<uint8_t>& out, uint32_t& outW,
                          uint32_t& outH, uint32_t& outSlices) {
     const FormatInfo& f = s->fmt;
@@ -616,8 +623,7 @@ static void decode_level(Surface* s, uint32_t level, uint32_t base, std::vector<
     outH = h;
     outSlices = slices;
     out.assign((size_t)bw * bh * slices * f.hostBytesPerBlock, 0);
-    static const bool checkLevel = [] { const char* e = env::DECODE_CHECK(); return e && *e == '1'; }();
-    if (!checkLevel) {
+    if (!decode_check()) {
         if (decode_level_fast(s, level, base, out.data(), bw, bh, slices)) return;
         decode_level_slow(s, level, base, out, outW, outH, outSlices);
         return;
@@ -843,8 +849,10 @@ void create_surface_image(Surface* s, bool forRendering, VkExtent3D explicitExte
         throw;
     }
 }
+static void thin1_forget(Surface* s);
 void destroy_surface_image(Surface* s) {
     if (!s) return;
+    thin1_forget(s);
     if (s->mipChain) { destroy_surface_image(s->mipChain.get()); s->mipChain.reset(); }
     if(!s->image)return;
     auto views=std::move(s->layerViews);if(s->view)views.push_back(s->view);
@@ -1264,6 +1272,306 @@ static uint32_t mip_base(Surface* s,uint32_t level) {
     cached.address=address;cached.addressValid=true;
     return cached.address;
 }
+constexpr uint32_t kThin1PageCap = 96;
+constexpr uint32_t kThin1Overflow = 0xffffffffu;
+
+struct Thin1Level {
+    uint32_t base = 0, surfSize = 0, bw = 0, bh = 0, bytes = 0;
+    uint32_t swizzle = 0, pitch = 0, guestHeight = 0, bpp = 0;
+    uint32_t pageShift = 0, firstPage = 0, pageCount = 0;
+    std::vector<uint8_t> linear;
+    std::vector<uint64_t> pageHash;
+    std::vector<uint32_t> tileBegin, tiles;
+    bool valid = false;
+    void drop() {
+        valid = false;
+        linear.clear();
+        linear.shrink_to_fit();
+        pageHash.clear();
+        tileBegin.clear();
+        tiles.clear();
+    }
+};
+
+static std::unordered_map<Surface*, std::array<Thin1Level, 16>> g_thin1;
+static void thin1_forget(Surface* s) { g_thin1.erase(s); }
+
+static Thin1Level* thin1_find(Surface* s, uint32_t level) {
+    auto it = g_thin1.find(s);
+    if (it == g_thin1.end() || level >= it->second.size()) return nullptr;
+    return &it->second[level];
+}
+
+static bool thin1_shape(Surface* s, uint32_t level, uint32_t size, uint32_t& bw, uint32_t& bh) {
+    if (!wwatch::active() || s->isDepth || s->bcDecoded || s->fmt.stencil) return false;
+    if (s->imageType != VK_IMAGE_TYPE_2D || s->slices != 1 || s->mips > 16 || level >= 16) return false;
+    if (s->extent.width != s->width || s->extent.height != s->height) return false;
+    const FormatInfo& f = s->fmt;
+    if (f.convert != Convert::NONE || f.compressed || f.hostBytesPerBlock != f.bytesPerBlock) return false;
+    if (f.bytesPerBlock != 1 && f.bytesPerBlock != 2 && f.bytesPerBlock != 4 && f.bytesPerBlock != 8) return false;
+    const auto& info = guest_info(s, level);
+    if ((Latte::E_HWTILEMODE)info.hwTileMode != Latte::E_HWTILEMODE::TM_2D_TILED_THIN1) return false;
+    bw = std::max(s->width >> level, 1u);
+    bh = std::max(s->height >> level, 1u);
+    if ((bw & 7) || (bh & 7)) return false;
+    size_t pixels = (size_t)bw * bh * f.bytesPerBlock;
+    if (pixels < 256 * 1024 || pixels > 8u * 1024 * 1024 || size < 256 * 1024) return false;
+    if ((bw / 8) * (bh / 8) > 65536) return false;
+    return true;
+}
+
+static void thin1_elem_span(const uint16_t* pix, uint32_t bytes, uint32_t& lo, uint32_t& hi) {
+    lo = ~0u;
+    hi = 0;
+    for (uint32_t i = 0; i < 64; i++) {
+        uint32_t elem = (uint32_t)pix[i] * bytes;
+        if (bytes > 4) elem = (elem & 0xFF) | ((elem & ~0xFFu) << 3);
+        lo = std::min(lo, elem);
+        hi = std::max(hi, elem + bytes);
+    }
+}
+
+static uint64_t thin1_page_hash(const Thin1Level& lv, uint32_t base, uint32_t size, uint32_t pi) {
+    uint64_t pageBytes = 1ull << lv.pageShift;
+    uint64_t start = ((uint64_t)lv.firstPage + pi) << lv.pageShift;
+    uint64_t lo = std::max(start, (uint64_t)base);
+    uint64_t hi = std::min(start + pageBytes, (uint64_t)base + size);
+    if (hi <= lo) return 0;
+    return XXH3_64bits(mem::ptr((uint32_t)lo), (size_t)(hi - lo));
+}
+
+enum class Thin1Use { Full, Unchanged, Partial };
+
+struct Thin1Choice {
+    Thin1Use use = Thin1Use::Full;
+    bool store = false;
+    uint32_t pageCount = 0;
+    uint32_t pages[kThin1PageCap]{};
+};
+
+static bool thin1_matches(const Thin1Level& lv, Surface* s, uint32_t level, uint32_t base, uint32_t size, uint32_t bw, uint32_t bh) {
+    if (!lv.valid || lv.base != base || lv.surfSize != size || lv.bw != bw || lv.bh != bh) return false;
+    if (lv.swizzle != s->swizzle || lv.bytes != s->fmt.bytesPerBlock) return false;
+    const auto& info = guest_info(s, level);
+    uint32_t pitch = level == 0 && s->pitch ? s->pitch : info.pitch;
+    return lv.pitch == pitch && lv.guestHeight == info.height && lv.bpp == info.bpp;
+}
+
+static Thin1Choice thin1_choose(Surface* s, uint32_t level, uint32_t base, uint32_t size, uint64_t priorStamp) {
+    Thin1Choice choice;
+    uint32_t bw = 0, bh = 0;
+    if (!thin1_shape(s, level, size, bw, bh)) {
+        if (Thin1Level* lv = thin1_find(s, level)) lv->drop();
+        return choice;
+    }
+    Thin1Level& lv = g_thin1[s][level];
+    const uint32_t hashBit = 1u << level;
+    auto collect = [&](uint32_t* out) {
+        return wwatch::collect_written_pages(base, size, priorStamp, out, kThin1PageCap);
+    };
+    if (lv.valid && thin1_matches(lv, s, level, base, size, bw, bh)) {
+        uint32_t n = collect(choice.pages);
+        if (n == kThin1Overflow) {
+            lv.drop();
+            return choice;
+        }
+        uint32_t kept = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t pi = choice.pages[i];
+            if (pi >= lv.pageCount) continue;
+            if (thin1_page_hash(lv, base, size, pi) != lv.pageHash[pi]) choice.pages[kept++] = pi;
+        }
+        if (!kept) {
+            if (s->dirty) return choice;
+            choice.use = Thin1Use::Unchanged;
+            return choice;
+        }
+        choice.use = Thin1Use::Partial;
+        choice.pageCount = kept;
+        return choice;
+    }
+    uint32_t n = collect(choice.pages);
+    if (n == kThin1Overflow) {
+        lv.drop();
+        return choice;
+    }
+    if (n == 0 && !s->dirty && (s->levelHashValid & hashBit)) {
+        choice.use = Thin1Use::Unchanged;
+        return choice;
+    }
+    if (n > 0) choice.store = true;
+    return choice;
+}
+
+static bool thin1_build(Surface* s, uint32_t level, uint32_t base, uint32_t size, const uint8_t* linear, size_t linearBytes) {
+    uint32_t bw = 0, bh = 0;
+    if (!thin1_shape(s, level, size, bw, bh)) return false;
+    const uint32_t bytes = s->fmt.bytesPerBlock;
+    if (linearBytes != (size_t)bw * bh * bytes) return false;
+    uint32_t shift = 0, first = 0, count = 0;
+    if (!wwatch::page_span(base, size, shift, first, count) || !count || count > 8192) return false;
+    const auto& info = guest_info(s, level);
+    uint32_t pitch = level == 0 && s->pitch ? s->pitch : info.pitch;
+    uint32_t height = info.height, bpp = info.bpp;
+    uint32_t pipeSwizzle = (s->swizzle >> 8) & 1, bankSwizzle = (s->swizzle >> 9) & 3;
+    LatteAddrLib::CachedSurfaceAddrInfo ci;
+    LatteAddrLib::SetupCachedSurfaceAddrInfo(&ci, 0, 0, bpp, pitch, height, 1, 1, Latte::E_HWTILEMODE::TM_2D_TILED_THIN1, false, pipeSwizzle, bankSwizzle);
+    uint32_t minE = 0, maxE = 0;
+    thin1_elem_span(ci.microTilePixelIndexTable, bytes, minE, maxE);
+    if (maxE <= minE) return false;
+    uint32_t tilesX = bw / 8, tilesY = bh / 8;
+    std::vector<std::vector<uint32_t>> buckets(count);
+    for (uint32_t ty = 0; ty < tilesY; ty++) {
+        for (uint32_t tx = 0; tx < tilesX; tx++) {
+            uint32_t off = LatteAddrLib::ComputeSurfaceAddrFromCoordMacroTiledCached(tx * 8, ty * 8, &ci);
+            uint64_t loAddr = (uint64_t)base + off + minE;
+            uint64_t hiAddr = (uint64_t)base + off + maxE;
+            if (hiAddr <= loAddr) return false;
+            uint32_t pageLo = (uint32_t)(loAddr >> shift);
+            uint32_t pageHi = (uint32_t)((hiAddr - 1) >> shift);
+            if (pageLo < first || pageHi < pageLo) return false;
+            uint32_t id = ty * tilesX + tx;
+            for (uint32_t p = pageLo; p <= pageHi; p++) {
+                uint32_t rel = p - first;
+                if (rel >= count) return false;
+                buckets[rel].push_back(id);
+            }
+        }
+    }
+    Thin1Level& lv = g_thin1[s][level];
+    lv.drop();
+    lv.base = base;
+    lv.surfSize = size;
+    lv.bw = bw;
+    lv.bh = bh;
+    lv.bytes = bytes;
+    lv.swizzle = s->swizzle;
+    lv.pitch = pitch;
+    lv.guestHeight = height;
+    lv.bpp = bpp;
+    lv.pageShift = shift;
+    lv.firstPage = first;
+    lv.pageCount = count;
+    lv.linear.assign(linear, linear + linearBytes);
+    lv.pageHash.resize(count);
+    for (uint32_t i = 0; i < count; i++) lv.pageHash[i] = thin1_page_hash(lv, base, size, i);
+    lv.tileBegin.resize(count + 1);
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        lv.tileBegin[i] = n;
+        n += (uint32_t)buckets[i].size();
+    }
+    lv.tileBegin[count] = n;
+    lv.tiles.resize(n);
+    for (uint32_t i = 0; i < count; i++)
+        if (!buckets[i].empty()) memcpy(lv.tiles.data() + lv.tileBegin[i], buckets[i].data(), buckets[i].size() * sizeof(uint32_t));
+    lv.valid = true;
+    return true;
+}
+
+template<uint32_t B>
+static void thin1_patch_marked(Thin1Level& lv, const uint8_t* src, const uint16_t* sliceRows, const bool* packedRow,
+                               LatteAddrLib::CachedSurfaceAddrInfo* ci, const std::vector<uint8_t>& mark, uint32_t tilesX, uint32_t tilesY) {
+    for (uint32_t ty = 0; ty < tilesY; ty++)
+        for (uint32_t tx = 0; tx < tilesX; tx++)
+            if (mark[ty * tilesX + tx])
+                copy_thin1_tile<B>(lv.linear.data(), src, sliceRows, packedRow, ci, lv.bw, tx * 8, ty * 8);
+}
+
+static size_t thin1_patch(Surface* s, uint32_t level, uint32_t base, const Thin1Choice& choice, Buffer& staging, std::vector<VkBufferImageCopy>& copies) {
+    Thin1Level* found = thin1_find(s, level);
+    if (!found || !found->valid) throw std::runtime_error("partial texture upload is missing its tile cache");
+    Thin1Level& lv = *found;
+    uint32_t tilesX = lv.bw / 8, tilesY = lv.bh / 8;
+    std::vector<uint8_t> mark((size_t)tilesX * tilesY);
+    for (uint32_t i = 0; i < choice.pageCount; i++) {
+        uint32_t p = choice.pages[i];
+        if (p >= lv.pageCount) continue;
+        for (uint32_t t = lv.tileBegin[p]; t < lv.tileBegin[p + 1]; t++) mark[lv.tiles[t]] = 1;
+    }
+    uint32_t pipeSwizzle = (s->swizzle >> 8) & 1, bankSwizzle = (s->swizzle >> 9) & 3;
+    LatteAddrLib::CachedSurfaceAddrInfo ci;
+    LatteAddrLib::SetupCachedSurfaceAddrInfo(&ci, 0, 0, lv.bpp, lv.pitch, lv.guestHeight, 1, 1, Latte::E_HWTILEMODE::TM_2D_TILED_THIN1, false, pipeSwizzle, bankSwizzle);
+    const uint16_t* sliceRows = ci.microTilePixelIndexTable;
+    bool packedRow[8];
+    for (uint32_t ry = 0; ry < 8; ry++) packedRow[ry] = thin1_row_packed_n(sliceRows + (ry << 3), lv.bytes);
+    const uint8_t* src = mem::ptr(base);
+    if (lv.bytes == 8) thin1_patch_marked<8>(lv, src, sliceRows, packedRow, &ci, mark, tilesX, tilesY);
+    else if (lv.bytes == 4) thin1_patch_marked<4>(lv, src, sliceRows, packedRow, &ci, mark, tilesX, tilesY);
+    else if (lv.bytes == 2) thin1_patch_marked<2>(lv, src, sliceRows, packedRow, &ci, mark, tilesX, tilesY);
+    else thin1_patch_marked<1>(lv, src, sliceRows, packedRow, &ci, mark, tilesX, tilesY);
+    if (decode_check()) {
+        std::vector<uint8_t> full;
+        uint32_t w = 0, h = 0, slices = 0;
+        decode_level(s, level, base, full, w, h, slices);
+        if (full != lv.linear) throw std::runtime_error("partial texture decode differs from the full decoder");
+    }
+    size_t nbytes = 0;
+    for (uint32_t ty = 0; ty < tilesY; ty++) {
+        uint32_t tx = 0;
+        while (tx < tilesX) {
+            if (!mark[ty * tilesX + tx]) { tx++; continue; }
+            uint32_t start = tx;
+            while (tx < tilesX && mark[ty * tilesX + tx]) tx++;
+            nbytes += (size_t)(tx - start) * 8 * 8 * lv.bytes;
+        }
+    }
+    for (uint32_t i = 0; i < choice.pageCount; i++) {
+        uint32_t p = choice.pages[i];
+        if (p < lv.pageCount) lv.pageHash[p] = thin1_page_hash(lv, base, lv.surfSize, p);
+    }
+    if (!nbytes) return 0;
+    staging = create_buffer(nbytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (!staging.mapped) {
+        defer_buffer(staging);
+        throw std::runtime_error("Vulkan texture staging allocation is not mapped");
+    }
+    uint8_t* dst = (uint8_t*)staging.mapped;
+    size_t offset = 0;
+    for (uint32_t ty = 0; ty < tilesY; ty++) {
+        uint32_t tx = 0;
+        while (tx < tilesX) {
+            if (!mark[ty * tilesX + tx]) { tx++; continue; }
+            uint32_t start = tx;
+            while (tx < tilesX && mark[ty * tilesX + tx]) tx++;
+            uint32_t x = start * 8, y = ty * 8, w = (tx - start) * 8;
+            size_t begin = offset;
+            for (uint32_t row = 0; row < 8; row++) {
+                size_t rowBytes = (size_t)w * lv.bytes;
+                memcpy(dst + offset, lv.linear.data() + ((size_t)(y + row) * lv.bw + x) * lv.bytes, rowBytes);
+                offset += rowBytes;
+            }
+            VkBufferImageCopy copy{};
+            copy.bufferOffset = begin;
+            copy.imageSubresource = {s->aspect, level, 0, 1};
+            copy.imageOffset = {(int32_t)x, (int32_t)y, 0};
+            copy.imageExtent = {w, 8, 1};
+            copies.push_back(copy);
+        }
+    }
+    return nbytes;
+}
+
+static bool stage_fast_level(Surface* s, uint32_t level, uint32_t base, Buffer& staging, uint32_t& w, uint32_t& h, size_t& nbytes) {
+    const FormatInfo& f = s->fmt;
+    if (f.convert != Convert::NONE || s->isDepth || f.compressed || f.stencil || f.hostBytesPerBlock != f.bytesPerBlock || !f.bytesPerBlock || f.bytesPerBlock > 8)
+        return false;
+    const auto& info = guest_info(s, level);
+    auto tm = (Latte::E_HWTILEMODE)info.hwTileMode;
+    if (tm != Latte::E_HWTILEMODE::TM_2D_TILED_THIN1 && tm != Latte::E_HWTILEMODE::TM_LINEAR_ALIGNED) return false;
+    w = std::max(s->width >> level, 1u);
+    h = std::max(s->height >> level, 1u);
+    nbytes = (size_t)w * h * f.hostBytesPerBlock;
+    if (!nbytes) return false;
+    staging = create_buffer(nbytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    if (!staging.mapped || !decode_level_fast(s, level, base, (uint8_t*)staging.mapped, w, h, 1)) {
+        if (staging.buffer) defer_buffer(staging);
+        staging = {};
+        return false;
+    }
+    return true;
+}
+
 void upload_surface(Surface* s) {
     if(!s||!s->image||s->gpuWritten)return;
 
@@ -1297,14 +1605,46 @@ void upload_surface(Surface* s) {
     ++g_stat_full_checks;
     uint64_t hashes[16]{};
     uint64_t hash=1469598103934665603ull;
+    Thin1Choice choice[16];
+    bool anyPartial=false;
     for(uint32_t level=0;level<levels;++level) {
         const uint32_t hashBit=1u<<level;
-        bool reuse=!s->dirty&&level<16&&(s->levelHashValid&hashBit)&&wwatch::active()&&
-            !wwatch::written_since(ranges[level].first,ranges[level].second,priorStamp);
-        hashes[level]=reuse?s->levelHash[level]:content_hash(mem::ptr(ranges[level].first),size_t(ranges[level].second));
+        if(wwatch::active()) choice[level]=thin1_choose(s,level,ranges[level].first,ranges[level].second,priorStamp);
+        if(choice[level].use==Thin1Use::Unchanged&&(s->levelHashValid&hashBit)) hashes[level]=s->levelHash[level];
+        else if(choice[level].use==Thin1Use::Partial) { hashes[level]=s->levelHash[level]; anyPartial=true; }
+        else {
+            bool reuse=!s->dirty&&level<16&&(s->levelHashValid&hashBit)&&wwatch::active()&&
+                !wwatch::written_since(ranges[level].first,ranges[level].second,priorStamp);
+            hashes[level]=reuse?s->levelHash[level]:content_hash(mem::ptr(ranges[level].first),size_t(ranges[level].second));
+        }
         hash=(hash^hashes[level])*1099511628211ull;
     }
-    if(!s->dirty&&hash==s->contentHash)return;
+    if(!anyPartial&&hash==s->contentHash)return;
+    struct Thin1Copy { uint32_t level; Buffer staging; std::vector<VkBufferImageCopy> copies; size_t bytes; };
+    std::vector<Thin1Copy> partials;
+    bool needGpu=false;
+    try {
+        for(uint32_t level=0;level<levels;++level) {
+            if(choice[level].use!=Thin1Use::Partial) continue;
+            Thin1Copy copy;
+            copy.level=level;
+            copy.bytes=thin1_patch(s,level,ranges[level].first,choice[level],copy.staging,copy.copies);
+            if(!copy.bytes) continue;
+            needGpu=true;
+            partials.push_back(std::move(copy));
+        }
+    } catch(...) {
+        thin1_forget(s);
+        s->dirty=true;
+        throw;
+    }
+    for(uint32_t level=0;level<levels&&!needGpu;++level) {
+        if(choice[level].use==Thin1Use::Partial) continue;
+        const uint32_t hashBit=1u<<level;
+        bool hashMatched=!s->dirty&&s->mips<=16&&(s->levelHashValid&hashBit)&&s->levelHash[level]==hashes[level];
+        if(!hashMatched) needGpu=true;
+    }
+    if(!needGpu) return;
     const bool scaleGuest=s->imageType==VK_IMAGE_TYPE_2D&&s->mips==1&&(s->extent.width!=s->width||s->extent.height!=s->height);
     Surface guest;
     Surface* dst=s;
@@ -1317,12 +1657,41 @@ void upload_surface(Surface* s) {
     size_t uploaded = 0;
     try {
         end_encoder();transition_image(dst,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_ACCESS_TRANSFER_WRITE_BIT);
+        for(auto& part:partials) {
+            uploaded+=part.bytes;
+            g_stat_upload_bytes+=part.bytes;
+            rprof::add_upload(rprof::kUpTexture,part.bytes);
+            vkCmdCopyBufferToImage(command_buffer(),part.staging.buffer,dst->image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,uint32_t(part.copies.size()),part.copies.data());
+            defer_buffer(part.staging);
+            part.staging={};
+        }
         for(uint32_t level=0;level<s->mips;++level) {
+            if(choice[level].use==Thin1Use::Partial) continue;
             const uint32_t hashBit=1u<<level;
             bool hashMatched=!s->dirty&&s->mips<=16&&(s->levelHashValid&hashBit)&&s->levelHash[level]==hashes[level];
             if(hashMatched)continue;
+            if(!choice[level].store) if(Thin1Level* lv=thin1_find(s,level)) lv->drop();
             s->levelHash[level]=hashes[level];s->levelHashValid|=hashBit;
-            std::vector<uint8_t> data;uint32_t w,h,slices;decode_level(s,level,mip_base(s,level),data,w,h,slices);
+            uint32_t base=mip_base(s,level);
+            Buffer staged{};
+            uint32_t fastW=0,fastH=0;
+            size_t fastBytes=0;
+            bool simple=!s->bcDecoded&&!dst->fmt.stencil&&dst->imageType!=VK_IMAGE_TYPE_3D&&s->slices==1;
+            if(simple&&stage_fast_level(s,level,base,staged,fastW,fastH,fastBytes)) {
+                if(choice[level].store&&!thin1_build(s,level,ranges[level].first,ranges[level].second,(const uint8_t*)staged.mapped,fastBytes))
+                    if(Thin1Level* lv=thin1_find(s,level)) lv->drop();
+                uploaded+=fastBytes;
+                g_stat_upload_bytes+=fastBytes;
+                rprof::add_upload(rprof::kUpTexture,fastBytes);
+                VkBufferImageCopy copy{};copy.imageSubresource={dst->aspect,level,0,1};copy.imageExtent={fastW,fastH,1};
+                vkCmdCopyBufferToImage(command_buffer(),staged.buffer,dst->image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&copy);
+                defer_buffer(staged);
+                continue;
+            }
+            std::vector<uint8_t> data;uint32_t w,h,slices;decode_level(s,level,base,data,w,h,slices);
+            if(choice[level].store&&!s->bcDecoded&&!dst->fmt.stencil)
+                if(!thin1_build(s,level,ranges[level].first,ranges[level].second,data.data(),data.size()))
+                    if(Thin1Level* lv=thin1_find(s,level)) lv->drop();
             if (s->bcDecoded) { bc_decode_upload(dst,level,data,w,h,slices); uploaded+=data.size(); continue; }
             std::vector<VkBufferImageCopy> copies;std::vector<uint8_t> packed;
             bool threeD=dst->imageType==VK_IMAGE_TYPE_3D;
@@ -1341,6 +1710,7 @@ void upload_surface(Surface* s) {
             Buffer staging=create_buffer(packed.size(),VK_BUFFER_USAGE_TRANSFER_SRC_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
             if(!staging.mapped){defer_buffer(staging);throw std::runtime_error("Vulkan texture staging allocation is not mapped");}
             memcpy(staging.mapped,packed.data(),packed.size());
+            g_stat_upload_bytes+=packed.size();
             rprof::add_upload(rprof::kUpTexture,packed.size());
             vkCmdCopyBufferToImage(command_buffer(),staging.buffer,dst->image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,uint32_t(copies.size()),copies.data());
             defer_buffer(staging);
@@ -1348,6 +1718,9 @@ void upload_surface(Surface* s) {
         if(scaleGuest) resample(&guest,s,std::min(guest.arrayLayers,s->arrayLayers),1,1,0,0);
         else transition_image(s,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     } catch(...) {
+        for(auto& part:partials) if(part.staging.buffer) defer_buffer(part.staging);
+        thin1_forget(s);
+        s->dirty=true;
         if(scaleGuest) destroy_surface_image(&guest);
         throw;
     }

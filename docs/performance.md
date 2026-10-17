@@ -477,6 +477,44 @@ fell about 45–50% (for example 0.42 ms at 8,348 writes to 0.21 ms at 8,348).
 Frame time stayed at the vsync ceiling; the gain is lower render-thread op time and more
 `DrawDone` headroom, not higher swaps/s on this scene.
 
+## Partial upload of the 1-1 CPU texture (2026-10-17)
+
+`docs/replay-1-1.md` measured a 4.00 MiB texture upload on every logic frame of 1-1.
+
+That was most of the render-thread CPU inside the vsync limit: textures 1.98 ms/frame, render-thread CPU 3.53 ms/frame.
+
+The surface is `TM_2D_TILED_THIN1`.
+
+Write tracking already saw only a few host pages change, and the uploader still hashed, untiled, and copied the whole level.
+
+Vulkan `upload_surface` now keeps a linear copy and a page-to-tile map for a large single-slice thin1 texture (`surfaces.cpp`).
+
+A later frame rehashes only the written pages.
+
+When fewer than 96 pages differ, it retiles those 8x8 blocks and copies those rectangles.
+
+A full rewrite, a scaled image, or any other tile mode still takes the whole-level path.
+
+That path decodes straight into the staging buffer when the fast untile applies, so the temporary image is not cleared and then copied.
+
+`NSMBU_DECODE_CHECK=1` still compares a partial untile with the full decoder.
+
+The renderer smoke test covers a one-page thin1 change, a wide change, and the page update after that wide change.
+
+Release `replays/1-1.replay` on the same machine as the note (i5-12600KF, Arc B580, Mesa 26.2.4), 2x, FXAA, anisotropy, GamePad off, FIFO:
+
+| | before | after (TV frame 2760) |
+| --- | ---: | ---: |
+| swaps/s | 59.9 | 59.9 |
+| textures ms/frame | 1.98 | 0.33 |
+| texture upload MiB/frame | 4.00 | 0.00 |
+| render-thread CPU ms/frame | 3.53 | 1.68 |
+| game-thread DrawDone wait ms/frame | 2.38 | 0.72 |
+
+Frames 1800–2760 stay on the vsync limit.
+
+The replay still reports 7 position mismatches, first at step 1036.
+
 ## Texture change detection (2026-10-06)
 
 The renderers used to re-hash a CPU texture in full only when it was new, invalidated by an exact

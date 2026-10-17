@@ -11,6 +11,8 @@ bool active();
 
 uint64_t arm(uint32_t addr, uint32_t size);
 bool written_since(uint32_t addr, uint32_t size, uint64_t stamp);
+uint32_t collect_written_pages(uint32_t addr, uint32_t size, uint64_t stamp, uint32_t* out, uint32_t cap);
+bool page_span(uint32_t addr, uint32_t size, uint32_t& shift, uint32_t& firstPage, uint32_t& count);
 
 bool changed_since(uint32_t addr, uint32_t size, uint64_t stamp);
 uint64_t write_seq();

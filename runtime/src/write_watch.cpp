@@ -180,6 +180,29 @@ bool written_since(uint32_t addr, uint32_t size, uint64_t stamp) {
     return false;
 }
 
+uint32_t collect_written_pages(uint32_t addr, uint32_t size, uint64_t stamp, uint32_t* out, uint32_t cap) {
+    uint64_t first, last;
+    if (!page_range(addr, size, first, last) || !out || !cap) return 0;
+    uint32_t n = 0;
+    for (uint64_t p = first; p <= last; p++) {
+        if (g_stamp[p].load(std::memory_order_acquire) <= stamp) continue;
+        if (n >= cap) return 0xffffffffu;
+        out[n++] = (uint32_t)(p - first);
+    }
+    return n;
+}
+
+bool page_span(uint32_t addr, uint32_t size, uint32_t& shift, uint32_t& firstPage, uint32_t& count) {
+    uint64_t first, last;
+    if (!page_range(addr, size, first, last)) return false;
+    uint64_t n = last - first + 1;
+    if (n > 0xffffffffu) return false;
+    shift = g_shift;
+    firstPage = (uint32_t)first;
+    count = (uint32_t)n;
+    return true;
+}
+
 void host_write_begin(uint32_t addr, uint32_t size) {
     uint64_t first, last;
     if (!page_range(addr, size, first, last)) return;
