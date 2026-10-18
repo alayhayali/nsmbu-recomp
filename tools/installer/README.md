@@ -70,7 +70,7 @@ process (so Python is found or fetched exactly as in the terminal setup; on Wind
 `setup.py` directly with the Python the release ships, see below) and talks to `setup.py`
 over its stdin/stdout. Screens: welcome (or, when installed: play / update / repair / reinstall /
 import saves or settings / open the folder), choose the disc image, Cemu archive or game folder (native file dialogs), keys
-(disc images only: disc key found next to the image or chosen; common key as a file or pasted into a hidden field), installation
+(disc images only: disc key and common key as a file next to the image, chosen, or pasted into a hidden field), installation
 (a bar per step, an overall bar, the log under "Details"), optional save import (an HD `cking.sav`
 folder, or the saves and settings of an
 earlier installation or another release folder, copied), done (Play, Open folder, Quit; in a portable
@@ -159,12 +159,12 @@ Requests on stdin: `{"cmd": ..., "id": n, ...}`
 | cmd | fields | reply |
 |---|---|---|
 | `probe` | `path` | `kind` (`image`/`archive`/`folder`), `disc_key` (found next to the image), `common_key` (where one was found); for a folder `in_place`, `bytes`; for an archive `title`, `folder`, `bytes`, `message` (which title is used and why); problem `wrong_title` when the archive has no usable game |
-| `check_keys` | `image`, optional `disc_key_file`, `common_key_file` or `common_key_hex` | `title_id`, `files`, `bytes`; problems `disc_key_wrong`, `common_key_wrong`, `wrong_title`, ... |
+| `check_keys` | `image`, optional `disc_key_file` or `disc_key_hex`, `common_key_file` or `common_key_hex` | `title_id`, `files`, `bytes`; problems `disc_key_wrong`, `common_key_wrong`, `wrong_title`, ... |
 | `install` | `source` (`image`/`archive`/`folder`/`installed`), `path`, optional `jobs` | streams `plan`/`step`/`progress`/`log`, then `app`, `exe`, `data_dir`, `game_dir`, `toolchain_bytes` |
 | `import_save` | `kind` (`hd`/`gc`), `path`, optional `replace` | `message`; problem `exists` when a save is installed and `replace` is not set (with `replace`, the old save is moved to `nsmbu/save/user.backup-<time>` first) |
 | `import_existing` | optional `path` (another release folder; none: the earlier per-user installation), `replace` | `message` (saves and settings copied, never moved; problem `exists` as above) |
 | `language_sources` | | `sources`: `[{region (EU/JP), title_id, source, packs: [{file, language, bytes, sha256}]}]` (experimental, [docs/language-packs.md](../../docs/language-packs.md)) |
-| `add_language_source` | `path` (a European or Japanese `.wux`/`.wud`, `.wua` or extracted folder), for an image optional `disc_key_file`, `common_key_file` or `common_key_hex` | `sources` (the added ones); only `content/Common/Pack/permanent_2d_*.pack` and `meta/meta.xml` are taken, into `data/game-lang/<EU\|JP>`; problem `language_source` (e.g. the USA game, an update, no packs) or a key problem as for `check_keys` |
+| `add_language_source` | `path` (a European or Japanese `.wux`/`.wud`, `.wua` or extracted folder), for an image optional `disc_key_file` or `disc_key_hex`, `common_key_file` or `common_key_hex` | `sources` (the added ones); only `content/Common/Pack/permanent_2d_*.pack` and `meta/meta.xml` are taken, into `data/game-lang/<EU\|JP>`; problem `language_source` (e.g. the USA game, an update, no packs) or a key problem as for `check_keys` |
 | `remove_language_source` | `region` (`EU`/`JP`) | `removed` (the folder) |
 | `remove_toolchain` | | `freed` bytes |
 | `shortcut` | | `path` of the created shortcut |

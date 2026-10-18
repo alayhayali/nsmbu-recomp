@@ -117,7 +117,7 @@ LOG = Log()
 
 class Protocol:
     """--gui-protocol: one JSON object per line on stdout (events), requests as JSON lines on stdin.
-    Requests are never logged (a pasted common key travels in one)."""
+    Requests are never logged (a pasted key travels in one)."""
 
     def __init__(self):
         self.out = sys.stdout
@@ -2135,7 +2135,7 @@ def find_common_key(image):
     return None, None
 
 KEY_MESSAGES = {
-    "disc_key_bad": "The disc key file does not contain a key (16 raw bytes or 32 hex digits).",
+    "disc_key_bad": "That is not a disc key: it must be 16 raw bytes or 32 hex digits.",
     "disc_key_wrong": "The disc key does not match this disc image. It must be the key dumped together with this disc.",
     "common_key_bad": "That is not a Wii U common key: it must be 16 raw bytes or 32 hex digits.",
     "common_key_wrong": "The Wii U common key is not correct (it is the same 16 bytes on every Wii U).",
@@ -2241,15 +2241,18 @@ def gui_main(args):
     def request_keys(req, image):
         """(keys, None) or (None, (problem, message)) from a request's key fields (check_keys, add_language_source)."""
         keys = Keys()
-        if req.get("disc_key_file"):
+        given_disc = req.get("disc_key_hex") or req.get("disc_key_file")
+        if req.get("disc_key_hex"):
+            keys.disc = parse_key(req["disc_key_hex"])
+        elif req.get("disc_key_file"):
             keys.disc = read_key_file(req["disc_key_file"])
-            if not keys.disc:
-                return None, ("disc_key_bad", KEY_MESSAGES["disc_key_bad"])
         else:
             side = find_sidecar_disc_key(image)
             keys.disc = read_key_file(side) if side else None
-            if not keys.disc:
-                return None, ("disc_key_missing", "No disc key was found next to the image: choose the key file.")
+        if not keys.disc:
+            return None, (("disc_key_bad", KEY_MESSAGES["disc_key_bad"]) if given_disc
+                          else ("disc_key_missing",
+                                "No disc key was found next to the image: choose the key file or paste it."))
         given = req.get("common_key_hex") or req.get("common_key_file")
         if req.get("common_key_hex"):
             keys.common = parse_key(req["common_key_hex"])
@@ -2294,27 +2297,9 @@ def gui_main(args):
 
     def check(req):
         image = req.get("image") or ""
-        keys = Keys()
-        if req.get("disc_key_file"):
-            keys.disc = read_key_file(req["disc_key_file"])
-            if not keys.disc:
-                return fail(req, "disc_key_bad", KEY_MESSAGES["disc_key_bad"])
-        else:
-            side = find_sidecar_disc_key(image)
-            keys.disc = read_key_file(side) if side else None
-            if not keys.disc:
-                return fail(req, "disc_key_missing", "No disc key was found next to the image: choose the key file.")
-        if req.get("common_key_hex"):
-            keys.common = parse_key(req["common_key_hex"])
-        elif req.get("common_key_file"):
-            keys.common = read_key_file(req["common_key_file"])
-        else:
-            keys.common = find_common_key(image)[1]
-        if not keys.common:
-            return fail(req, "common_key_bad" if (req.get("common_key_hex") or req.get("common_key_file"))
-                        else "common_key_missing",
-                        KEY_MESSAGES["common_key_bad"] if (req.get("common_key_hex") or req.get("common_key_file"))
-                        else "The Wii U common key is needed.")
+        keys, why = request_keys(req, image)
+        if why:
+            return fail(req, *why)
         problem, err, info = disc_info(image, keys)
         if problem:
             return fail(req, problem, KEY_MESSAGES.get(problem, err))

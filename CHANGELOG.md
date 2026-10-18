@@ -11,6 +11,8 @@ At release, move those notes to a version heading and leave Unreleased empty.
 -   **Fix**: Closing the in-game error viewer no longer pauses the world map or leaves it slow.
 -   **Fix**: Large course textures no longer re-upload every frame when only a small part changes.
 -   **Fix**: The installer Keys and update screen shows the disc name, title id, size, and update checksum when those files are present.
+-   **Add**: The installer Keys screen lets you paste the disc key as 32 hex digits, like the common key.
+-   **Change**: The installer Keys screen fits the default window: denser disc summary and side-by-side key panels.
 -   **Fix**: Dropping a Cemu content or graphics pack no longer writes a `manifest.json` into that pack folder.
 -   **Fix**: Number options in the Mods tab follow their step size.
 -   **Add**: Mods can use a radio option (one button per choice) with its own label.

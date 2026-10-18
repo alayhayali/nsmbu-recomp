@@ -1,13 +1,18 @@
 ---
 name: nsmbu
-description: "nsmbu CLI for build, launch, course replay, screenshots, and short pad pulses. Use when driving the game, measuring a Release replay, or running a dev recipe."
+description: "nsmbu CLI, scripted headless boots, and NSMBU_* env vars. Use when driving the game, measuring a Release replay, running a dev recipe, nsmbu scripted, scripted inputs or exit frames, or adding, renaming, or reading an NSMBU_* variable."
 ---
 
 # nsmbu
 
 TypeScript CLI under `tools/cli/`.
 Run `nsmbu --help` for the command list.
-Canonical reference: `docs/cli.md`.
+
+## Docs
+
+Read `docs/cli.md` for the global `nsmbu` command, dev recipes, and agent control loop.
+Read `docs/automation.md` for `nsmbu scripted`, headless boots, and scripted inputs or exit frames.
+Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable (`runtime/src/core/env.h`: `env::NAME()`, `.name()`, typed reads, `env::unset`).
 
 ## Install once
 

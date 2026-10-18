@@ -39,12 +39,8 @@ A normal build reads `tools/recomp/headers_names.txt` from git.
 
 ## Docs
 
+Read `docs/names.md` to name guest symbols (USA v1.3.0 address is the key), or for sead, particles, G3d, Miis, layouts, sound, or Nintendo file-format trees.
 Read `docs/how-it-works.md` for the runtime split.
-
 Read `docs/builds.md` for regional address maps.
-
 Read `docs/vulkan.md` when you change the Vulkan backend.
-
 Read `docs/modding/README.md` when you change mod load, content redirects, or the Luau API.
-
-Read `docs/names.md` when you name a guest symbol or need sead, particles, G3d, Miis, layouts, sound, or Nintendo file-format trees.

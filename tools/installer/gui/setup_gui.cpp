@@ -398,8 +398,8 @@ struct App {
     int source_files = 0;
     std::string disc_key_found, disc_key_file, common_key_found, common_key_file;
     std::string update_dir_found, update_dir;
-    int common_mode = 0;
-    char paste[128] = {};
+    int disc_mode = 0, common_mode = 0;
+    char disc_paste[128] = {}, paste[128] = {};
     std::string keys_msg;
 
     std::vector<Step> steps;
@@ -801,6 +801,9 @@ static void keys_changed() {
 static void set_disc_key_file(const std::string& p) { A.disc_key_file = p, keys_changed(); }
 static void set_common_key_file(const std::string& p) { A.common_key_file = p, keys_changed(); }
 static void set_update_dir(const std::string& p) { A.update_dir = p, keys_changed(); }
+static void set_disc_mode(int m) {
+    if (A.disc_mode != m) A.disc_mode = m, keys_changed();
+}
 static void set_common_mode(int m) {
     if (A.common_mode != m) A.common_mode = m, keys_changed();
 }
@@ -830,7 +833,8 @@ static void start_install(const std::string& source) {
 
 static void check_keys() {
     std::string f = "\"image\":" + jstr(A.source_path);
-    if (!A.disc_key_file.empty()) f += ",\"disc_key_file\":" + jstr(A.disc_key_file);
+    if (A.disc_mode == 1 && A.disc_paste[0]) f += ",\"disc_key_hex\":" + jstr(A.disc_paste);
+    else if (A.disc_mode == 0 && !A.disc_key_file.empty()) f += ",\"disc_key_file\":" + jstr(A.disc_key_file);
     if (A.common_mode == 1 && A.paste[0]) f += ",\"common_key_hex\":" + jstr(A.paste);
     else if (A.common_mode == 0 && !A.common_key_file.empty()) f += ",\"common_key_file\":" + jstr(A.common_key_file);
     if (!A.update_dir.empty()) f += ",\"update_dir\":" + jstr(A.update_dir);
@@ -838,6 +842,7 @@ static void check_keys() {
     A.keys_msg = "Checking the keys and update...";
     request("check_keys", f);
     f.assign(f.size(), '\0');
+    SDL_memset(A.disc_paste, 0, sizeof A.disc_paste);
     SDL_memset(A.paste, 0, sizeof A.paste);
 }
 
@@ -1025,6 +1030,7 @@ static void centered_button_row(float w) {
 
 static bool details_header() {
     if (details_open) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    else ImGui::SetNextItemOpen(false, ImGuiCond_Appearing);
     return ImGui::CollapsingHeader("Details");
 }
 
@@ -1188,9 +1194,52 @@ static void screen_source() {
     ImGui::Spacing();
     if (!A.source_path.empty()) {
         ImGui::BeginChild("src", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-        if (A.pending_cmd == "probe") mark(1);
-        else mark(A.probe_ok ? 2 : 3);
-        ImGui::TextWrapped("%s", A.probe_msg.c_str());
+        if (A.pending_cmd == "probe") {
+            mark(1);
+            ImGui::TextUnformatted("Checking...");
+        } else if (!A.probe_ok) {
+            mark(3);
+            ImGui::TextWrapped("%s", A.probe_msg.c_str());
+        } else if (!A.source_title.empty() || A.source_kind == "image" || A.source_kind == "archive" ||
+                   A.source_kind == "folder") {
+            mark(2);
+            const char* kind = A.source_kind == "archive"   ? "Cemu archive"
+                               : A.source_kind == "folder" ? "Extracted game folder"
+                                                           : "Wii U disc image";
+            if (!A.source_title.empty()) ImGui::TextWrapped("%s", A.source_title.c_str());
+            else ImGui::TextUnformatted(kind);
+            std::string meta;
+            if (!A.source_title.empty()) meta = kind;
+            if (!A.source_title_id_text.empty())
+                meta += (meta.empty() ? "" : " · ") + ("Title " + A.source_title_id_text);
+            if (!A.source_build.empty()) meta += (meta.empty() ? "" : " · ") + ("build " + A.source_build);
+            if (A.source_files > 0 || A.source_bytes > 0) {
+                std::string stats;
+                if (A.source_files > 0) stats = std::to_string(A.source_files) + " files";
+                if (A.source_bytes > 0) stats += (stats.empty() ? "" : ", ") + format_size(A.source_bytes);
+                meta += (meta.empty() ? "" : " · ") + stats;
+            }
+            if (!meta.empty()) muted(meta);
+            if (!A.source_update_title.empty() || !A.source_update_sha256.empty() || A.source_update_version > 0) {
+                std::string upd;
+                if (!A.source_update_title.empty()) upd = A.source_update_title;
+                else if (A.source_update_version > 0)
+                    upd = "title version " + std::to_string(A.source_update_version);
+                if (!A.source_update_sha256.empty()) {
+                    std::string sha = A.source_update_sha256.size() > 16 ? A.source_update_sha256.substr(0, 16) + "…"
+                                                                        : A.source_update_sha256;
+                    upd += (upd.empty() ? "" : " · ") + ("RPX " + sha);
+                }
+                muted("Update: " + upd);
+            }
+            if (A.source_kind == "image")
+                muted("Setup extracts it, then applies the USA 1.3.0 update folder.");
+            else if (A.source_kind == "archive")
+                muted("No keys needed. Game files are extracted from the archive.");
+        } else {
+            mark(2);
+            ImGui::TextWrapped("%s", A.probe_msg.c_str());
+        }
         muted(A.source_path);
         ImGui::EndChild();
     }
@@ -1207,8 +1256,46 @@ static std::string base_name(const std::string& p) {
     return s == std::string::npos ? p : p.substr(s + 1);
 }
 
+static void key_panel(const char* id, const char* title, int* mode, char* paste, size_t paste_n, const char* status,
+                      int status_mark, const char* choose_id, const char* file_target,
+                      const SDL_DialogFileFilter* keyf, int keyf_n, float width) {
+    char file_radio[64], paste_radio[64], ctrl_id[64], paste_id[64], choose_btn[64];
+    std::snprintf(file_radio, sizeof file_radio, "Key file##%s", id);
+    std::snprintf(paste_radio, sizeof paste_radio, "Paste the key##%s", id);
+    std::snprintf(ctrl_id, sizeof ctrl_id, "ctrl##%s", id);
+    std::snprintf(paste_id, sizeof paste_id, "##paste_%s", id);
+    std::snprintf(choose_btn, sizeof choose_btn, "Choose key file...##%s", choose_id);
+
+    ImGui::BeginChild(id, ImVec2(width, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+    heading(title, 20);
+    if (status && status[0]) {
+        mark(status_mark);
+        ImGui::TextUnformatted(status);
+    } else {
+        ImGui::Dummy(ImVec2(0, ImGui::GetTextLineHeight()));
+    }
+    int prev = *mode;
+    radio(file_radio, mode, 0);
+    ImGui::SameLine(0, 30);
+    radio(paste_radio, mode, 1);
+    if (*mode != prev) keys_changed();
+    float row_h = ImGui::GetFrameHeight();
+    ImGui::BeginChild(ctrl_id, ImVec2(-1, row_h), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
+    if (*mode == 0) {
+        if (button(choose_btn, ImVec2(-1, row_h))) choose_file(file_target, keyf, keyf_n);
+    } else {
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::InputTextWithHint(paste_id, "32 hex digits (hidden)", paste, paste_n,
+                                     ImGuiInputTextFlags_Password | ImGuiInputTextFlags_CharsNoBlank))
+            keys_changed();
+    }
+    ImGui::EndChild();
+    ImGui::EndChild();
+}
+
 static void screen_keys() {
     static const SDL_DialogFileFilter keyf[] = {{"Key files (.key, .bin, .txt)", "key;bin;txt"}, {"All files", "*"}};
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20, 14));
 
     ImGui::BeginChild("image", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
     heading("Disc image", 20);
@@ -1216,96 +1303,81 @@ static void screen_keys() {
     if (!A.source_title.empty()) {
         mark(2);
         ImGui::TextWrapped("%s", A.source_title.c_str());
-        if (!A.source_title_id_text.empty() || !A.source_build.empty()) {
-            std::string line;
-            if (!A.source_title_id_text.empty()) line = "Title " + A.source_title_id_text;
-            if (!A.source_build.empty()) line += (line.empty() ? "" : " · ") + std::string("build ") + A.source_build;
-            muted(line);
-        }
+        std::string meta;
+        if (!A.source_title_id_text.empty()) meta = "Title " + A.source_title_id_text;
+        if (!A.source_build.empty()) meta += (meta.empty() ? "" : " · ") + std::string("build ") + A.source_build;
         if (A.source_files > 0 || A.source_bytes > 0) {
-            std::string line;
-            if (A.source_files > 0) line = std::to_string(A.source_files) + " files on the disc";
-            if (A.source_bytes > 0) line += (line.empty() ? "" : ", ") + format_size(A.source_bytes);
-            muted(line);
+            std::string stats;
+            if (A.source_files > 0) stats = std::to_string(A.source_files) + " files";
+            if (A.source_bytes > 0) stats += (stats.empty() ? "" : ", ") + format_size(A.source_bytes);
+            meta += (meta.empty() ? "" : " · ") + stats;
         }
+        if (!meta.empty()) muted(meta);
     } else {
         mark(1);
         ImGui::TextWrapped("Title and size are shown once the disc key and common key decrypt this image.");
     }
-    if (!A.source_update_title.empty() || !A.source_update_sha256.empty()) {
-        ImGui::Spacing();
-        if (!A.source_update_title.empty())
-            ImGui::TextWrapped("Update: %s", A.source_update_title.c_str());
-        else if (A.source_update_version > 0)
-            ImGui::TextWrapped("Update: title version %d", A.source_update_version);
-        if (!A.source_update_sha256.empty())
-            muted("RPX SHA-256 " + A.source_update_sha256);
-    }
-    ImGui::EndChild();
-    ImGui::Spacing();
-
-    ImGui::BeginChild("disc", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-    heading("Disc key", 20);
-    if (!A.disc_key_file.empty()) {
-        mark(2);
-        ImGui::TextWrapped("Key file: %s", base_name(A.disc_key_file).c_str());
-    } else if (!A.disc_key_found.empty()) {
-        mark(2);
-        ImGui::TextWrapped("Found next to the image: %s", base_name(A.disc_key_found).c_str());
-    } else {
-        mark(3);
-        ImGui::TextWrapped("Not found next to the image. Choose the .key file that was dumped with this disc.");
-    }
-    if (button(A.disc_key_found.empty() && A.disc_key_file.empty() ? "Choose key file...##disc" : "Choose a different key file...##disc"))
-        choose_file("disc_key", keyf, 2);
-    ImGui::EndChild();
-    ImGui::Spacing();
-
-    ImGui::BeginChild("common", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-    heading("Wii U common key", 20);
-    muted("16 bytes, the same on every Wii U console, dumped from your own console.");
-    if (!A.common_key_found.empty() && A.common_key_file.empty() && A.common_mode == 0) {
-        mark(2);
-        ImGui::TextWrapped("Found: %s", A.common_key_found.c_str());
-    }
-    int mode = A.common_mode;
-    radio("Key file", &mode, 0);
-    ImGui::SameLine(0, 30);
-    radio("Paste the key", &mode, 1);
-    set_common_mode(mode);
-    if (A.common_mode == 0) {
-        if (button("Choose key file...##common")) choose_file("common_key", keyf, 2);
-        if (!A.common_key_file.empty()) {
-            ImGui::SameLine();
-            ImGui::TextUnformatted(base_name(A.common_key_file).c_str());
+    if (!A.source_update_title.empty() || !A.source_update_sha256.empty() || A.source_update_version > 0) {
+        std::string line;
+        if (!A.source_update_title.empty()) line = A.source_update_title;
+        else if (A.source_update_version > 0) line = "title version " + std::to_string(A.source_update_version);
+        if (!A.source_update_sha256.empty()) {
+            std::string sha = A.source_update_sha256.size() > 16 ? A.source_update_sha256.substr(0, 16) + "…"
+                                                                : A.source_update_sha256;
+            line += (line.empty() ? "" : " · ") + ("RPX " + sha);
         }
-    } else {
-        ImGui::SetNextItemWidth(460);
-        if (ImGui::InputTextWithHint("##paste", "32 hex digits", A.paste, sizeof A.paste,
-                                     ImGuiInputTextFlags_Password | ImGuiInputTextFlags_CharsNoBlank))
-            keys_changed();
-        muted("The key is hidden, used once to check and decrypt, and never saved.");
+        muted("Update: " + line);
     }
     ImGui::EndChild();
+    ImGui::Spacing();
+
+    std::string disc_status, common_status;
+    int disc_mark = 0, common_mark = 0;
+    if (!A.disc_key_file.empty()) {
+        disc_status = "Key file: " + base_name(A.disc_key_file);
+        disc_mark = 2;
+    } else if (!A.disc_key_found.empty()) {
+        disc_status = "Found: " + base_name(A.disc_key_found);
+        disc_mark = 2;
+    } else {
+        disc_status = "Not found next to the image.";
+        disc_mark = 3;
+    }
+    if (!A.common_key_file.empty()) {
+        common_status = "Key file: " + base_name(A.common_key_file);
+        common_mark = 2;
+    } else if (!A.common_key_found.empty()) {
+        common_status = "Found: " + base_name(A.common_key_found);
+        common_mark = 2;
+    }
+
+    float key_half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+    key_panel("disc", "Disc key", &A.disc_mode, A.disc_paste, sizeof A.disc_paste, disc_status.c_str(), disc_mark,
+              "disc", "disc_key", keyf, 2, key_half);
+    ImGui::SameLine();
+    key_panel("common", "Wii U common key", &A.common_mode, A.paste, sizeof A.paste, common_status.c_str(),
+              common_mark, "common", "common_key", keyf, 2, key_half);
     ImGui::Spacing();
 
     ImGui::BeginChild("update", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
     heading("USA 1.3.0 update", 20);
-    muted("Extracted update folder with code, content and meta (title version 64).");
+    muted("Folder with code, content and meta (title version 64).");
     if (!A.update_dir.empty()) {
         mark(2);
         ImGui::TextWrapped("Update folder: %s", A.update_dir.c_str());
     } else if (!A.update_dir_found.empty()) {
         mark(2);
-        ImGui::TextWrapped("Found next to the image: %s", A.update_dir_found.c_str());
+        ImGui::TextWrapped("Found next to the image: %s", base_name(A.update_dir_found).c_str());
     } else {
         mark(3);
         ImGui::TextWrapped("Not found. Put an update/ folder next to the disc image, or choose it here.");
     }
     if (button(A.update_dir_found.empty() && A.update_dir.empty() ? "Choose update folder...##upd"
-                                                                  : "Choose a different update folder...##upd"))
+                                                                  : "Choose a different update folder...##upd",
+               ImVec2(-1, 0)))
         choose_folder("update");
     ImGui::EndChild();
+    ImGui::PopStyleVar();
 
     if (!A.keys_msg.empty()) {
         ImGui::Spacing();
@@ -1316,7 +1388,8 @@ static void screen_keys() {
             colored(BAD, A.keys_msg);
         }
     }
-    bool have_disc = !A.disc_key_found.empty() || !A.disc_key_file.empty();
+    bool have_disc = A.disc_mode == 1 ? strlen(A.disc_paste) > 0
+                                      : (!A.disc_key_file.empty() || !A.disc_key_found.empty());
     bool have_common = A.common_mode == 1 ? strlen(A.paste) > 0 : (!A.common_key_file.empty() || !A.common_key_found.empty());
     bool have_update = !A.update_dir_found.empty() || !A.update_dir.empty();
     int b = footer({"Back", "Check keys and install"}, 1, (have_disc && have_common && have_update && !busy()) ? 0 : 2);
@@ -1336,14 +1409,25 @@ static void screen_installing() {
     if (A.portable) page_header("Preparing the game", "One time, about two minutes. You can keep using your computer.");
     else page_header("Installing", "This takes a few minutes. You can keep using your computer.");
     double tw = 0, dw = 0;
+    const Step* current = nullptr;
     for (auto& s : A.steps) {
         double w = step_weight(s.id);
         tw += w;
         if (s.state == 2) dw += w;
-        else if (s.state == 1 && s.total > 0) dw += w * std::min(1.0, s.done / s.total);
+        else if (s.state == 1) {
+            if (s.total > 0) dw += w * std::min(1.0, s.done / s.total);
+            if (!current) current = &s;
+        }
     }
-    ImGui::TextUnformatted("Overall");
-    ImGui::ProgressBar(tw > 0 ? (float)(dw / tw) : 0.0f, ImVec2(-1, 0));
+    heading("Overall", 20);
+    float bar_h = ImGui::GetFrameHeight() * 2.4f;
+    ImGui::ProgressBar(tw > 0 ? (float)(dw / tw) : 0.0f, ImVec2(-1, bar_h));
+    if (current) {
+        std::string t = current->title;
+        if (size_t paren = t.find(" ("); paren != std::string::npos) t = t.substr(0, paren);
+        if (!current->detail.empty()) t += " — " + current->detail;
+        muted(t);
+    }
     ImGui::Spacing();
     float split = std::max(0.0f, space_above_footer() - ImGui::GetFrameHeightWithSpacing() - ImGui::GetStyle().ItemSpacing.y * 2);
     float step_avail = std::max(120.0f, split * 0.75f);
@@ -1875,6 +1959,7 @@ static void automation_frame() {
             if (k == "source") set_source(v);
             else if (k == "disc_key_file") set_disc_key_file(v);
             else if (k == "common_key_file") set_common_key_file(v);
+            else if (k == "disc_mode") set_disc_mode(v == "paste" ? 1 : 0);
             else if (k == "common_mode") set_common_mode(v == "paste" ? 1 : 0);
             else if (k == "save_kind")
                 set_save_kind(v == "hd" ? 1 : v == "legacy" ? 2 : v == "other" ? 3 : 0);
@@ -2130,6 +2215,7 @@ int main(int argc, char** argv) {
             if (A.script.t == J::Arr || A.self_test) SDL_Log("screen: %s", A.last_screen.c_str());
         }
     }
+    SDL_memset(A.disc_paste, 0, sizeof A.disc_paste);
     SDL_memset(A.paste, 0, sizeof A.paste);
     A.child.stop(false);
     ImGui_ImplSDLRenderer3_Shutdown();
