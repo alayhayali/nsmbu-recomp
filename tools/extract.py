@@ -11,13 +11,13 @@ import game_dump
 
 
 def check_update(game):
-    usa = builds.canonical_build()
     update = game_dump.update_root(game)
+    known = ", ".join("%s %s (v%d)" % (b.name, b.title_id, b.title_version) for b in builds.all_builds())
     print("game: %s" % game)
-    print("known build: %s  title %s  rpx sha256 %s" % (usa.name, usa.title_id, usa.sha256))
+    print("known builds: %s" % known)
     print("required update folder: %s/" % game_dump.UPDATE_DIRNAME)
     print("")
-    print("== update (USA 1.3.0) ==")
+    print("== update (1.3.0) ==")
     errors, rpx = game_dump.folder_layout_errors(update, game_dump.UPDATE_DIRNAME)
     if rpx:
         e, _ = game_dump.check_rpx(
@@ -32,7 +32,7 @@ def check_update(game):
         for e in errors:
             print("  %s" % e)
         sys.exit(
-            "put the USA 1.3.0 update under game/%s/ (code/, content/, meta/) before extract"
+            "put the matching 1.3.0 update under game/%s/ (code/, content/, meta/) before extract"
             % game_dump.UPDATE_DIRNAME
         )
     print("")
@@ -69,13 +69,14 @@ def main():
 
     rpx = os.path.join(game, "code", "red-pro2.rpx")
     digest = builds.file_sha256(rpx)
-    usa = builds.canonical_build()
-    if digest != usa.sha256:
+    build = builds.by_sha256(digest)
+    if not build:
+        known = ", ".join("%s %s..." % (b.name, b.sha256[:16]) for b in builds.all_builds())
         sys.exit(
-            "after applying the update, code/red-pro2.rpx is %s... (need %s...)"
-            % (digest[:16], usa.sha256[:16])
+            "after applying the update, code/red-pro2.rpx is %s... (need one of: %s)"
+            % (digest[:16], known)
         )
-    print("extract ok: base disc + %s -> USA 1.3.0" % game_dump.UPDATE_DIRNAME)
+    print("extract ok: base disc + %s -> %s 1.3.0" % (game_dump.UPDATE_DIRNAME, build.name))
 
 
 if __name__ == "__main__":

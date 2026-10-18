@@ -15,7 +15,7 @@ The file layout is in [game/README.md](game/README.md).
 | Command | Result |
 |---------|--------|
 | `nsmbu` | List commands (`nsmbu` with no args prints help) |
-| `nsmbu extract` | Check `game/update/` (USA 1.3.0), extract `game/game.wux`, then apply the update |
+| `nsmbu extract` | Check `game/update/` (USA or Europe 1.3.0), extract `game/game.wux`, then apply the update |
 | `nsmbu build` | Configure `build/debug` in Debug and build `nsmbu` |
 | `nsmbu build --release` | Build in Release |
 | `nsmbu build --sanitizer` | Build with AddressSanitizer and UBSan |

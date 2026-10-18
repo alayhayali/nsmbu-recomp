@@ -62,7 +62,7 @@ Rules:
 - Map only files under `content/` into the replacement index (same engine as [content.md](content.md)).
 - Ignore `meta/` for content packs; do not map it into `/vol/content`.
 - Reject `code/`, non-empty patch payloads (`.asm`, `patches.txt`), shader files, and mixed graphics+content in one folder (same refusal policy as [content.md](content.md): do not drop half the pack silently).
-- Title ID checks stay USA 1.3.0 only.
+- Title ID checks stay on supported 1.3.0 builds (USA or Europe).
 - The folder name may differ from the package `id`.
 - Content-only Luau packages may keep a pack-root Definition-only `rules.txt`.
 

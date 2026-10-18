@@ -30,10 +30,13 @@ class Registry(unittest.TestCase):
 
     def test_known_builds(self):
         names = {b.name for b in builds.all_builds()}
-        self.assertEqual(names, {"USA"})
+        self.assertEqual(names, {"USA", "EU"})
         self.assertEqual(builds.by_title("0005000010101d00").name, "USA")
+        self.assertEqual(builds.by_title("0005000010101e00").name, "EU")
+        self.assertEqual(builds.by_name("eu").title_version, 80)
+        self.assertEqual(builds.canonical_build().title_version, 64)
         self.assertIsNone(builds.by_title("0005000010143500"))
-        self.assertIsNone(builds.by_name("eu"))
+        self.assertIsNone(builds.by_title("000500001014b700"))
 
     def test_titles_and_hashes_are_distinct(self):
         all_builds = builds.all_builds()
@@ -83,6 +86,17 @@ class Hooks(unittest.TestCase):
             entries, skipped = builds.read_hooks([path], other)
         self.assertEqual(skipped, [("hooks_language.txt", "USA")])
         self.assertEqual(entries, [])
+
+    def test_europe_hooks_map(self):
+        eu = builds.by_name("EU")
+        self.assertIsNotNone(eu)
+        entries, skipped = builds.read_hooks(builds.hook_files(), eu)
+        self.assertEqual(skipped, [])
+        by_canon = {canon: addr for _, canon, addr, _ in entries}
+        self.assertEqual(by_canon[0x024D752C], 0x024D752C)
+        self.assertEqual(by_canon[0x02ACD218], 0x02ACD618)
+        self.assertEqual(by_canon[0x029CBBB4], 0x029CBC58)
+        self.assertTrue(eu.body_differs(0x029CBBB4))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

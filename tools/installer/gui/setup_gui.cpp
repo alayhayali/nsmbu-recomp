@@ -873,7 +873,7 @@ static void handle_reply(const J& ev) {
         else if (A.source_kind == "folder")
             A.probe_msg = "Extracted game folder: New Super Mario Bros. U (USA)";
         else
-            A.probe_msg = "Wii U disc image. Setup extracts it, then applies the USA 1.3.0 update folder.";
+            A.probe_msg = "Wii U disc image. Setup extracts it, then applies the matching 1.3.0 update folder.";
     } else if (cmd == "check_keys") {
         if (ok) {
             A.keys_msg.clear();
@@ -1110,12 +1110,12 @@ static void screen_welcome() {
     ImGui::Spacing();
     ImGui::TextUnformatted("You need:");
     ImGui::Bullet();
-    ImGui::TextWrapped("your NSMBU (USA): a disc image (.wud/.wux) plus the USA 1.3.0 update folder, a Cemu archive "
-                       "already at title version 64, or an extracted folder with that update applied "
-                       "(code, content, meta);");
+    ImGui::TextWrapped("your NSMBU (USA or Europe): a disc image (.wud/.wux) plus the matching 1.3.0 update folder, "
+                       "a Cemu archive already at that title version (USA 64 or Europe 80), or an extracted folder "
+                       "with that update applied (code, content, meta);");
     ImGui::Bullet();
-    ImGui::TextWrapped("for a disc image: its disc key, the Wii U common key (from your console), and the USA 1.3.0 "
-                       "update (update/ next to the image, or chosen on the next screen). A Cemu archive or an "
+    ImGui::TextWrapped("for a disc image: its disc key, the Wii U common key (from your console), and the matching "
+                       "1.3.0 update (update/ next to the image, or chosen on the next screen). A Cemu archive or an "
                        "extracted folder needs no keys.");
     ImGui::Spacing();
     if (A.portable) {
@@ -1180,8 +1180,8 @@ static void screen_menu() {
 
 static void screen_source() {
     page_header("Choose your game",
-                "A Wii U disc image (.wux or .wud) with the USA 1.3.0 update, a Cemu archive (.wua) at title "
-                "version 64, or an already extracted game folder with that update applied.");
+                "A Wii U disc image (.wux or .wud) with the matching 1.3.0 update, a Cemu archive (.wua) at USA "
+                "title version 64 or Europe 80, or an already extracted game folder with that update applied.");
     static const SDL_DialogFileFilter filters[] = {{"Wii U disc image or Cemu archive (.wux, .wud, .wua)", "wux;wud;wua"},
                                                    {"Wii U disc image (.wux, .wud)", "wux;wud"},
                                                    {"Cemu Wii U archive (.wua)", "wua"},
@@ -1233,7 +1233,7 @@ static void screen_source() {
                 muted("Update: " + upd);
             }
             if (A.source_kind == "image")
-                muted("Setup extracts it, then applies the USA 1.3.0 update folder.");
+                muted("Setup extracts it, then applies the matching 1.3.0 update folder.");
             else if (A.source_kind == "archive")
                 muted("No keys needed. Game files are extracted from the archive.");
         } else {
@@ -1360,8 +1360,8 @@ static void screen_keys() {
     ImGui::Spacing();
 
     ImGui::BeginChild("update", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-    heading("USA 1.3.0 update", 20);
-    muted("Folder with code, content and meta (title version 64).");
+    heading("1.3.0 update", 20);
+    muted("Folder with code, content and meta (USA title version 64, or Europe 80).");
     if (!A.update_dir.empty()) {
         mark(2);
         ImGui::TextWrapped("Update folder: %s", A.update_dir.c_str());

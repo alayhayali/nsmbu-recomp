@@ -9,7 +9,6 @@ sys.path.insert(0, os.path.join(ROOT, "tools", "recomp"))
 import builds
 
 UPDATE_DIRNAME = "update"
-UPDATE_TITLE_VERSION = 64
 
 
 def game_root(path=None):
@@ -18,6 +17,16 @@ def game_root(path=None):
 
 def update_root(game):
     return os.path.join(game, UPDATE_DIRNAME)
+
+
+def expected_title_version(title, build):
+    if build:
+        return build.title_version
+    if not title:
+        return None
+    base = "00050000" + title[8:] if title[:8] in ("00050000", "0005000e") else title
+    other = builds.by_title(base)
+    return other.title_version if other else None
 
 
 def read_title_version(folder):
@@ -71,7 +80,6 @@ def folder_layout_errors(folder, label):
 
 def check_rpx(rpx_path, label, require_update_title=False):
     errors = []
-    usa = builds.canonical_build()
     digest = builds.file_sha256(rpx_path)
     build = builds.by_sha256(digest)
     title, version, where = read_title_version(os.path.dirname(os.path.dirname(rpx_path)))
@@ -83,12 +91,13 @@ def check_rpx(rpx_path, label, require_update_title=False):
             version if version is not None else "?",
         ))
     if not build:
+        known = ", ".join("%s %s..." % (b.name, b.sha256[:16]) for b in builds.all_builds())
         errors.append(
-            "%s is not the known USA 1.3.0 RPX (sha256 %s...; need %s...)"
-            % (label, digest[:16], usa.sha256[:16])
+            "%s is not a known 1.3.0 RPX (sha256 %s...; need one of: %s)"
+            % (label, digest[:16], known)
         )
         return errors, None
-    print("  match: %s (title %s)" % (build.name, build.title_id))
+    print("  match: %s (title %s, version %d)" % (build.name, build.title_id, build.title_version))
     if not title_matches_build(title, build):
         errors.append(
             "title id %s in %s does not match build %s (%s)"
@@ -101,10 +110,11 @@ def check_rpx(rpx_path, label, require_update_title=False):
                 "%s title id must be %s or %s (got %s)"
                 % (label, update_tid, build.title_id, title)
             )
-        if version is not None and version != UPDATE_TITLE_VERSION:
+        need = expected_title_version(title, build)
+        if version is not None and need is not None and version != need:
             errors.append(
                 "%s title version must be %d (got %s)"
-                % (label, UPDATE_TITLE_VERSION, version)
+                % (label, need, version)
             )
     return errors, build
 

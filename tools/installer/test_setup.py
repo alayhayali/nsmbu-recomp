@@ -104,14 +104,15 @@ class DataDir(unittest.TestCase):
 class Titles(unittest.TestCase):
     def test_supported_ok(self):
         setup.check_title("0005000010101d00")
+        setup.check_title("0005000010101e00")
 
     def test_unsupported(self):
-        with self.assertRaisesRegex(setup.SetupError, "Europe.*can be built from"):
-            setup.check_title("0005000010101e00")
         with self.assertRaisesRegex(setup.SetupError, "Japan.*can be built from"):
             setup.check_title("0005000010101c00")
         with self.assertRaisesRegex(setup.SetupError, "not New Super Mario Bros. U"):
             setup.check_title("000500001010ec00")
+        with self.assertRaisesRegex(setup.SetupError, "not New Super Mario Bros. U"):
+            setup.check_title("000500001014b700")
 
 def _title(tid, version, files=10, size=1000):
     return {"id": tid, "version": version, "folder": "%s_v%d" % (tid, version), "files": files, "bytes": size}
@@ -139,17 +140,29 @@ class ArchiveTitles(unittest.TestCase):
         self.assertIn("downloadable content", notes[1])
 
     def test_update_without_game(self):
-        with self.assertRaisesRegex(setup.SetupError, "USA 1.3.0 update but not the base game"):
+        with self.assertRaisesRegex(setup.SetupError, "1.3.0 update but not the base game"):
             setup.archive_choice(self.info([self.UPDATE]))
 
     def test_european_archive(self):
-        eu, eu_update = _title("0005000010101e00", 64), _title("0005000e10101e00", 64)
-        with self.assertRaisesRegex(setup.SetupError, "Europe.*can be built from"):
-            setup.archive_choice(self.info([eu, eu_update], eu))
+        eu, eu_update = _title("0005000010101e00", 80), _title("0005000e10101e00", 80)
+        folder, notes = setup.archive_choice(self.info([eu, eu_update], eu))
+        self.assertEqual(folder, "0005000010101e00_v80")
+        self.assertTrue(any("Also present: the update for New Super Mario Bros. U (Europe), version 80" in n
+                            for n in notes))
+
+    def test_european_wrong_version(self):
+        eu = _title("0005000010101e00", 64)
+        with self.assertRaisesRegex(setup.SetupError, "version 64.*title version 80"):
+            setup.archive_choice(self.info([eu], eu))
 
     def test_other_region(self):
         with self.assertRaisesRegex(setup.SetupError, "archive contains the Japan version"):
             setup.archive_choice(self.info([_title("0005000010101c00", 64), _title("0005000e10101c00", 64)]))
+
+    def test_combo_pack(self):
+        combo = _title("000500001014b700", 0)
+        with self.assertRaisesRegex(setup.SetupError, "not New Super Mario Bros. U"):
+            setup.archive_choice(self.info([combo], combo))
 
     def test_other_game(self):
         with self.assertRaisesRegex(setup.SetupError, "does not contain New Super Mario Bros. U.*title 00050000-1010EC00"):
@@ -226,8 +239,10 @@ class GameVersion(unittest.TestCase):
     def setUp(self):
         self.saved = (setup.SUPPORTED_BUILDS, setup.game_builds.by_sha256)
         fake = [setup.game_builds.Build({"name": "USA", "title_id": "0005000010101d00",
+                                         "title_version": 64,
                                          "rpx_sha256": hashlib.sha256(b"made-up rpx").hexdigest()}),
                 setup.game_builds.Build({"name": "EU", "title_id": "0005000010101e00",
+                                         "title_version": 80,
                                          "code_bounds": ["02000000", "03000000"],
                                          "data_bounds": ["10000000", "10500000"],
                                          "rpx_sha256": hashlib.sha256(b"made-up eu rpx").hexdigest()})]
@@ -244,16 +259,16 @@ class GameVersion(unittest.TestCase):
 
     def test_other_build(self):
         with tempfile.TemporaryDirectory() as d:
-            self.make(d, rpx=b"made-up eu rpx", app_tid="0005000010101e00")
+            self.make(d, rpx=b"made-up eu rpx", app_tid="0005000010101e00", app_ver="0050")
             self.assertEqual(setup.check_game_version(d).name, "EU")
 
     def test_wrong_version_or_update_without_known_rpx(self):
         with tempfile.TemporaryDirectory() as d:
             self.make(d, rpx=b"other code", app_ver="0010")
-            with self.assertRaisesRegex(setup.SetupError, "need title version 64.*USA 1.3.0"):
+            with self.assertRaisesRegex(setup.SetupError, "need title version 64"):
                 setup.check_game_version(d)
             self.make(d, rpx=b"other code", app_tid="0005000e10101d00", app_ver="0040")
-            with self.assertRaisesRegex(setup.SetupError, "not a file the port knows.*USA 1.3.0"):
+            with self.assertRaisesRegex(setup.SetupError, "not a file the port knows"):
                 setup.check_game_version(d)
 
     def test_unknown_build(self):
@@ -283,7 +298,7 @@ class GameVersion(unittest.TestCase):
         self.assertIn(build.title_id, setup.SUPPORTED_BUILDS)
 
 class UpdateFolder(unittest.TestCase):
-    """Disc images need a USA 1.3.0 update/ folder (checked then applied after extract)."""
+    """Disc images need a matching 1.3.0 update/ folder (checked then applied after extract)."""
 
     def make_folder(self, d, rpx=b"made-up rpx", app_tid="0005000e10101d00", app_ver="0040"):
         os.makedirs(os.path.join(d, "code"), exist_ok=True)
@@ -299,10 +314,16 @@ class UpdateFolder(unittest.TestCase):
 
     def setUp(self):
         self.saved = (setup.SUPPORTED_BUILDS, setup.game_builds.by_sha256)
-        fake = setup.game_builds.Build({"name": "USA", "title_id": "0005000010101d00",
-                                        "rpx_sha256": hashlib.sha256(b"made-up rpx").hexdigest()})
-        setup.SUPPORTED_BUILDS = {fake.title_id: fake}
-        setup.game_builds.by_sha256 = lambda d: fake if d == fake.sha256 else None
+        fake = [
+            setup.game_builds.Build({"name": "USA", "title_id": "0005000010101d00", "title_version": 64,
+                                     "rpx_sha256": hashlib.sha256(b"made-up rpx").hexdigest()}),
+            setup.game_builds.Build({"name": "EU", "title_id": "0005000010101e00", "title_version": 80,
+                                     "code_bounds": ["02000000", "03000000"],
+                                     "data_bounds": ["10000000", "10500000"],
+                                     "rpx_sha256": hashlib.sha256(b"made-up eu rpx").hexdigest()}),
+        ]
+        setup.SUPPORTED_BUILDS = {b.title_id: b for b in fake}
+        setup.game_builds.by_sha256 = lambda d: next((b for b in fake if b.sha256 == d), None)
 
     def tearDown(self):
         setup.SUPPORTED_BUILDS, setup.game_builds.by_sha256 = self.saved
@@ -332,6 +353,11 @@ class UpdateFolder(unittest.TestCase):
             self.make_folder(d, app_ver="0010")
             with self.assertRaisesRegex(setup.SetupError, "title version 16; need 64"):
                 setup.check_update_folder(d)
+
+    def test_europe_update(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.make_folder(d, rpx=b"made-up eu rpx", app_tid="0005000e10101e00", app_ver="0050")
+            self.assertEqual(setup.check_update_folder(d).name, "EU")
 
     def test_missing_layout(self):
         with tempfile.TemporaryDirectory() as d:

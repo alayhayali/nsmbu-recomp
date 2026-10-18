@@ -76,13 +76,21 @@ import builds as game_builds
 SUPPORTED_BUILDS = {b.title_id: b for b in game_builds.all_builds()}
 SUPPORTED_TITLE = game_builds.canonical_build().title_id
 
-SUPPORTED_VERSION = 64
+SUPPORTED_VERSION = game_builds.canonical_build().title_version
 
 SUPPORTED_RPX_SHA256 = game_builds.canonical_build().sha256
 
 def supported_titles_text():
     return " or ".join("%s-%s (%s)" % (b.title_id[:8].upper(), b.title_id[8:].upper(), b.name)
                        for b in SUPPORTED_BUILDS.values())
+
+def build_title_version(title_id):
+    """Title version the port needs for this base title id, or None if the title is unknown."""
+    build = SUPPORTED_BUILDS.get((title_id or "").lower())
+    return build.title_version if build else None
+
+def supported_versions_text():
+    return " or ".join("%s title version %d" % (b.name, b.title_version) for b in SUPPORTED_BUILDS.values())
 
 EXTRACT_ERRORS = {
     3: "disc_key_bad",
@@ -650,9 +658,9 @@ def image_identity(image, disc_key_path=None, common_key=None, update_dir=None):
         try:
             build = check_update_folder(update_dir)
             out["update_name"] = build.name
-            out["update_version"] = SUPPORTED_VERSION
+            out["update_version"] = build.title_version
             out["update_sha256"] = build.sha256
-            out["update_title"] = title_desc(build.title_id, SUPPORTED_VERSION)
+            out["update_title"] = title_desc(build.title_id, build.title_version)
         except SetupError:
             pass
     return out
@@ -729,8 +737,9 @@ def archive_choice(info):
                 except SetupError as e:
                     raise SetupError("this archive contains %s" % str(e)[len("this is "):])
         updates = ["0005000e" + t[8:] for t in SUPPORTED_BUILDS]
-        if any(t["id"] in updates and t["version"] == SUPPORTED_VERSION for t in titles):
-            raise SetupError("this archive has the USA 1.3.0 update but not the base game title (%s). "
+        need_vers = {b.title_id: b.title_version for b in SUPPORTED_BUILDS.values()}
+        if any(t["id"] in updates and need_vers.get("00050000" + t["id"][8:]) == t["version"] for t in titles):
+            raise SetupError("this archive has a 1.3.0 update but not the base game title (%s). "
                              "In Cemu, make the archive with the game and update (it contains: %s)."
                              % (supported_titles_text(), found))
         raise SetupError("this archive does not contain New Super Mario Bros. U, %s (it contains: %s)."
@@ -741,9 +750,10 @@ def archive_choice(info):
     base_tid = "00050000" + selected_id[8:] if selected_id[:8] in ("00050000", "0005000e") else selected_id
     if base_tid not in SUPPORTED_BUILDS:
         check_title(base_tid if base_tid in TITLE_IDS else selected_id)
-    if version != SUPPORTED_VERSION:
+    need_ver = build_title_version(base_tid)
+    if need_ver is not None and version != need_ver:
         raise SetupError("the game in this archive is version %d; the port is built for title version %d "
-                         "(USA 1.3.0, folder %s)." % (version, SUPPORTED_VERSION, info["selected"]))
+                         "(%s, folder %s)." % (version, need_ver, SUPPORTED_BUILDS[base_tid].name, info["selected"]))
     notes = []
     for t in titles:
         if t["folder"] == info["selected"]:
@@ -789,16 +799,16 @@ def file_sha256(path):
             h.update(chunk)
     return h.hexdigest()
 
-GAME_VERSION_FIX = ("Use USA New Super Mario Bros. U with the 1.3.0 update (title version 64): a disc image plus an "
-                    "update/ folder next to it, a merged game folder (base plus update), or a Cemu archive that "
-                    "already has title version 64.")
+GAME_VERSION_FIX = ("Use New Super Mario Bros. U USA (title version 64) or Europe (title version 80) with the "
+                    "matching 1.3.0 update: a disc image plus an update/ folder next to it, a merged game folder "
+                    "(base plus update), or a Cemu archive that already has that title version.")
 
 UPDATE_DIRNAME = "update"
 
 def check_game_version(path):
     """The build of the game in `path` (tools/recomp/builds.py), or SetupError if it is not one the
     port can be built from. The translated code and its hooks are made for exactly those files
-    (USA 1.3.0 / title version 64), so this runs before translating."""
+    (USA or Europe 1.3.0), so this runs before translating."""
     rpx = os.path.join(path, "code", "red-pro2.rpx")
     try:
         digest = file_sha256(rpx)
@@ -809,19 +819,21 @@ def check_game_version(path):
         return build
     tid, ver = code_title_version(path)
     updates = ["0005000e" + t[8:] for t in SUPPORTED_BUILDS]
+    base_tid = "00050000" + tid[8:] if tid and tid[:8] in ("00050000", "0005000e") else tid
+    need_ver = build_title_version(base_tid) if base_tid else None
     if tid and tid not in SUPPORTED_BUILDS and tid not in updates:
         found = "the game code (code/red-pro2.rpx) is from %s (title %s-%s)" % (title_desc(tid, ver), tid[:8].upper(),
                                                                             tid[8:].upper())
-    elif ver is not None and ver != SUPPORTED_VERSION:
+    elif need_ver is not None and ver is not None and ver != need_ver:
         found = ("the game code (code/red-pro2.rpx) is %s (per the folder's app.xml/meta.xml); need title version %d"
-                 % (title_desc(tid, ver) if tid else "an unknown build", SUPPORTED_VERSION))
+                 % (title_desc(tid, ver) if tid else "an unknown build", need_ver))
     else:
-        found = ("the game code (code/red-pro2.rpx) is not a file the port knows (SHA-256 %s...): not USA 1.3.0 "
-                 "(title version %d), or a modified or damaged copy" % (digest[:16], SUPPORTED_VERSION))
+        found = ("the game code (code/red-pro2.rpx) is not a file the port knows (SHA-256 %s...): not a supported "
+                 "1.3.0 build (%s), or a modified or damaged copy" % (digest[:16], supported_versions_text()))
     LOG.write("red-pro2.rpx SHA-256 %s, known: %s" % (
         digest, ", ".join("%s %s" % (b.name, b.sha256[:16]) for b in SUPPORTED_BUILDS.values())))
-    raise SetupError("%s. The port needs New Super Mario Bros. U, %s, title version %d (USA 1.3.0). %s"
-                     % (found, supported_titles_text(), SUPPORTED_VERSION, GAME_VERSION_FIX))
+    raise SetupError("%s. The port needs New Super Mario Bros. U, %s (%s). %s"
+                     % (found, supported_titles_text(), supported_versions_text(), GAME_VERSION_FIX))
 
 def valid_game_folder(path):
     return (os.path.isfile(os.path.join(path, "code", "red-pro2.rpx")) and os.path.isdir(os.path.join(path, "content"))
@@ -832,17 +844,18 @@ def find_sidecar_update(image):
     return cand if valid_game_folder(cand) else None
 
 def check_update_folder(path):
-    """USA 1.3.0 update folder (code/, content/, meta/), or SetupError."""
+    """1.3.0 update folder for a supported build (code/, content/, meta/), or SetupError."""
     if not valid_game_folder(path):
         raise SetupError("%s is not an update folder (needs code/red-pro2.rpx, content/, meta/meta.xml)" % path)
     build = check_game_version(path)
     tid, ver = code_title_version(path)
     update_tid = "0005000e" + build.title_id[8:]
     if tid and tid not in (build.title_id, update_tid):
-        raise SetupError("the update folder title id is %s; need %s or %s (USA 1.3.0)"
-                         % (tid, update_tid, build.title_id))
-    if ver is not None and ver != SUPPORTED_VERSION:
-        raise SetupError("the update folder is title version %d; need %d (USA 1.3.0)" % (ver, SUPPORTED_VERSION))
+        raise SetupError("the update folder title id is %s; need %s or %s (%s 1.3.0)"
+                         % (tid, update_tid, build.title_id, build.name))
+    if ver is not None and ver != build.title_version:
+        raise SetupError("the update folder is title version %d; need %d (%s 1.3.0)"
+                         % (ver, build.title_version, build.name))
     return build
 
 def apply_update_to(dst, update_dir):
@@ -854,18 +867,18 @@ def apply_update_to(dst, update_dir):
         shutil.copytree(src, os.path.join(dst, name), dirs_exist_ok=True)
 
 def get_update_dir(image, ui, args):
-    """USA 1.3.0 update next to the disc image, --update-dir, or chosen interactively."""
+    """Matching 1.3.0 update next to the disc image, --update-dir, or chosen interactively."""
     path = getattr(args, "update_dir", None) or find_sidecar_update(image)
     if path:
         path = os.path.abspath(path)
-        check_update_folder(path)
-        say("  OK: USA 1.3.0 update in %s" % path)
+        build = check_update_folder(path)
+        say("  OK: %s 1.3.0 update in %s" % (build.name, path))
         return path
     if not ui.interactive:
-        raise SetupError("put the USA 1.3.0 update in %s/ next to the disc image (code/, content/, meta/), "
+        raise SetupError("put the 1.3.0 update in %s/ next to the disc image (code/, content/, meta/), "
                          "or pass --update-dir" % UPDATE_DIRNAME)
     while True:
-        p = ui.pick_path("Choose the USA 1.3.0 update folder (it contains code, content and meta)", folder=True)
+        p = ui.pick_path("Choose the 1.3.0 update folder (it contains code, content and meta)", folder=True)
         try:
             check_update_folder(p)
             return os.path.abspath(p)
@@ -933,7 +946,7 @@ def get_disc_keys(image, ui, args):
 
 def extract_game(image, keys, info, data_dir, title=None, update_dir=None):
     """Extracts a disc image (keys) or one title folder of a Cemu archive (title, no keys) into data_dir/game.
-    For a disc image, update_dir is the USA 1.3.0 update folder applied after the base extract."""
+    For a disc image, update_dir is the matching 1.3.0 update folder applied after the base extract."""
     dst = os.path.join(data_dir, "game")
     tmp = os.path.join(data_dir, "game.partial")
     shutil.rmtree(tmp, ignore_errors=True)
@@ -946,7 +959,7 @@ def extract_game(image, keys, info, data_dir, title=None, update_dir=None):
         raise SetupError("the extracted files are incomplete (no code/red-pro2.rpx)")
     try:
         if update_dir:
-            say("  Applying USA 1.3.0 update from %s" % update_dir)
+            say("  Applying 1.3.0 update from %s" % update_dir)
             apply_update_to(tmp, update_dir)
         check_game_version(tmp)
     except SetupError:
@@ -1828,7 +1841,7 @@ def install(ctx, source, keys=None, info=None, ui=None, check_keys=None):
         if tid:
             check_title(tid)
         build = check_game_version(source[1])
-        say("  OK: %s (%s, title version %d)" % (source[1], build.name, SUPPORTED_VERSION))
+        say("  OK: %s (%s, title version %d)" % (source[1], build.name, build.title_version))
     elif kind == "installed":
         if not valid_game_folder(ctx.game_dir):
             raise SetupError("no installed game files in %s; run setup with your disc image" % ctx.game_dir)
@@ -1958,7 +1971,7 @@ def main():
     ap.add_argument("--archive", help="Cemu Wii U archive (.wua): no keys needed")
     ap.add_argument("--disc-key", help="disc key file (default: IMAGE.key)")
     ap.add_argument("--common-key", help="Wii U common key file (or WIIU_COMMON_KEY)")
-    ap.add_argument("--update-dir", help="USA 1.3.0 update folder (code/, content/, meta/); default: update/ next to the disc image")
+    ap.add_argument("--update-dir", help="1.3.0 update folder for that disc (code/, content/, meta/); default: update/ next to the disc image")
     ap.add_argument("--game-dir", help="an already extracted game folder (code/, content/, meta/) instead of an image")
     ap.add_argument("--gen-dir", help="use this generated code instead of recompiling (build checks)")
     ap.add_argument("--data-dir", help="where the game is installed (default: %s)" % default_data_dir())
@@ -2077,8 +2090,8 @@ def run(args, ui):
         else:
             say("")
             i = ui.choose("What do you have?", [
-                "a disc image (.wux or .wud) with its keys and the USA 1.3.0 update folder",
-                "a Cemu Wii U archive (.wua; no keys needed; already title version 64)",
+                "a disc image (.wux or .wud) with its keys and the matching 1.3.0 update folder",
+                "a Cemu Wii U archive (.wua; no keys needed; USA title version 64 or Europe 80)",
                 "an already extracted game folder with the 1.3.0 update applied (code, content, meta)",
             ])
             if i in (0, 1):
@@ -2189,10 +2202,10 @@ def gui_main(args):
                 build = check_game_version(folder)
             except SetupError as e:
                 return fail(req, "wrong_version", str(e)[0].upper() + str(e)[1:])
-            title = title_desc(tid or build.title_id, SUPPORTED_VERSION)
+            title = title_desc(tid or build.title_id, build.title_version)
             return reply(req, kind="folder", path=folder, title=title,
                          title_id=tid or build.title_id, title_id_text=format_title_id(tid or build.title_id),
-                         build=build.name, update_version=SUPPORTED_VERSION, update_sha256=build.sha256,
+                         build=build.name, update_version=build.title_version, update_sha256=build.sha256,
                          update_title=title, in_place=PORTABLE, bytes=folder_size(folder),
                          message=("Extracted game folder: %s (title %s, RPX SHA-256 %s…).%s"
                                   % (title, format_title_id(tid or build.title_id), build.sha256[:16],
@@ -2228,13 +2241,14 @@ def gui_main(args):
             if ident.get("files") is not None and ident.get("bytes") is not None:
                 msg_bits.append("%s files, %s on the disc" % (ident["files"], human(ident["bytes"])))
         if ident.get("update_title"):
-            msg_bits.append("USA 1.3.0 update: %s, RPX SHA-256 %s…" % (ident["update_title"], ident["update_sha256"][:16]))
+            uname = ident.get("update_name") or "1.3.0"
+            msg_bits.append("%s update: %s, RPX SHA-256 %s…" % (uname, ident["update_title"], ident["update_sha256"][:16]))
         elif ident.get("update_sha256"):
-            msg_bits.append("USA 1.3.0 update RPX SHA-256 %s…" % ident["update_sha256"][:16])
+            msg_bits.append("1.3.0 update RPX SHA-256 %s…" % ident["update_sha256"][:16])
         if msg_bits:
-            message = "Wii U disc image: %s. Setup extracts it, then applies the USA 1.3.0 update folder." % "; ".join(msg_bits)
+            message = "Wii U disc image: %s. Setup extracts it, then applies the matching 1.3.0 update folder." % "; ".join(msg_bits)
         else:
-            message = "Wii U disc image. Setup extracts it, then applies the USA 1.3.0 update folder."
+            message = "Wii U disc image. Setup extracts it, then applies the matching 1.3.0 update folder."
         reply(req, kind="image", path=p, disc_key=disc_key, common_key=src, update_dir=upd or "",
               message=message, **ident)
 
@@ -2310,7 +2324,7 @@ def gui_main(args):
         update_dir = req.get("update_dir") or find_sidecar_update(image)
         if not update_dir:
             return fail(req, "update_missing",
-                        "Choose the USA 1.3.0 update folder (code, content and meta), or put it in update/ next to the disc image.")
+                        "Choose the 1.3.0 update folder (code, content and meta), or put it in update/ next to the disc image.")
         try:
             check_update_folder(update_dir)
         except SetupError as e:
@@ -2339,7 +2353,7 @@ def gui_main(args):
             if not session["keys"] or session["image"] != req.get("path"):
                 return fail(req, "keys", "Check the keys first.")
             if not session.get("update_dir"):
-                return fail(req, "update_missing", "Check the USA 1.3.0 update folder with the keys.")
+                return fail(req, "update_missing", "Check the 1.3.0 update folder with the keys.")
             ctx.args.update_dir = session["update_dir"]
             source = ("image", req["path"])
         elif kind == "archive":

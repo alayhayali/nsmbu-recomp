@@ -29,6 +29,7 @@ class Build:
         self.name = d["name"]
         self.title_id = d["title_id"]
         self.sha256 = d["rpx_sha256"]
+        self.title_version = int(d.get("title_version", 64))
         self.bounds = {kind: tuple(int(a, 16) for a in d[kind + "_bounds"])
                        for kind in ("code", "data") if kind + "_bounds" in d}
         if self.name != CANONICAL and len(self.bounds) != 2:
@@ -126,6 +127,7 @@ _CANONICAL = {
     "name": CANONICAL,
     "title_id": "0005000010101d00",
     "rpx_sha256": "ebd147ce4cdedb563db3ac6278186ca5dea282ad315271925b8bb5ac16c7dc8e",
+    "title_version": 64,
 }
 
 def canonical_build():
