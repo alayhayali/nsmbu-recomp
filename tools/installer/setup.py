@@ -1556,7 +1556,7 @@ def import_save(kind, path, data_dir, replace=False):
     return msg
 
 def source_checkout_user_dir():
-    """`<repo>/nsmbu` when this setup.py lives in a source tree (`just` sets NSMBU_USER_DIR there)."""
+    """`<repo>/nsmbu` when this setup.py lives in a source tree (the `nsmbu` CLI sets NSMBU_USER_DIR there)."""
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     nsmbu = os.path.join(root, "nsmbu")
     if os.path.isdir(nsmbu):
@@ -1564,7 +1564,7 @@ def source_checkout_user_dir():
     return os.path.join(root, "user")
 
 def legacy_config_dirs():
-    """Settings folders to import from: source `just` userdata, then older per-user config dirs."""
+    """Settings folders to import from: source-checkout userdata, then older per-user config dirs."""
     dirs = []
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     for name in ("nsmbu", "user"):

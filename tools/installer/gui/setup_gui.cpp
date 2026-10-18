@@ -1208,7 +1208,6 @@ static std::string base_name(const std::string& p) {
 }
 
 static void screen_keys() {
-    page_header("Keys and update", base_name(A.source_path));
     static const SDL_DialogFileFilter keyf[] = {{"Key files (.key, .bin, .txt)", "key;bin;txt"}, {"All files", "*"}};
 
     ImGui::BeginChild("image", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);

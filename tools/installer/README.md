@@ -36,8 +36,8 @@ implement the same rule; `tools/release/appimage.py` drops `portable.txt` from t
 this reason. `install.json` then keeps `exe` and `game_dir` as absolute paths (`rel_to_data` is a
 no-op without the marker).
 
-Source builds via `just` set `NSMBU_USER_DIR` to the gitignored `<repo>/nsmbu` folder (settings,
-states, Mod Manager, shader cache) and pass `--save nsmbu/save`.
+Source builds via the `nsmbu` CLI set `NSMBU_USER_DIR` to the gitignored `<repo>/nsmbu` folder (settings,
+states, mods, shader cache) and pass `--save nsmbu/save`.
 Portable releases keep using `data/nsmbu` (settings and `save/`) through `portable.txt` next to the binary
 (`portable.txt` wins if `NSMBU_USER_DIR` is also set).
 The setup importer also reads `<repo>/nsmbu` when this tree is a source checkout.

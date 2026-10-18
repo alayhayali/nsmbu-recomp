@@ -7,8 +7,7 @@ Players use a [release](README.md#install).
 
 Install Node 24 or newer, CMake 3.20 or newer, Python 3, and Clang.
 Link the developer CLI once: `cd tools/cli && npm link`.
-
-Humans may also use `just run`, `just record <course>`, or `just replay <course>` as thin wrappers around the same Python tools.
+After that, every command is the global `nsmbu` on `PATH`.
 
 Put your dump in `game/`.
 The file layout is in [game/README.md](game/README.md).

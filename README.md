@@ -20,9 +20,11 @@ You supply the disc image, the keys, and the game files.
 
 ## Install
 
+### 1. Download and start
+
 Download the zip for your system from the [Releases](https://github.com/nsmbu-recomp/nsmbu-recomp/releases) page.
 Unzip it into a folder that you can write to.
-Start **NSMBU**.
+Start **NSMBU**:
 
 | System | File to start |
 |--------|----------------|
@@ -34,68 +36,95 @@ Start **NSMBU**.
 The first start opens the installer.
 Each later start launches the game.
 
-The installer asks which copy of the game you have.
-Choose one option.
+### 2. Choose your game copy
 
-1. A disc image (`.wux` or `.wud`), its keys, and the USA **1.3.0** update folder.
-2. A Cemu archive (`.wua`) that already has title version 64.
-   This file needs no keys.
-3. An extracted game folder that already has the 1.3.0 update applied.
-   The folder contains `code`, `content`, and `meta`.
+The installer accepts the USA game only (title `00050000-10101d00`, version 64 / **1.3.0**).
+Choose one of these:
 
-The installer then opens a file window and asks you to choose that file or folder.
-macOS uses the system file chooser.
-Windows uses the system file chooser.
+1. **Disc image.**
+   Use a `.wux` or `.wud` file, its keys, and the USA **1.3.0** update folder.
+2. **Cemu archive.**
+   Use a `.wua` file that already has title version 64.
+   This option needs no keys.
+3. **Extracted folder.**
+   Use a game folder that already has the 1.3.0 update applied.
+   The folder must contain `code`, `content`, and `meta`.
+
+The installer opens a file window so you can pick that file or folder.
+macOS and Windows use the system file chooser.
 Linux uses Zenity or KDialog when one of those programs is installed.
+If no file window opens, type the path.
+You can also drag the file into the window and press Enter.
 
-When no file window opens, the installer asks you to type the path.
-You can drag the file into the window and press Enter.
+### 3. Disc image keys and update
 
-A disc image also needs a disc key, the Wii U common key, and the USA 1.3.0 update.
-Put the update in an `update/` folder next to the disc image (`code/`, `content/`, `meta/`), or choose that folder in the installer.
-The installer uses a `.key` file that has the same name as the image when that file is next to the image.
-The installer uses `common.key` when that file is next to the image.
-When a key is missing, the installer asks you to choose a key file or to paste 32 hex digits.
+Skip this step if you chose a Cemu archive or an extracted folder.
+
+A disc image also needs:
+
+- the disc key
+- the Wii U common key
+- the USA 1.3.0 update
+
+Put the update in an `update/` folder next to the disc image (`code/`, `content/`, `meta/`).
+You can also choose that folder in the installer.
+
+If a `.key` file with the same name as the image sits next to the image, the installer uses it.
+If `common.key` sits next to the image, the installer uses that too.
+When a key is missing, choose a key file or paste 32 hex digits.
 The paste field hides the text.
-The keys stay in memory until extraction starts.
-The setup log contains no keys.
+Keys stay in memory until extraction starts.
+The setup log never stores keys.
 
-The installer accepts USA New Super Mario Bros. U, title `00050000-10101d00`, title version 64 (1.3.0).
-For a disc image it checks the update folder, extracts the disc, applies the update, then checks `code/red-pro2.rpx` before it translates the code.
+### 4. Wait for the build
 
-The installer then prepares the game.
+The installer prepares the game on your computer.
 For a disc image or a Cemu archive, it extracts the files into the release folder.
-An extracted folder stays in its original location.
-The installer translates the code to C, compiles it, and links it with the runtime.
+An extracted folder stays where it is.
+The installer then translates the code to C, compiles it, and links it with the runtime.
 
 The first start takes a few minutes.
-Start **NSMBU** again to play.
+When it finishes, start **NSMBU** again to play.
 
-To repair, update, or choose a different game file, open the installer again.
-On macOS or Windows, hold Shift while you start **NSMBU**.
-On Linux, start `nsmbu-launcher --setup`, or use the Setup action of `NSMBU.desktop`.
+### Repair or change the game
+
+To repair, update, or choose a different game file, open the installer again:
+
+- **macOS or Windows** — hold Shift while you start **NSMBU**.
+- **Linux** — run `nsmbu-launcher --setup`, or use the Setup action on `NSMBU.desktop`.
+
+### Where files live
 
 The release folder is portable.
-The built game, the game files, the saves, and the settings stay in `data/` inside that folder.
-
-On macOS the app is unsigned.
-On macOS 14, right-click `NSMBU.app`, choose **Open**, then choose **Open**.
-On macOS 15 and newer, open **System Settings**, then **Privacy & Security**, then **Open Anyway**.
-Keep `NSMBU.app` inside the unzipped folder.
+The built game, game files, saves, and settings stay in `data/` inside that folder.
+Keep `NSMBU.app` inside the unzipped folder on macOS.
 Move the whole folder when you want the game in another place.
 
-On Windows, SmartScreen can block an unsigned program.
+### If the system blocks the app
+
+**macOS** — the app is unsigned.
+On macOS 14, right-click `NSMBU.app`, choose **Open**, then choose **Open** again.
+On macOS 15 and newer, open **System Settings → Privacy & Security**, then choose **Open Anyway**.
+
+**Windows** — SmartScreen can block an unsigned program.
 Choose **More info**, then **Run anyway**.
 
-The terminal installer is the fallback when the window cannot run.
-On macOS, run `tools/Setup in Terminal.command`.
-On Windows, run `tools/Setup in a console window.bat`.
-On Linux, run `tools/setup-in-terminal.sh`.
-The terminal installer asks the same questions and opens the same file window when the system provides one.
+### Terminal installer
+
+Use the terminal installer when the window cannot run:
+
+| System | Command |
+|--------|---------|
+| macOS | `tools/Setup in Terminal.command` |
+| Windows | `tools/Setup in a console window.bat` |
+| Linux | `tools/setup-in-terminal.sh` |
+
+It asks the same questions.
+It opens the same file window when the system provides one.
 
 ## Controls
 
-Press `` ` `` or **F12** to open the settings overlay.
+Press `` ` `` or `F12` to open the settings overlay.
 **F1**–**F5** load save states; **Shift+F1**–**F5** save.
 Open **Audio** for mute, volume, and TV / GamePad output.
 Open **Controls** to change keys and controller buttons.
@@ -105,26 +134,30 @@ A build from source stores it in the port config directory.
 That directory is `~/.config/nsmbu` on Linux, `%APPDATA%\NSMBU` on Windows, and `~/Library/Application Support/NSMBU` on macOS.
 Set `NSMBU_CONTROLS` to use another file.
 
-Host gamepads use the same layout as the Wii U GamePad.
+Host gamepads use the same layout as the Wii U GamePad by default (face buttons by position).
 The bottom face button (Xbox **A**) is Wii U **B**.
 The right face button (Xbox **B**) is Wii U **A**.
+Controller labels below use Xbox names.
 
-Default keyboard layout:
+Default layout:
 
-| Keyboard | Wii U input |
-|----------|-------------|
-| W A S D | left stick |
-| arrow keys | right stick (camera) |
-| K or Space | A |
-| J | B |
-| L | X |
-| Left Shift | Y |
-| Q / E | L / R |
-| Left Control | ZR |
-| Enter / Tab | + / − |
-| H | Home |
-| 1 2 3 4 | D-pad up / down / left / right |
-| X / V | left / right stick click |
+| Keyboard | Controller | Wii U | In game |
+|----------|------------|-------|---------|
+| W A S D | left stick | left stick | walk / move |
+| arrow keys | right stick | right stick | camera |
+| K or Space | B (right) | A | jump |
+| J | A (bottom) | B | jump |
+| L | Y (top) | X | run / hold item |
+| Left Shift | X (left) | Y | run / hold item |
+| Q | LB | L | map view |
+| E | RB | R | map zoom |
+|  | LT | ZL | spin jump |
+| Left Control | RT | ZR | spin jump |
+| Enter | Menu | + | pause |
+| Tab | View | − | inventory |
+| H | Home | Home | Home menu |
+| 1 2 3 4 | D-pad | D-pad | move / crouch / pipes |
+| X / V | L3 / R3 | stick click | stick click |
 
 Gyro aiming and other motion options are in **Controls → Gyro…**.
 See [docs/gyro.md](docs/gyro.md).
@@ -132,3 +165,7 @@ See [docs/gyro.md](docs/gyro.md).
 ## Contributing
 
 Build from source, CLI commands, and developer docs are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Credits
+
+This repository was forked from the [Wind Waker HD recompilation](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp).

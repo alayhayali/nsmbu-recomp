@@ -7,7 +7,7 @@
     },
     "host-clang": {
       "kind": "host-clang",
-      "_comment": "Developer packages only (just installer). Matches a runtime built with system Clang/libstdc++."
+      "_comment": "Developer packages only (nsmbu installer). Matches a runtime built with system Clang/libstdc++."
     },
     "llvm-mingw-20260922": {
       "kind": "llvm-mingw",
