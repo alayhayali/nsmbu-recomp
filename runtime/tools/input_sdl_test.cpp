@@ -20,6 +20,7 @@ namespace render { uint64_t frame_count(){return 0;} }
 namespace gfxvk { bool graphics_hotkey(char key,bool activate){if(activate){++graphicsRequests;graphicsKey=key;}return true;} }
 namespace gfx { int plusPresses=0; void display_plus_pressed(){++plusPresses;} }
 namespace mods { double game_time(){return 0;} }
+namespace agent_ctl { void apply_pad(input::PadState&) {} }
 static uint64_t g_logic_steps=0;
 static bool g_course=true;
 namespace interp {
