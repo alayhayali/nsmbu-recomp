@@ -610,6 +610,39 @@ static uint64_t vsync_granule() {
     const int rate = interp::vsync_rate();
     return rate >= 4 ? 1 : rate >= 2 ? 2 : kTicksPerVsync;
 }
+static std::chrono::steady_clock::time_point g_capped_vsync_last_wake;
+static bool g_capped_vsync_last_wake_valid = false;
+static std::chrono::nanoseconds capped_vsync_wait_period(uint64_t granule) {
+    return std::chrono::nanoseconds(uint64_t(vsync_period_ns()) * granule / kTicksPerVsync);
+}
+static bool capped_vsync_same_frame(uint64_t granule, std::chrono::steady_clock::time_point now) {
+    (void)granule;
+    if (!g_capped_vsync_last_wake_valid) return false;
+    return now < g_capped_vsync_last_wake + std::chrono::milliseconds(2);
+}
+static void capped_vsync_ready_flip_last_wake(uint64_t granule) {
+    const auto now = std::chrono::steady_clock::now();
+    if (capped_vsync_same_frame(granule, now)) return;
+    g_capped_vsync_last_wake = now;
+    g_capped_vsync_last_wake_valid = true;
+}
+static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void (*before_resume)()) {
+    const auto now = std::chrono::steady_clock::now();
+    if (capped_vsync_same_frame(granule, now)) return;
+    const auto period = capped_vsync_wait_period(granule);
+    if (!g_capped_vsync_last_wake_valid) {
+        g_capped_vsync_last_wake = now;
+        g_capped_vsync_last_wake_valid = true;
+        return;
+    }
+    const auto target = g_capped_vsync_last_wake + period;
+    if (now >= target) {
+        g_capped_vsync_last_wake = now;
+        return;
+    }
+    threads::park_sleep_until(target, preciseSleep, before_resume);
+    g_capped_vsync_last_wake = target;
+}
 static std::chrono::steady_clock::time_point tick_time(uint64_t tick) {
     return g_vsync_epoch + std::chrono::nanoseconds(tick * uint64_t(vsync_period_ns()) / kTicksPerVsync);
 }
@@ -900,6 +933,7 @@ HLE(gx2, GX2WaitForVsync) {
             }
             std::lock_guard<std::mutex> lk(g_flip_mutex);
             update_flips();
+            capped_vsync_ready_flip_last_wake(vsync_granule());
             return;
         }
     }
@@ -919,16 +953,15 @@ HLE(gx2, GX2WaitForVsync) {
 #endif
     }();
     const uint64_t granule = vsync_granule();
-    const auto deadline = tick_time((vsync_index() / granule + 1) * granule);
 #ifdef NSMBU_HAS_VULKAN
     static const bool readyFlipPark = [] {
         const char* value = env::VK_READY_FLIP_PARK();
         return render::vulkan() && value && !strcmp(value, "1");
     }();
-    threads::park_sleep_until(deadline, preciseSleep,
+    capped_vsync_wait_for_wake(granule, preciseSleep,
         readyFlipPark ? ready_flip_before_resume : nullptr);
 #else
-    threads::park_sleep_until(deadline, preciseSleep);
+    capped_vsync_wait_for_wake(granule, preciseSleep, nullptr);
 #endif
     std::lock_guard<std::mutex> lk(g_flip_mutex);
     update_flips();

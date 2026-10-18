@@ -999,12 +999,17 @@ static void make_swapchain(Screen &s) {
   if (&s == &R.tv) set_present_modes_offered(offered);
   const int setting = effective_present_mode();
   const bool share = &s == &R.drc && setting == kPresentFifo && drc_vsync_shared();
-  const int wanted = share ? present_mode_without_second_vsync(offered) : setting;
+  int wanted = share ? present_mode_without_second_vsync(offered) : setting;
+  const bool fifoMailbox = setting == kPresentFifo && wanted == kPresentFifo && !gx2::uncapped() &&
+      (offered & (1u << kPresentMailbox));
+  if (fifoMailbox)
+    wanted = kPresentMailbox;
   const int chosen = offered & (1u << wanted) ? wanted : kPresentFifo;
   ci.presentMode = kModes[chosen];
   if (chosen != s.presentMode || setting != s.presentWanted || share != s.presentShared)
-    LOG("[vulkan] %s present mode %s (available: %s)%s", &s == &R.tv ? "TV" : "GamePad", present_mode_name(chosen),
-        offeredNames.c_str(), chosen != wanted ? " - the requested mode is not offered" : "");
+    LOG("[vulkan] %s present mode %s (available: %s)%s%s", &s == &R.tv ? "TV" : "GamePad", present_mode_name(chosen),
+        offeredNames.c_str(), chosen != wanted ? " - the requested mode is not offered" : "",
+        fifoMailbox ? ", guest vsync already waits" : "");
   s.presentMode = chosen;
   s.presentWanted = setting;
   s.presentShared = share;
