@@ -43,4 +43,4 @@ The port runs with `--game` pointing at this folder.
 
 ## More detail
 
-See the root [README.md](../README.md) and [docs/nsmbu/port.md](../docs/nsmbu/port.md).
+See [CONTRIBUTING.md](../CONTRIBUTING.md) and [docs/nsmbu/port.md](../docs/nsmbu/port.md).

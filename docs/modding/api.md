@@ -534,7 +534,7 @@ It does not change the pad.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `buttons` | integer | Bit mask. The bits match `runtime/src/input.h`. |
+| `buttons` | integer | Bit mask. The bits match `runtime/src/input/input.h`. |
 | `lx`, `ly` | number | Left stick, about `-1` .. `1`. |
 | `rx`, `ry` | number | Right stick. |
 | `touch` | boolean | Touch is down. |

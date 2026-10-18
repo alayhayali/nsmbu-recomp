@@ -13,16 +13,16 @@ import builds
 
 ROOT = Path(__file__).resolve().parents[2]
 NON_ADDRESS = {
-    ("runtime.h", 0x02800000): "foreground bucket size",
-    ("runtime.h", 0x02000000): "MEM1 size",
+    ("core/runtime.h", 0x02800000): "foreground bucket size",
+    ("core/runtime.h", 0x02000000): "MEM1 size",
     ("mods/luau_guest.cpp", 0x02800000): "foreground bucket size",
     ("mods/luau_guest.cpp", 0x02000000): "MEM1 size",
-    ("core.cpp", 0x02000000): "executable memory lower bound",
+    ("core/core.cpp", 0x02000000): "executable memory lower bound",
     ("gfx/metal/metal_main.mm", 0x02000000): "executable memory lower bound",
     ("hle/system_stubs.cpp", 0x02000000): "executable memory lower bound",
     ("mods/mod_archive.cpp", 0x02014B50): "ZIP central directory signature",
 }
-NON_ADDRESS.update({("espresso_fp.c", value): "frsqrte mantissa lookup table"
+NON_ADDRESS.update({("core/espresso_fp.c", value): "frsqrte mantissa lookup table"
                     for value in (0x02FB7000, 0x02D26000, 0x02AC0000, 0x02881000,
                                   0x02665000, 0x02468000, 0x02287000, 0x020C1000)})
 TRIVIA = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
@@ -93,7 +93,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(errors, [], "\n".join(errors))
 
     def test_portable_play_fields_keep_their_offsets(self):
-        source = (ROOT / "runtime/src/savestate.cpp").read_text(encoding="utf-8")
+        source = (ROOT / "runtime/src/save/savestate.cpp").read_text(encoding="utf-8")
         match = re.search(r'kPlay\s*=\s*GD\(0x([0-9a-fA-F]+)\)', source)
         if not match:
             self.skipTest("no kPlay GD base in savestate.cpp")

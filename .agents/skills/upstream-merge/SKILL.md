@@ -24,8 +24,8 @@ A squash is one pass this time and a full pass on every later update, because it
    Run `git add` on a file only after `git diff` on that file shows no conflict markers.
 5. `git diff --check` is clean.
    `git grep -n '<<<<<<<' -- ':!runtime/third_party' ':!references'` prints nothing.
-6. Set the recorded base in `docs/nsmbu/port.md` and the last-merge note in `README.md` to `git rev-parse upstream/main`, plus that commit's subject and author date.
-   In `README.md`, keep the sentence form `The last merge from [ZeldaWWHDRecomp](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp) is commit \`<hash>\`.`
+6. Set the recorded base in `docs/nsmbu/port.md` and the last-merge note in `CONTRIBUTING.md` to `git rev-parse upstream/main`, plus that commit's subject and author date.
+   In `CONTRIBUTING.md`, keep the sentence form `The last merge from [ZeldaWWHDRecomp](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp) is commit \`<hash>\`.`
 7. When `build/Makefile` exists, run `make -C build -j"$(nproc)" nsmbu`.
 8. Finish the merge with those doc files included.
    Do not push.

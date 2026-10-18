@@ -49,7 +49,7 @@ M3 (the console budget is 33 ms), and there is no JIT warm-up or translation stu
 ## The operating system: native implementations of Cafe OS
 
 The game imports a few hundred system functions. The ones it uses are reimplemented natively
-(`runtime/src/hle/`, `runtime/src/threads.cpp`):
+(`runtime/src/hle/`, `runtime/src/core/threads.cpp`):
 
 - **Threads.** Every guest thread is a host thread, but guest code runs only while that thread holds
   its emulated core. That reproduces Cafe OS behaviour:
@@ -85,7 +85,7 @@ packets, rebuilds GPU register state, and translates draws to a host graphics AP
    - picks and caches pipeline, depth/stencil and sampler states from the registers;
    - detiles textures from guest memory with Cemu's AddrLib, and uploads them again when the CPU
      changes them: the host pages of every uploaded texture (all mip levels) are write-protected, so
-     the first write to one faults once and marks it (`runtime/src/write_watch.h`); the next use of
+     the first write to one faults once and marks it (`runtime/src/core/write_watch.h`); the next use of
      the texture hashes all of its bytes and re-uploads it if they differ. The game does not announce
      every such write (GX2Invalidate mostly comes in its "everything" form), and a sampled check
      showed changed textures up to 64 frames late;

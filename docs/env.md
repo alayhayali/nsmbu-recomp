@@ -1,8 +1,8 @@
 # Runtime environment variables
 
-`runtime/src/env.h` is the list of `NSMBU_*` names the runtime reads.
+`runtime/src/core/env.h` is the list of `NSMBU_*` names the runtime reads.
 Each name is an `inline` `env::Var` in that header.
-`runtime/src/env.cpp` implements `env::unset`.
+`runtime/src/core/env.cpp` implements `env::unset`.
 
 A read is a call on the object.
 `env::NO_HOST_INPUT()` returns the same pointer `getenv` returns.
@@ -14,7 +14,7 @@ A read is a call on the object.
 The C++ name is the environment name without `NSMBU_`.
 `NSMBU_VK_DRAW_BATCH` is `env::VK_DRAW_BATCH`.
 
-To add a variable, add one `ENV` line in `runtime/src/env.h`.
+To add a variable, add one `ENV` line in `runtime/src/core/env.h`.
 
 A write stays `setenv` at the call site (`_putenv_s` on Windows).
 An `NSMBU_*` write passes `.name()`, as in `setenv(env::STATE_DIR.name(), path, 0)`.
@@ -22,7 +22,7 @@ An `NSMBU_*` write passes `.name()`, as in `setenv(env::STATE_DIR.name(), path, 
 
 Host names stay on `getenv`: `HOME`, `APPDATA`, `USER`, `USERNAME`, `USERPROFILE`, and `XDG_CONFIG_HOME`.
 The MoltenVK settings `MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS` and `MVK_CONFIG_PREFILL_METAL_COMMAND_BUFFERS` stay on `setenv` in the Vulkan backend.
-Those names are not in `runtime/src/env.h`.
+Those names are not in `runtime/src/core/env.h`.
 
 On Android, `env.txt` lines are file data applied with `setenv`.
 They are not a second list of variable names.

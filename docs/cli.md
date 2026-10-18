@@ -94,9 +94,9 @@ Live `open` / `press` / `screenshot` is the interactive loop.
 
 ## Runtime work
 
-New small module (for example `runtime/src/agent_ctl.cpp` and header):
+New small module (for example `runtime/src/agent/agent_ctl.cpp` and header):
 
-- Start listener when `NSMBU_AGENT_SOCK` (or equivalent `env::` entry in `runtime/src/env.h`) is set by the CLI.
+- Start listener when `NSMBU_AGENT_SOCK` (or equivalent `env::` entry in `runtime/src/core/env.h`) is set by the CLI.
 - Accept one local client connection at a time (or multiplex simple request IDs).
 - Apply pad overlay each `input::read()`.
 - Service screenshot, status, and quit on the render/host thread safely (queue commands, apply on known threads — same discipline as overlay / `hostui::post`).
@@ -106,7 +106,7 @@ No change to the replay file format or `NSMBU_PRESS` start-only tables except co
 
 ## Docs and agent skills
 
-`README.md`, `docs/nsmbu/port.md`, `docs/automation.md`, `AGENTS.md`, and `.agents/skills/build/SKILL.md` use `nsmbu …` for CLI invocations.
+`CONTRIBUTING.md`, `docs/nsmbu/port.md`, `docs/automation.md`, `AGENTS.md`, and `.agents/skills/build/SKILL.md` use `nsmbu …` for CLI invocations.
 `.agents/skills/nsmbu/SKILL.md` documents install, the single-instance control loop (`open` → `status` / `screenshot` → `press` → `wait` → `close`), and that complex input stays on `record` / `replay`.
 
 ## Implementation notes

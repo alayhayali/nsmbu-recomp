@@ -63,7 +63,7 @@ into the states folder as `slotN.wwstate` and loading slot N, or with
 
 ## What a portable state holds
 
-A UTF-8 text file of `key = value` lines (`runtime/src/portable_state.h`):
+A UTF-8 text file of `key = value` lines (`runtime/src/save/portable_state.h`):
 
 - header: `format` (1), `title_id` and `title_version` (from `meta/meta.xml`), `game_hash` (a hash
   of `red-pro2.rpx`, to tell executables apart; not its contents), `runtime` (version and commit),

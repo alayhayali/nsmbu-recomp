@@ -523,7 +523,7 @@ sampled words (Metal: of the base level only). The game changes textures in plac
 it, so a change between the samples showed up to 63 frames late, and two runs reaching the same scene
 at different frame counts could render it differently (Mirror Shield in the Wind Temple: 668 pixels).
 
-Now both renderers use page write tracking (`runtime/src/write_watch.cpp`): each full check
+Now both renderers use page write tracking (`runtime/src/core/write_watch.cpp`): each full check
 write-protects the host pages of all the texture's levels and records a stamp; the first CPU write to
 such a page faults once, the handler stamps the page and makes it writable. A lookup re-hashes (every
 byte, every level, xxHash) only when a page carries a newer stamp, or when the game signalled a change

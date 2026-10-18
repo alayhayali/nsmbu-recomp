@@ -116,7 +116,7 @@ file(GLOB RUNTIME_SOURCES CONFIGURE_DEPENDS runtime/src/*.cpp runtime/src/*.c ru
                                             runtime/src/save/*.cpp runtime/src/text/*.cpp)
 list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "nsmbu_guest_stubs\\.c$")
 list(FILTER RUNTIME_SOURCES EXCLUDE REGEX "mod_luau_test_stubs\\.cpp$")
-list(APPEND RUNTIME_SOURCES runtime/src/platform/perf_hint.cpp)
+list(APPEND RUNTIME_SOURCES runtime/src/platform/perf_hint.cpp runtime/src/gfx/render_prof.cpp runtime/src/gfx/screenshot.cpp)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(NSMBU_GUEST_STUBS ${CMAKE_BINARY_DIR}/generated/nsmbu_guest_stubs.c)
 file(GLOB_RECURSE NSMBU_GUEST_STUB_INPUTS CONFIGURE_DEPENDS
@@ -300,6 +300,7 @@ target_compile_options(game_languages_test PRIVATE -UNDEBUG)
 target_link_libraries(game_languages_test PRIVATE Threads::Threads)
 
 add_executable(interp_pacing_test runtime/tools/interp_pacing_test.cpp)
+target_include_directories(interp_pacing_test PRIVATE runtime/src)
 target_compile_options(interp_pacing_test PRIVATE -UNDEBUG)
 
 add_executable(quit_prompt_test runtime/tools/quit_prompt_test.cpp runtime/src/core/env.cpp)

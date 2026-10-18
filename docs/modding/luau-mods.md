@@ -415,7 +415,7 @@ This proposal does not include that hatch.
 
 ## Save states
 
-Guest mods record enabled mod id and version in the portable state (`runtime/src/portable_state.cpp`, section handled with `guestmods::ModIdentity`).
+Guest mods record enabled mod id and version in the portable state (`runtime/src/save/portable_state.cpp`, section handled with `guestmods::ModIdentity`).
 Replace that list with enabled Luau packages (id and version).
 Keep the warning when the set differs.
 Drop guest RAM regions for mod code and the guest heap from the state format, unless `nsmbu.Guest.alloc` exists.
@@ -588,4 +588,4 @@ Do not copy their code without a license review.
 | Code-mod rebuild | Removed (`runtime/src/mods/code_mods.cpp`) |
 | Guest toolchain | Removed (`tools/guestmod/`) |
 | Hook emission | Removed for guest mods (`--mod-hooks` in `tools/recomp/recomp.py`) |
-| Mod identity in states | `runtime/src/portable_state.cpp` |
+| Mod identity in states | `runtime/src/save/portable_state.cpp` |

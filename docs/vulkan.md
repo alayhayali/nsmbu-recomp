@@ -43,7 +43,7 @@ filter), and `gfx/vulkan/present.cpp` draws it. The TV window title starts with 
 | Controls window, keyboard, game controllers, mods | yes | yes |
 | Frame dumps `NSMBU_DUMP_FRAMES`, `NSMBU_DUMP_PRESENT` | yes | yes |
 | Capture frame (P) | pictures + draw log | pictures only (no draw log) |
-| Screenshot key (F10, `runtime/src/screenshot.h`) | yes | yes (read back at the submission's fence, no wait) |
+| Screenshot key (F10, `runtime/src/gfx/screenshot.h`) | yes | yes (read back at the submission's fence, no wait) |
 | Shader head start (`--warm-shaders`) | yes | no (Vulkan keeps its own SPIR-V / pipeline caches) |
 
 Other builds: `-DNSMBU_RENDERER=METAL` (Metal only, no Vulkan dependencies) and
@@ -284,7 +284,7 @@ wait timers disabled. CPU time excludes sleeping and GPU waits.
 | `NSMBU_VK_SHADER_STATE_MEMO` | Retains four exact gathered linkage-key entries per shader stage. Every lookup freshly gathers all linkage words and compares every active byte, count, and program hash seed. Misses use the identical hash mixer; save-state and sentinel calls clear the memo. |
 | `NSMBU_VK_SKIP_VERTEX_BINDS` | Omits only identical host vertex buffer/offset bindings after fresh snapshot preparation. Sixteen binding slots are guarded by command buffer, submission generation, and pass resets. Index bindings remain fresh. Combine with exact vertex snapshot reuse to make unchanged slice identities available. |
 | `NSMBU_VK_SAMPLER_MEMO` | Reuses immutable sampler handles after exact device, fresh sampler-word, compare/integer, and effective anisotropy matching. Texture preparation still runs before lookup. |
-| `NSMBU_VK_SPARSE_HASH_MEMO` | Only used where page write tracking is unavailable (texture changes are detected by `runtime/src/write_watch.h`; the sparse check is its fallback). Compares all freshly read, ordered sparse texture samples before reusing their hash. Full texture checks, invalidation, and uploads remain unchanged. Retains 64 entries by default; `NSMBU_VK_SPARSE_HASH_ENTRIES=256` selects a bounded 16 MiB sample store. Oversized sample sets stream through the original mixer. |
+| `NSMBU_VK_SPARSE_HASH_MEMO` | Only used where page write tracking is unavailable (texture changes are detected by `runtime/src/core/write_watch.h`; the sparse check is its fallback). Compares all freshly read, ordered sparse texture samples before reusing their hash. Full texture checks, invalidation, and uploads remain unchanged. Retains 64 entries by default; `NSMBU_VK_SPARSE_HASH_ENTRIES=256` selects a bounded 16 MiB sample store. Oversized sample sets stream through the original mixer. |
 | `NSMBU_VK_SHADER_KEY_DIRTY` | Avoids shader-generation bumps only for explicitly classified register bits absent from the current Vulkan shader key. Program headers, fetch strides, unknown registers, and context/save-state invalidation remain conservative. |
 | `NSMBU_VK_VERTEX_HISTORY_REUSE` | Adds a second distinct vertex snapshot key per binding, requiring `NSMBU_VK_REUSE_VERTEX_SNAPSHOTS=1`. Every candidate receives a fresh full payload comparison within the same device/submission generation; changed bytes allocate a fresh slice. |
 
@@ -353,7 +353,7 @@ protected regions. Please run a normal play session, or the benchmark scene, onc
   (`tools/bench/run_bench.py --variant off:NSMBU_VK_BUFFER_CACHE=0 --variant on:NSMBU_VK_BUFFER_CACHE=1`).
 
 - **Validity without hashing.** An entry is current while none of its pages has a newer stamp in the
-  page write tracker (`runtime/src/write_watch.h`, shared with the texture checks): the upload arms
+  page write tracker (`runtime/src/core/write_watch.h`, shared with the texture checks): the upload arms
   (write-protects) the range before reading it, and the first CPU write to such a page faults once and
   stamps it. Kernel writes are bracketed by `HostWrite` (FSReadFile). Explicit guest signals stamp a
   separate hint array that only the buffer cache reads: `DCFlushRange`, `DCFlushRangeNoSync`,
@@ -625,11 +625,11 @@ private; they contain game imagery.
 
 ## Render-thread profiler
 
-`runtime/src/render_prof.h` (both renderers) is on by default and cheap (`NSMBU_PROFILE=0` turns it
+`runtime/src/gfx/render_prof.h` (both renderers) is on by default and cheap (`NSMBU_PROFILE=0` turns it
 off). Every 120 frames it builds a report that `NSMBU_PROFILE=1`, `NSMBU_VK_STATS` or
 `NSMBU_VK_CPU_ONLY_STATS=1` log as `[prof]` lines, and that the settings overlay's
 **Copy performance report** button (Graphics tab) puts on the clipboard. Its two header lines
-(`runtime/src/report_header.h`) say where the report comes from: the version and commit (release
+(`runtime/src/crash/report_header.h`) say where the report comes from: the version and commit (release
 builds: the tag; others `git describe`, e.g. `v0.2.5+3`), the OS and version, the GPU with its driver
 version (decoded as vulkaninfo does) and Vulkan version, or the Metal device; then the renderer, host,
 frame mode, internal scale, buffer cache on/off, the gyro source when not off, and as `overrides:` the

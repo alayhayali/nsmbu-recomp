@@ -19,7 +19,7 @@ Loads and stores are host accesses plus a byte swap.
 
 One guest thread runs on an emulated core at a time.
 
-`runtime/src/threads.cpp` applies Cafe OS priority on host threads.
+`runtime/src/core/threads.cpp` applies Cafe OS priority on host threads.
 
 `tools/recomp/recomp.py` writes `build/gen/code_*.c`, `table.c`, and `imports.c`.
 

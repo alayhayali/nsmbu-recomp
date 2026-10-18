@@ -1,6 +1,6 @@
 
 
-#include "../src/quit_prompt.h"
+#include "overlay/quit_prompt.h"
 
 #include <cstdio>
 #include <map>

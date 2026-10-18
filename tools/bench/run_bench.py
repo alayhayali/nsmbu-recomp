@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Fixed-scene renderer benchmark: runs the game headless from a save state with scripted input and
-summarizes the render-thread profiler's reports (runtime/src/render_prof.h) as JSON and CSV.
+summarizes the render-thread profiler's reports (runtime/src/gfx/render_prof.h) as JSON and CSV.
 
 Every run uses a fresh COPY of the save, the given save-state folder (read only: the state file is
 loaded, never written), its own shader caches and settings files, no audio, no gamepad and no host

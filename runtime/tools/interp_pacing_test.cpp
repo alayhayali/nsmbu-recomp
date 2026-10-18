@@ -1,6 +1,6 @@
 
 
-#include "../src/interp_pacing.h"
+#include "hooks/interp_pacing.h"
 
 #include <cmath>
 #include <cstdio>

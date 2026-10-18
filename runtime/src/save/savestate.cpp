@@ -38,7 +38,7 @@
 #include "crash/crashrec.h"
 #include "save/portable_state.h"
 #include "save/state_memory.h"
-#include "quit_prompt.h"
+#include "overlay/quit_prompt.h"
 #include "input/rumble.h"
 
 bool threads_ss_save(ss::Writer& w, std::string& why);

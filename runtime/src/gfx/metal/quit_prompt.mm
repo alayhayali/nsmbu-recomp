@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <string>
 
-#include "../../quit_prompt.h"
+#include "overlay/quit_prompt.h"
 #include "save/savestate.h"
 #include "gfx/renderer.h"
 #include "core/runtime.h"
