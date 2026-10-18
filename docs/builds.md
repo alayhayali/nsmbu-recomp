@@ -34,9 +34,7 @@ python3 tools/recomp/mkbuildmap.py usa/code/red-pro2.rpx combo-eu/code/red-pro2.
 ```
 
 Japan (`00050000-10101c00`) has no map yet.
-Language packs can still lend European or Japanese text to the USA build
-([language-packs.md](language-packs.md)).
-When the running build is Europe or a Europe combo pack, its own text packs are used; a language source is not needed for that install.
+When the running build is Europe or a Europe combo pack, its own text files are used.
 
 ## How the port uses the registry
 

@@ -4,7 +4,7 @@
 int main() {
     for (bool legacy : {false, true}) for (unsigned mode : {0u, 1u, 2u, 3u}) {
         ss::FullStateHeader h{};
-        memcpy(h.magic, "WWHDSTAT", 8);
+        memcpy(h.magic, "NSMBUSAV", 8);
         h.version = 1;
         h.header_size = legacy ? ss::kLegacyHeaderSize : sizeof h;
         h.controller = mode;
@@ -28,7 +28,7 @@ int main() {
         fclose(file);
     }
     ss::FullStateHeader h{};
-    memcpy(h.magic, "WWHDSTAT", 8);
+    memcpy(h.magic, "NSMBUSAV", 8);
     h.header_size = sizeof h;
     FILE* file = tmpfile();
     fwrite(&h, ss::kLegacyHeaderSize, 1, file);

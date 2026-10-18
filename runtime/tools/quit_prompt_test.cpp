@@ -25,11 +25,7 @@ int main() {
     using namespace quitprompt;
 
     CHECK(!gameplay_stage(""));
-    CHECK(!gameplay_stage("sea_T"));
-    CHECK(!gameplay_stage("Name"));
-    CHECK(gameplay_stage("sea"));
-    CHECK(gameplay_stage("LinkRM"));
-    CHECK(gameplay_stage("M_NewD2"));
+    CHECK(gameplay_stage("1-1"));
 
     g_env.clear();
     CHECK(!suppressed(fake_env));

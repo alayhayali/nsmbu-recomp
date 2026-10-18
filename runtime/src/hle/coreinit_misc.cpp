@@ -119,24 +119,7 @@ static uint32_t console_language() {
             }
         }
 
-        std::string region_text;
-        const char* env_language = env::LANGUAGE();
-        if (const char* r = env::LANGUAGE_REGION(); r && *r) region_text = r;
-        else if ((!env_language || !*env_language) && !hostui::get("language_region", region_text)) region_text.clear();
-        const int region = game_lang::region_from_code(region_text);
-        const game_lang::Start s = game_lang::choose((int)v, region);
-        if (s.pack) {
-            LOG("[config] %s from the language source (%s): %s%s", game_lang::name(s.language),
-                game_lang::region_name(s.region), s.pack->host.c_str(),
-                s.region == game_lang::kJapan ? " (untested with a Japanese game so far)" : "");
-        } else {
-            if (region != game_lang::kNoRegion && region != game_lang::kUsa)
-                LOG("[config] no %s language source has %s (%s); using the installed game's languages",
-                    game_lang::region_name(region), game_lang::name((int)v), game_lang::sources_dir().c_str());
-            if (s.language != v)
-                LOG("[config] %s is not on this disc (%s); the game gets %s", game_lang::name((int)v),
-                    game_lang::region().c_str(), game_lang::name(s.language));
-        }
+        const game_lang::Start s = game_lang::choose((int)v);
         game_lang::begin(s);
         return (uint32_t)s.language;
     }();

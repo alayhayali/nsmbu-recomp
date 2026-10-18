@@ -8,8 +8,8 @@ text itself.
 
 ## When it is on
 
-At start the game opens its 2D language pack (the installed game's, a language source's or a
-content mod's). If that pack's message font (`CKingMsg.bffnt`) has Arabic or Hebrew letters
+At start the game opens its 2D language pack (the installed game's or a content mod's). If
+that pack's message font (`CKingMsg.bffnt`) has Arabic or Hebrew letters
 (at least 20 of U+0621..U+064A or U+05D0..U+05EA), right-to-left text is on for the session and
 the log says so:
 
@@ -31,7 +31,7 @@ right-to-left letters (a name, a number) is printed by the unchanged code.
   instead of showing as boxes; they don't break the joining of the letters around them.
 * **Order.** Each line is shown right to left (Unicode Bidirectional Algorithm without explicit
   embeddings: weak and neutral types, implicit levels, trailing spaces, reordering per line,
-  mirrored brackets). Numbers and Latin words (a Latin player name, "Link") keep their left to
+  mirrored brackets). Numbers and Latin words (a Latin player name, "Mario") keep their left to
   right order inside the line; punctuation and button icons go with the words around them. The
   paragraph direction is right to left for every text that has a right-to-left letter.
 * **Alignment.** Lines that the layout aligns left are aligned right: in a left-positioned text

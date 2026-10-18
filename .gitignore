@@ -35,8 +35,6 @@ draw_*.png
 template.bin
 shaderprep_template.bin
 headstart.bin
-# GameCube decompilation (zeldaret/tww), reference only
-/tww/
 # logs and dumps (may contain game text or imagery)
 *.log
 *.metal

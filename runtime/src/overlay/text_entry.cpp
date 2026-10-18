@@ -537,11 +537,9 @@ void window() {
 
 bool start(const Request& r, Done done) {
     if (!overlay::alive()) return false;
-    auto glyphs = game_font::name_glyphs(r.language);
     {
         std::lock_guard<std::mutex> lk(g_mu);
         g_req = r;
-        g_req.glyphs = std::move(glyphs);
         if ((int)g_req.initial.size() > g_req.max_len) g_req.initial.resize(std::max(0, g_req.max_len));
         g_done = std::move(done);
         g_serial++;

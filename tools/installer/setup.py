@@ -21,16 +21,7 @@ Non-interactive use (tests, scripts):
   setup.py --yes --archive GAME.wua [...]
   setup.py --yes --game-dir EXTRACTED_GAME [...]
   setup.py --yes --gen-dir GENERATED_C --no-launch   (build check with placeholder code, no game)
-  setup.py --yes --language-source EUR_OR_JPN.wux|.wua|FOLDER [--language-disc-key FILE] --common-key FILE
-                                                     (experimental: text in German, Italian, Japanese... from
-                                                     your own European or Japanese game; see below)
-  setup.py --remove-language-source EU|JP
 
-Language sources (experimental, docs/language-packs.md): the USA game plays with the text, fonts and
-2D layouts of a European or Japanese copy of the game you also own. Only those language files are
-taken from it (content/Common/Pack/permanent_2d_*.pack, about 12 MB each) into data/game-lang/<EU|JP>;
-the game itself is still built from the USA game. Its languages then appear in the game's settings
-(Language). Tested with the European game; untested with the Japanese game so far.
 Keys can also come from the WIIU_COMMON_KEY environment variable / IMAGE.key next to the image.
 Keys are never printed, logged or stored.
 """
@@ -1038,202 +1029,12 @@ def replace_dir(new, dst):
     os.replace(new, dst)
     shutil.rmtree(old, ignore_errors=True)
 
-LANGUAGE_SOURCE_TITLES = {"0005000010101e00": "EU", "0005000010101c00": "JP"}
-LANGUAGE_SOURCE_FILES = ["content/Common/Pack/permanent_2d_*.pack", "meta/meta.xml"]
-
-LANGUAGE_PACKS = {
-    "EU": {"permanent_2d_euenglish.pack": "English", "permanent_2d_eufrench.pack": "French",
-           "permanent_2d_eugerman.pack": "German", "permanent_2d_euitalian.pack": "Italian",
-           "permanent_2d_euspanish.pack": "Spanish"},
-    "JP": {"permanent_2d_jpjapanese.pack": "Japanese"},
-}
-LANGUAGE_REGION_NAMES = {"EU": "Europe", "JP": "Japan"}
-LANGUAGE_SOURCE_MANIFEST = "language-source.json"
-
-def language_root(data_dir):
-    return os.path.join(data_dir, "game-lang")
-
-def language_source_region(title_id):
-    """EU or JP for the title id of a European or Japanese game; SetupError (why it can't be used) otherwise."""
-    tid = (title_id or "").lower()
-    if tid in LANGUAGE_SOURCE_TITLES:
-        return LANGUAGE_SOURCE_TITLES[tid]
-    if tid == SUPPORTED_TITLE:
-        raise SetupError("this is the USA game, whose languages (English, French, Spanish) the port already has. A "
-                         "language source is the European (00050000-10101e00) or Japanese (00050000-10101c00) game")
-    if tid[:8] in ("0005000e", "0005000c") and ("00050000" + tid[8:]) in TITLE_IDS:
-        raise SetupError("this is %s, not the game itself: a language source is the European or Japanese game "
-                         "(title 00050000-10101e00 or 00050000-10101c00)" % title_desc(tid))
-    raise SetupError("this is not the European or Japanese version of New Super Mario Bros. U (title %s); a language source "
-                     "is title 00050000-10101e00 (Europe) or 00050000-10101c00 (Japan)" % (tid or "unknown"))
-
-def find_dir_nocase(base, *parts):
-    """base/part/... matched without case (a disc's spelling on any host); None if a part is missing."""
-    at = base
-    for part in parts:
-        try:
-            names = os.listdir(at)
-        except OSError:
-            return None
-        hit = [n for n in names if n.lower() == part.lower() and os.path.isdir(os.path.join(at, n))]
-        if not hit:
-            return None
-        at = os.path.join(at, sorted(hit)[0])
-    return at
-
-def language_files_in(folder):
-    """The language packs in an extracted game folder: [(file name, path)], any case."""
-    pack = find_dir_nocase(folder, "content", "Common", "Pack")
-    if not pack:
-        return []
-    return sorted((n, os.path.join(pack, n)) for n in os.listdir(pack)
-                  if re.match(r"permanent_2d_.*\.pack$", n, re.I) and os.path.isfile(os.path.join(pack, n)))
-
-def finish_language_source(tmp, region, title_id, source_name, data_dir):
-    """Checks the packs taken into tmp (an extracted folder), writes its manifest and moves it to
-    data/game-lang/<region>. Returns the manifest."""
-    known = LANGUAGE_PACKS[region]
-    packs, ignored = [], []
-    for name, path in language_files_in(tmp):
-        if name.lower() not in known:
-            ignored.append(name)
-            os.remove(path)
-            continue
-        with open(path, "rb") as f:
-            head = f.read(4)
-        if head != b"SARC":
-            shutil.rmtree(tmp, ignore_errors=True)
-            raise SetupError("%s is not a language pack (damaged or not from the game)" % name)
-        packs.append({"file": name, "language": known[name.lower()], "bytes": os.path.getsize(path),
-                      "sha256": file_sha256(path)})
-    if not packs:
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise SetupError("no language packs (content/Common/Pack/permanent_2d_%s*.pack) were found in this %s game"
-                         % ("Eu" if region == "EU" else "Jp", LANGUAGE_REGION_NAMES[region]))
-    for name in ignored:
-        say("  Not used: %s (the game does not know this pack)" % name)
-    manifest = {"format_version": 1, "region": region, "title_id": title_id, "source": source_name,
-                "packs": packs,
-                "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    with open(os.path.join(tmp, LANGUAGE_SOURCE_MANIFEST), "w") as f:
-        json.dump(manifest, f, indent=1)
-    dst = os.path.join(language_root(data_dir), region)
-    replace_dir(tmp, dst)
-    say("  %s game: %s" % (LANGUAGE_REGION_NAMES[region], ", ".join(p["language"] for p in packs)))
-    LOG.write("language source %s from %s: %s" % (region, source_name, ", ".join(p["file"] for p in packs)))
-    return manifest
-
-def language_sources(data_dir):
-    """The installed language sources: [manifest] (with "dir")."""
-    out = []
-    root = language_root(data_dir)
-    for region in sorted(LANGUAGE_PACKS):
-        d = os.path.join(root, region)
-        try:
-            with open(os.path.join(d, LANGUAGE_SOURCE_MANIFEST)) as f:
-                m = json.load(f)
-        except (OSError, ValueError):
-            continue
-        m["dir"] = d
-        out.append(m)
-    return out
-
-def remove_language_source(data_dir, region):
-    region = (region or "").upper()
-    if region not in LANGUAGE_PACKS:
-        raise SetupError("unknown language source %r (EU or JP)" % region)
-    d = os.path.join(language_root(data_dir), region)
-    if not os.path.isdir(d):
-        raise SetupError("there is no %s language source" % LANGUAGE_REGION_NAMES[region])
-    shutil.rmtree(d)
-    return d
-
 def installed_build(game_dir):
     """The build the installed game files are, or None when nothing is installed yet."""
     try:
         return game_builds.by_sha256(file_sha256(os.path.join(game_dir, "code", "red-pro2.rpx")))
     except OSError:
         return None
-
-def check_language_source_allowed(game_dir):
-    """A language source lends the text of a European or Japanese game to the USA game's code
-    (docs/language-packs.md). Only the USA build needs and can use one: the European build has those
-    five languages itself."""
-    build = installed_build(game_dir)
-    if build is None or build.canonical:
-        return
-    raise SetupError("the installed game is the %s build, which has its own languages; a language source is only "
-                     "for the USA build (docs/language-packs.md). Choose the language in the game's settings "
-                     "(F1) > Language instead." % build.name)
-
-def add_language_source(source, data_dir, keys=None, info=None, game_dir=None):
-    """Takes the language packs of a European or Japanese game: source ("image", path) with keys and
-    disc info (nsmbu-extract info), ("archive", path) or ("folder", path). Returns [manifest] (an archive
-    can hold both)."""
-    kind, path = source
-    check_language_source_allowed(game_dir or os.path.join(data_dir, "game"))
-    root = language_root(data_dir)
-    os.makedirs(root, exist_ok=True)
-    if free_space(root) < (200 << 20):
-        raise SetupError("not enough free disk space in %s: about 200 MB needed" % root)
-    name = os.path.basename(path.rstrip("/\\"))
-    if kind == "image":
-        region = language_source_region(info.get("title_id"))
-        tmp = os.path.join(root, region + ".partial")
-        shutil.rmtree(tmp, ignore_errors=True)
-        run_extract(path, keys, tmp, only=LANGUAGE_SOURCE_FILES)
-        return [finish_language_source(tmp, region, info["title_id"].lower(), name, data_dir)]
-    if kind == "archive":
-        problem, err, ainfo = archive_info(path, title=None)
-        if problem and problem != "wrong_title":
-            raise SetupError("cannot read the archive: %s" % err)
-        titles = [t for t in ainfo.get("titles", []) if t["id"] in LANGUAGE_SOURCE_TITLES]
-        if not titles:
-            found = ", ".join("%s (%s)" % (title_desc(t["id"], t["version"]), t["folder"]) for t in ainfo.get("titles", []))
-            for t in ainfo.get("titles", []):
-                language_source_region(t["id"])
-            raise SetupError("this archive contains no European or Japanese NSMBU (it contains: %s)"
-                             % (found or "no Wii U titles"))
-        out = []
-        for t in titles:
-            region = LANGUAGE_SOURCE_TITLES[t["id"]]
-            tmp = os.path.join(root, region + ".partial")
-            shutil.rmtree(tmp, ignore_errors=True)
-            run_extract(path, None, tmp, title=t["folder"], only=LANGUAGE_SOURCE_FILES)
-            out.append(finish_language_source(tmp, region, t["id"], "%s (%s)" % (name, t["folder"]), data_dir))
-        return out
-    if kind == "folder":
-        folder = path
-        if not os.path.isfile(os.path.join(folder, "meta", "meta.xml")) and\
-                os.path.isfile(os.path.join(os.path.dirname(folder), "meta", "meta.xml")):
-            folder = os.path.dirname(folder)
-        tid = game_folder_title(folder) or code_title_version(folder)[0]
-        region = language_source_region(tid)
-        files = language_files_in(folder)
-        tmp = os.path.join(root, region + ".partial")
-        shutil.rmtree(tmp, ignore_errors=True)
-        dst = os.path.join(tmp, "content", "Common", "Pack")
-        os.makedirs(dst)
-        os.makedirs(os.path.join(tmp, "meta"))
-        shutil.copyfile(os.path.join(folder, "meta", "meta.xml"), os.path.join(tmp, "meta", "meta.xml"))
-        total = sum(os.path.getsize(p) for _, p in files) or 1
-        pr, done = Progress("copying"), 0
-        for n, p in files:
-            shutil.copyfile(p, os.path.join(dst, n))
-            done += os.path.getsize(p)
-            pr.update(done, total, "%s of %s" % (human(done), human(total)))
-        pr.done()
-        return [finish_language_source(tmp, region, tid, name, data_dir)]
-    raise SetupError("unknown language source kind %r" % kind)
-
-def language_source_kind(path):
-    if os.path.isdir(path):
-        return "folder"
-    if path.lower().endswith(".wua"):
-        return "archive"
-    if path.lower().endswith((".wux", ".wud")):
-        return "image"
-    raise SetupError("choose a .wux or .wud disc image, a .wua Cemu archive or an extracted game folder")
 
 def recompile(game_dir, gen_dir):
     shutil.rmtree(gen_dir, ignore_errors=True)
@@ -1533,38 +1334,50 @@ def save_dir(data_dir):
 def save_user_dir(data_dir):
     return os.path.join(save_dir(data_dir), "user")
 
+SAVE_FILES = ("rp_personal_savedata.dat", "rp_savedata.dat")
+
 def have_save(data_dir):
     user = save_user_dir(data_dir)
-    return os.path.isfile(os.path.join(user, "cking.sav"))
+    return os.path.isfile(os.path.join(user, "rp_personal_savedata.dat"))
 
 def import_save(kind, path, data_dir, replace=False):
-    """Copies a Wii U save (a folder with cking.sav, or cking.sav itself) into nsmbu/save/user/. An existing
-    save is only replaced when asked, and then first moved to nsmbu/save/user.backup-<time>. Returns a message."""
+    """Copies an NSMBU Wii U save (a folder holding rp_personal_savedata.dat, or the file itself) into
+    nsmbu/save/ (the personal save into user/, the common save into common/). An existing save is only
+    replaced when asked, and then first moved to nsmbu/save.backup-<time>. Returns a message."""
+    root = save_dir(data_dir)
     user = save_user_dir(data_dir)
     if have_save(data_dir) and not replace:
         raise SetupError("a save already exists in %s" % user)
-    if kind != "hd":
+    if kind != "nsmbu":
         raise SetupError("unknown save import kind %r" % kind)
     tmp = os.path.join(data_dir, "save-import.tmp")
     shutil.rmtree(tmp, ignore_errors=True)
     os.makedirs(tmp)
     try:
         src = os.path.dirname(path) if os.path.isfile(path) else path
-        savs = [f for f in os.listdir(src) if f.endswith(".sav")] if os.path.isdir(src) else []
-        if "cking.sav" not in savs:
-            raise SetupError("no cking.sav in %s" % src)
-        for f in savs:
-            shutil.copy2(os.path.join(src, f), os.path.join(tmp, f))
+        found = {}
+        for base, _, names in os.walk(src):
+            for f in names:
+                if f in SAVE_FILES and f not in found:
+                    found[f] = os.path.join(base, f)
+        if "rp_personal_savedata.dat" not in found:
+            raise SetupError("no rp_personal_savedata.dat in %s" % src)
         backup = None
-        if os.path.isdir(user) and os.listdir(user):
-            backup = user + ".backup-" + time.strftime("%Y%m%d-%H%M%S")
-            os.replace(user, backup)
-        os.makedirs(os.path.dirname(user), exist_ok=True)
-        os.replace(tmp, user)
+        if os.path.isdir(root) and any(os.listdir(p) for p in (user, os.path.join(root, "common")) if os.path.isdir(p)):
+            backup = root + ".backup-" + time.strftime("%Y%m%d-%H%M%S")
+            os.replace(root, backup)
+        os.makedirs(os.path.dirname(root), exist_ok=True)
+        os.makedirs(root)
+        os.makedirs(user)
+        shutil.copy2(found["rp_personal_savedata.dat"], os.path.join(user, "rp_personal_savedata.dat"))
+        if "rp_savedata.dat" in found:
+            common = os.path.join(root, "common")
+            os.makedirs(common)
+            shutil.copy2(found["rp_savedata.dat"], os.path.join(common, "rp_savedata.dat"))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    n = len([f for f in os.listdir(user) if f.endswith(".sav")])
-    msg = "Copied %d save file%s to %s" % (n, "" if n == 1 else "s", user)
+    n = len(SAVE_FILES) if len(found) == len(SAVE_FILES) else 1
+    msg = "Copied %d save file%s to %s" % (n, "" if n == 1 else "s", root)
     if backup:
         msg += " (the previous save is in %s)" % backup
     say("  " + msg)
@@ -1606,7 +1419,7 @@ def import_sources(path=None):
         save = None
         for rel in (("nsmbu", "save", "user"), ("save", "user")):
             candidate = os.path.join(root, *rel)
-            if os.path.isfile(os.path.join(candidate, "cking.sav")):
+            if os.path.isfile(os.path.join(candidate, "rp_personal_savedata.dat")):
                 save = candidate
                 break
         if save is None:
@@ -1620,10 +1433,10 @@ def import_sources(path=None):
             os.path.join(legacy_data_dir(), "nsmbu", "save", "user"),
             os.path.join(legacy_data_dir(), "save", "user"),
         ]
-        if os.path.isfile(os.path.join(checkout_save, "cking.sav")):
+        if os.path.isfile(os.path.join(checkout_save, "rp_personal_savedata.dat")):
             save = checkout_save
         else:
-            save = next((c for c in legacy_candidates if os.path.isfile(os.path.join(c, "cking.sav"))),
+            save = next((c for c in legacy_candidates if os.path.isfile(os.path.join(c, "rp_personal_savedata.dat"))),
                         legacy_candidates[0])
         cfg = legacy_config_dirs()
     seen = set()
@@ -1635,7 +1448,7 @@ def import_sources(path=None):
                 items.append((src, name))
     if not path and IS_MAC and "shaders.bin" not in seen and os.path.isfile(os.path.expanduser("~/Library/Caches/nsmbu/shaders.bin")):
         items.append((os.path.expanduser("~/Library/Caches/nsmbu/shaders.bin"), "shaders.bin"))
-    has_save = os.path.isfile(os.path.join(save, "cking.sav"))
+    has_save = os.path.isfile(os.path.join(save, "rp_personal_savedata.dat"))
     return (save if has_save else None), items
 
 def import_existing(data_dir, path=None, replace=False):
@@ -1647,7 +1460,7 @@ def import_existing(data_dir, path=None, replace=False):
         raise SetupError("no saves or settings found there")
     msgs = []
     if save:
-        msgs.append(import_save("hd", save, data_dir, replace))
+        msgs.append(import_save("nsmbu", save, data_dir, replace))
     user = os.path.join(data_dir, "nsmbu")
     os.makedirs(user, exist_ok=True)
     copied = []
@@ -1674,7 +1487,7 @@ def maybe_import_save(ui, data_dir):
         say("  Your existing save in %s is kept." % user)
         return
     options = ["no, start with a new save",
-               "an NSMBU save (a folder with cking.sav, e.g. from Cemu or a Wii U)",
+               "an NSMBU save (a folder with rp_personal_savedata.dat, e.g. from Cemu or a Wii U)",
                "copy saves and settings from another NSMBU folder"]
     legacy = PORTABLE and any(import_sources())
     if legacy:
@@ -1688,7 +1501,8 @@ def maybe_import_save(ui, data_dir):
         elif i == 3:
             import_existing(data_dir)
         elif i == 1:
-            import_save("hd", ui.pick_path("Choose the folder that contains cking.sav", folder=True), data_dir)
+            import_save("nsmbu", ui.pick_path("Choose the folder that contains rp_personal_savedata.dat", folder=True),
+                        data_dir)
     except SetupError as e:
         say("  Save not imported: %s (you can copy it to %s later)" % (e, user))
 
@@ -1949,23 +1763,6 @@ def install(ctx, source, keys=None, info=None, ui=None, check_keys=None):
     write_state(data_dir, state)
     return state
 
-def run_language_source(args, ui, data_dir, path):
-    """setup --language-source: the language packs of the player's European or Japanese game."""
-    say("")
-    say("Language source (experimental): %s" % path)
-    kind = language_source_kind(path)
-    keys = info = None
-    if kind == "image":
-        side_args = argparse.Namespace(disc_key=args.language_disc_key, common_key=args.common_key)
-        keys, info = get_disc_keys(path, ui, side_args)
-    game_dir = read_state(data_dir).get("game_dir") or os.path.join(data_dir, "game")
-    manifests = add_language_source((kind, path), data_dir, keys, info, game_dir)
-    for m in manifests:
-        say("Added the %s languages: %s. Choose one in the game's settings (F1, Language); it applies on the next "
-            "start.%s" % (LANGUAGE_REGION_NAMES[m["region"]], ", ".join(p["language"] for p in m["packs"]),
-                          " This is untested with the Japanese game so far: please report what looks wrong."
-                          if m["region"] == "JP" else ""))
-
 def main():
     ap = argparse.ArgumentParser(description="NSMBU setup", formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog=__doc__)
@@ -1986,13 +1783,6 @@ def main():
     ap.add_argument("--shortcuts", action="store_true",
                     help="portable release: also add a shortcut (Applications / Start menu / applications menu)")
     ap.add_argument("--keep-work", action="store_true", help="keep the generated code and objects")
-    ap.add_argument("--language-source", metavar="PATH",
-                    help="experimental: take the language files (text, fonts, 2D layouts) of your European or "
-                         "Japanese game (.wux/.wud, .wua or extracted folder) into the installation; the game is "
-                         "still built from the USA game")
-    ap.add_argument("--language-disc-key", metavar="FILE", help="the disc key of the --language-source disc image "
-                    "(default: its IMAGE.key)")
-    ap.add_argument("--remove-language-source", metavar="EU|JP", help="remove a language source")
     ap.add_argument("--gui-protocol", action="store_true",
                     help="machine interface for the graphical installer (JSON lines; see tools/installer/README.md)")
     args = ap.parse_args()
@@ -2030,13 +1820,6 @@ def run(args, ui):
     say("Install folder: %s" % data_dir)
     state = ctx.state()
     installed = ctx.installed()
-    if args.remove_language_source:
-        say("Removed %s" % remove_language_source(data_dir, args.remove_language_source))
-        return 0
-    if args.language_source:
-        run_language_source(args, ui, data_dir, os.path.abspath(clean_path(args.language_source)))
-        return 0
-
     source = None
     if args.gen_dir:
         source = ("gen", os.path.abspath(args.gen_dir))
@@ -2065,17 +1848,11 @@ def run(args, ui):
         else:
             i = ui.choose("The game is installed (%s). What do you want to do?" % version,
                           ["play", "repair (rebuild the game code; keeps game files and saves)",
-                           "reinstall from a disc image, Cemu archive or game folder",
-                           "add the languages of your European or Japanese game (experimental)", "quit"])
+                           "reinstall from a disc image, Cemu archive or game folder", "quit"])
             if i == 0:
                 launch(state, data_dir)
                 return 0
-            if i == 4:
-                return 0
             if i == 3:
-                p = ui.pick_path("Choose your European or Japanese NSMBU (.wux/.wud disc image, .wua Cemu "
-                                 "archive or extracted folder)")
-                run_language_source(args, ui, data_dir, p)
                 return 0
             if i == 1:
                 source = ("installed", game_dir)
@@ -2178,7 +1955,6 @@ def gui_main(args):
                   "installed": st if ctx.installed() else None, "game_files": valid_game_folder(ctx.game_dir),
                   "game_dir": ctx.game_dir, "save_exists": have_save(ctx.data_dir),
                   "legacy": bool(legacy_save or legacy_items), "free_bytes": free_space(ctx.data_dir),
-                  "language_sources": sources_reply(),
                   "toolchain": ctx.manifest["toolchain"]})
 
     def reply(req, ok=True, **kw):
@@ -2255,7 +2031,7 @@ def gui_main(args):
               message=message, **ident)
 
     def request_keys(req, image):
-        """(keys, None) or (None, (problem, message)) from a request's key fields (check_keys, add_language_source)."""
+        """(keys, None) or (None, (problem, message)) from a request's key fields (check_keys)."""
         keys = Keys()
         given_disc = req.get("disc_key_hex") or req.get("disc_key_file")
         if req.get("disc_key_hex"):
@@ -2280,36 +2056,6 @@ def gui_main(args):
             return None, (("common_key_bad", KEY_MESSAGES["common_key_bad"]) if given
                           else ("common_key_missing", "The Wii U common key is needed."))
         return keys, None
-
-    def sources_reply():
-        return [{k: m.get(k) for k in ("region", "title_id", "source", "packs")} for m in language_sources(ctx.data_dir)]
-
-    def do_language_sources(req):
-        reply(req, sources=sources_reply())
-
-    def do_add_language_source(req):
-        path = req.get("path") or ""
-        try:
-            kind = language_source_kind(path)
-            keys = info = None
-            if kind == "image":
-                keys, why = request_keys(req, path)
-                if why:
-                    return fail(req, *why)
-                problem, err, info = disc_info(path, keys)
-                if problem:
-                    return fail(req, problem, KEY_MESSAGES.get(problem, err))
-                language_source_region(info.get("title_id"))
-            added = add_language_source((kind, path), ctx.data_dir, keys, info, ctx.game_dir)
-        except SetupError as e:
-            return fail(req, "language_source", str(e)[0].upper() + str(e)[1:])
-        reply(req, sources=[{k: m.get(k) for k in ("region", "title_id", "source", "packs")} for m in added])
-
-    def do_remove_language_source(req):
-        try:
-            reply(req, removed=remove_language_source(ctx.data_dir, req.get("region")))
-        except SetupError as e:
-            fail(req, "language_source", str(e))
 
     def check(req):
         image = req.get("image") or ""
@@ -2382,7 +2128,7 @@ def gui_main(args):
 
     def save(req):
         try:
-            msg = import_save(req.get("kind", "hd"), req.get("path") or "", ctx.data_dir, bool(req.get("replace")))
+            msg = import_save(req.get("kind", "nsmbu"), req.get("path") or "", ctx.data_dir, bool(req.get("replace")))
         except SetupError as e:
             return fail(req, "exists" if have_save(ctx.data_dir) and not req.get("replace") else "save", str(e))
         reply(req, message=msg)
@@ -2414,9 +2160,7 @@ def gui_main(args):
 
     handlers = {"probe": probe, "check_keys": check, "install": do_install, "import_save": save,
                 "import_existing": do_import_existing, "remove_toolchain": do_remove_toolchain,
-                "shortcut": do_shortcut, "launch": do_launch, "hello": lambda req: hello(),
-                "language_sources": do_language_sources, "add_language_source": do_add_language_source,
-                "remove_language_source": do_remove_language_source}
+                "shortcut": do_shortcut, "launch": do_launch, "hello": lambda req: hello()}
     hello()
     for line in sys.stdin:
         line = line.strip()

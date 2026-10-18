@@ -1,6 +1,6 @@
 # Contributing
 
-The last merge from [ZeldaWWHDRecomp](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp) is commit `defb89f21607345e2e97b2c145a071a3f362640c`.
+The last merge from `upstream/main` is commit `defb89f21607345e2e97b2c145a071a3f362640c`.
 
 These commands are for a source checkout.
 Players use a [release](README.md#install).

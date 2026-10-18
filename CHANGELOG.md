@@ -5,7 +5,11 @@ At release, move those notes to a version heading and leave Unreleased empty.
 
 ## Unreleased
 
--   **Add**: The Europe game (title `00050000-10101e00`, title version 80 / **1.3.0**) works through a USA address map, like the Wind Waker HD port.
+-   **Change**: Save state files carry neutral names: portable states are `slotN.nsstate` (was `slotN.wwstate`) and full states are written with a new file magic, so full states saved by older versions no longer load.
+-   **Remove**: The experimental language source: the installer option, `NSMBU_LANGUAGE_REGION`, `NSMBU_LANG_DIR`, and the "From your European or Japanese game" settings entries are gone.
+-   **Change**: The installer's save import looks for NSMBU save files (`rp_personal_savedata.dat` and `rp_savedata.dat`).
+-   **Fix**: The bug report copy names the real NSMBU save files.
+-   **Add**: The Europe game (title `00050000-10101e00`, title version 80 / **1.3.0**) works through a USA address map.
 -   **Add**: The USA NSMBU + NSLU pack (title `00050000-1014b700`, title version 0) works through a USA address map that allows the pack's inserted functions.
 -   **Add**: The Europe NSMBU + NSLU pack (title `00050000-1014b800`, title version 0) works the same way.
 -   **Fix**: After a hitch, the game no longer sticks at 30 fps.

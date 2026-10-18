@@ -152,11 +152,6 @@ The loader only registers files.
 Language-pack behaviour in [content.md](content.md) stays.
 The package kind name in the UI is Luau.
 
-`docs/language-packs.md` is a different feature.
-It copies packs from a second disc the player owns.
-That setup path is not a mod package.
-Leave it alone.
-
 ### From guest SDK v2
 
 Phase 4 proposal (hooks and calls).

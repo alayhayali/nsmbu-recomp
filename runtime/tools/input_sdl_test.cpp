@@ -111,7 +111,7 @@ int main(){
  set_env(env::NO_HOST_INPUT,"1");graphicsEvent(SDL_SCANCODE_R,game);assert(graphicsRequests==7);set_env(env::NO_HOST_INPUT,nullptr);
 
  promptShown=true;input::update();
- SDL_Event typed{};typed.type=SDL_EVENT_TEXT_INPUT;typed.text.text="Link";input::handle_event(typed);assert(promptText=="Link");
+ SDL_Event typed{};typed.type=SDL_EVENT_TEXT_INPUT;typed.text.text="Mario";input::handle_event(typed);assert(promptText=="Mario");
  key(SDL_SCANCODE_K,true);graphicsEvent(SDL_SCANCODE_RETURN,controls);assert(promptKeys==2);
  input::held_keys(held);assert(!held[input_map::key_from_id("K")]&&!(input::read().buttons&input::kA));
  promptShown=false;input::update();

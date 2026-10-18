@@ -11,7 +11,7 @@ namespace pstate {
 constexpr int kFormatVersion = 1;
 constexpr size_t kMaxFileSize = 64 * 1024;
 constexpr size_t kMaxLine = 8192;
-constexpr const char* kExtension = "wwstate";
+constexpr const char* kExtension = "nsstate";
 
 constexpr size_t kSaveDataSize = 0xA94;
 constexpr size_t kSaveDataUsed = 0x768;
@@ -35,7 +35,7 @@ struct State {
     int room = 0;
     float pos[3] = {0, 0, 0};
     int angle_y = 0;
-    int link_proc = -1;
+    int player_proc = -1;
     bool on_ship = false;
     bool has_ship = false;
     float ship_pos[3] = {0, 0, 0};

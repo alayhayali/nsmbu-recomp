@@ -2,9 +2,9 @@
 
 ## Upstream base
 
-Use this commit as the last Wind Waker HD recomp commit merged into this tree.
+Use this commit as the last upstream recomp commit merged into this tree.
 
-Repository: https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp
+Repository: the upstream recompilation project, linked in the fork note in [README.md](../../README.md).
 
 Branch: `main`
 
@@ -22,7 +22,7 @@ Follow `.agents/skills/upstream-merge/SKILL.md`.
 
 ## What you can reuse
 
-The Wind Waker HD port and NSMBU are both Wii U titles.
+The upstream port and NSMBU are both Wii U titles.
 
 `tools/recomp/recomp.py` turns one RPX into C.
 

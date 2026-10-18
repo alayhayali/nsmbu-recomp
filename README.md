@@ -32,9 +32,6 @@ Combo packs are title version 0 (no separate update folder).
 | Europe combo (NSMBU + NSLU) | `00050000-1014b800` | 0 | Supported; map derived, recomp and headless boot checked |
 | Japan | `00050000-10101c00` | — | Not supported yet |
 
-Language packs can still lend European or Japanese text to a USA install
-([docs/language-packs.md](docs/language-packs.md)).
-
 ## Install
 
 ### 1. Download and start

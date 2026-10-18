@@ -157,8 +157,6 @@ struct Ui {
 
     int language = -1;
     int language_at_start = -1;
-    int language_region = 0;
-    int language_region_at_start = 0;
     bool linearized = false;
     bool just_opened = false;
     bool list_view = false;
@@ -443,7 +441,7 @@ void tab_saves() {
         note("Full save states: the whole running game (large, contain game data: never share them). Shift+F1..F5 save in "
              "game, F1..F5 load (` or F12 opens this menu).");
     else
-        note("A save state keeps your progress and where Link stands (a few KB, no game data). Loading enters that place "
+        note("A save state keeps your progress and where the player stands (a few KB, no game data). Loading enters that place "
              "with that progress; enemies and cutscenes start fresh. Shift+F1..F5 save in game, F1..F5 load (` or F12 opens this menu).");
     if (ImGui::BeginTable("slots", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
         ImGui::TableSetupColumn("Slot", ImGuiTableColumnFlags_WidthFixed);
@@ -471,7 +469,7 @@ void tab_saves() {
                         ImGui::SetTooltip("Kept on disk, not loaded: the newer portable state is. It contains game data: "
                                           "don't share it. Delete it in the states folder if you no longer need it.");
                 } else if (s.older_other) {
-                    ImGui::TextDisabled("also holds an older portable state (slot%d.wwstate)", i);
+                    ImGui::TextDisabled("also holds an older portable state (slot%d.nsstate)", i);
                 }
             }
             ImGui::TableNextColumn();
@@ -501,8 +499,8 @@ void tab_saves() {
         ImGui::SameLine();
         ImGui::TextDisabled("Copied");
     }
-    help("Copies the paths of your newest save state and of your save file (cking.sav): attach both files to the bug "
-         "report. Save a state at the place of the problem first.");
+    help("Copies the paths of your newest save state and of your save files (rp_personal_savedata.dat and rp_savedata.dat): "
+         "attach them to the bug report. Save a state at the place of the problem first.");
     note("States folder: %s", ss::states_dir().c_str());
     bool fs;
     if (check("Full save states (large, contain game data, don't share) - for debugging", full, &fs, !ss::full_states_forced()))
@@ -1337,29 +1335,9 @@ int saved_language() {
     return 1;
 }
 
-int saved_language_region() {
-    std::string v;
-    if (hostui::get("language_region", v)) {
-        const int r = game_lang::region_from_code(v);
-        if (r != game_lang::kUsa) return r;
-    }
-    return game_lang::kNoRegion;
-}
-
-std::string language_list(const std::vector<int>& langs) {
-    std::string s;
-    for (size_t k = 0; k < langs.size(); k++)
-        s += std::string(k == 0 ? "" : k + 1 == langs.size() ? " and " : ", ") + game_lang::name(langs[k]);
-    return s;
-}
-
-void choose_language(int language, int region) {
+void choose_language(int language) {
     U.language = language;
-    U.language_region = region;
-    hostui::post([language, region] {
-        hostui::set("language", std::to_string(language));
-        hostui::set("language_region", game_lang::region_code(region));
-    });
+    hostui::post([language] { hostui::set("language", std::to_string(language)); });
 }
 
 void tab_debug() {
@@ -1373,63 +1351,24 @@ void tab_about() {
     const int env_language = env_set && !*end && env_value >= 0 && env_value < game_lang::kLanguages ? (int)env_value : 1;
     if (U.language < 0) {
         U.language = saved_language();
-        U.language_region = saved_language_region();
         const game_lang::Start now = game_lang::current();
         U.language_at_start = now.language;
-        U.language_region_at_start = now.pack ? now.region : game_lang::kNoRegion;
         if (U.language_at_start < 0) {
-            const game_lang::Start s = game_lang::choose(env_set ? env_language : U.language,
-                                                         env_set ? game_lang::kNoRegion : U.language_region);
+            const game_lang::Start s = game_lang::choose(env_set ? env_language : U.language);
             U.language_at_start = s.language;
-            U.language_region_at_start = s.pack ? s.region : game_lang::kNoRegion;
         }
     }
-    const std::vector<int>& avail = game_lang::available();
     heading("Console language (applies on the next start)");
-    if (avail.empty())
-        note("The game picks its text language from the console language. Its language packs (content/Common/Pack) "
-             "were not found, so every language is offered; the game shows only those its disc carries.");
-    else
-        note("The game picks its text language from the console language. This game (%s) contains %s; the other "
-             "languages need a disc that carries them.", game_lang::region().c_str(), language_list(avail).c_str());
+    note("The game picks its text language from the console language; the game shows only the languages its disc carries.");
     ImGui::BeginDisabled(env_set);
     for (int i : {1, 2, 5, 3, 4, 8, 9, 10, 7, 0, 6, 11}) {
         if (i != 1 && i != 3 && i != 9 && i != 0) ImGui::SameLine();
-        if (radio(game_lang::name(i), U.language == i && U.language_region == game_lang::kNoRegion,
-                  game_lang::is_available(i)))
-            choose_language(i, game_lang::kNoRegion);
+        if (radio(game_lang::name(i), U.language == i)) choose_language(i);
     }
-
-    for (int region : {(int)game_lang::kEurope, (int)game_lang::kJapan}) {
-        const std::vector<int> langs = game_lang::source_languages(region);
-        if (langs.empty()) continue;
-        heading(region == game_lang::kEurope ? "From your European game (language source, experimental)"
-                                             : "From your Japanese game (language source, experimental)");
-        for (size_t k = 0; k < langs.size(); k++) {
-            if (k % 3) ImGui::SameLine();
-            const std::string label = std::string(game_lang::name(langs[k])) + " (" + game_lang::region_name(region) + ")";
-            if (radio(label.c_str(), U.language == langs[k] && U.language_region == region))
-                choose_language(langs[k], region);
-        }
-    }
-    if (!game_lang::source_languages(game_lang::kJapan).empty())
-        note("Japanese language sources are untested so far: report what looks wrong.");
     ImGui::EndDisabled();
-    const bool from_source = U.language_region != game_lang::kNoRegion &&
-                             game_lang::source_pack(U.language, U.language_region) != nullptr;
     if (env_set) {
         note("NSMBU_LANGUAGE=%s is set for this start and takes precedence.", env);
-        if (!game_lang::is_available(env_language))
-            warn("%s is not on this disc: the game runs in %s.", game_lang::name(env_language),
-                 game_lang::name(game_lang::usable(env_language)));
-    } else if (U.language_region != game_lang::kNoRegion && !from_source) {
-        warn("%s (%s) is saved but its language source is missing (%s): the game runs in %s.",
-             game_lang::name(U.language), game_lang::region_name(U.language_region),
-             game_lang::sources_dir().c_str(), game_lang::name(game_lang::usable(U.language)));
-    } else if (!from_source && !game_lang::is_available(U.language)) {
-        warn("%s is saved but is not on this disc: the game runs in %s. Choose one of the languages above.",
-             game_lang::name(U.language), game_lang::name(game_lang::usable(U.language)));
-    } else if (U.language != U.language_at_start || (from_source ? U.language_region : 0) != U.language_region_at_start) {
+    } else if (U.language != U.language_at_start) {
         warn("%s is saved. Restart the game to apply it: the game reads the console language only when it starts.",
              game_lang::name(U.language));
     }

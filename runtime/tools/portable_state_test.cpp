@@ -28,8 +28,8 @@ static State sample() {
     s.created = "2026-10-08 14:03:11";
     s.file_slot = 1;
     s.controller = 2;
-    s.player_name = "Link";
-    s.stage = "sea";
+    s.player_name = "Mario";
+    s.stage = "1-1";
     s.start_point = 0;
     s.start_room = 44;
     s.layer = -1;
@@ -38,7 +38,7 @@ static State sample() {
     s.pos[1] = 0.25f;
     s.pos[2] = 315424.125f;
     s.angle_y = -16384;
-    s.link_proc = 0x88;
+    s.player_proc = 0x88;
     s.on_ship = true;
     s.has_ship = true;
     s.ship_pos[0] = -199830.25f;
@@ -99,10 +99,10 @@ int main() {
     State bad_mode = s;
     bad_mode.controller = 3;
     CHECK(write(bad_mode, why).empty());
-    CHECK(r.file_slot == 1 && r.player_name == "Link" && r.stage == "sea");
+    CHECK(r.file_slot == 1 && r.player_name == "Mario" && r.stage == "1-1");
     CHECK(r.start_point == 0 && r.start_room == 44 && r.layer == -1 && r.room == 44);
     CHECK(r.pos[0] == s.pos[0] && r.pos[1] == s.pos[1] && r.pos[2] == s.pos[2]);
-    CHECK(r.angle_y == -16384 && r.link_proc == 0x88 && r.on_ship);
+    CHECK(r.angle_y == -16384 && r.player_proc == 0x88 && r.on_ship);
     CHECK(r.has_ship && r.ship_angle_y == 12345 && r.ship_pos[0] == s.ship_pos[0] && r.ship_pos[1] == s.ship_pos[1] &&
           r.ship_pos[2] == s.ship_pos[2]);
     {
@@ -166,7 +166,7 @@ int main() {
         State x;
         CHECK(!blob_check(t, why));
         CHECK(!read(t, x, why));
-        t = reseal(replace(text, "player_name = Link", "player_name = " + std::string(200, 'x')));
+        t = reseal(replace(text, "player_name = Mario", "player_name = " + std::string(200, 'x')));
         CHECK(!blob_check(t, why));
 
         std::string huge = text;
@@ -183,10 +183,10 @@ int main() {
 
     {
         State x = sample();
-        x.player_name = "Li\nnk\x01";
+        x.player_name = "Ma\nrio\x01";
         std::string t = write(x, why);
         State y;
-        CHECK(read(t, y, why) && y.player_name == "Link");
+        CHECK(read(t, y, why) && y.player_name == "Mario");
     }
 
     CHECK(crc32("123456789", 9) == 0xCBF43926u);

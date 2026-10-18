@@ -32,6 +32,5 @@ int main() {
     f[0] = 'X';
     game_font::Glyphs none;
     assert(!game_font::parse_bffnt(f.data(), f.size(), none));
-    assert(!game_font::name_glyphs(1));
-    puts("game_font_test: CMAP direct / table / scan, bad data, missing game passed");
+    puts("game_font_test: CMAP direct / table / scan, bad data passed");
 }

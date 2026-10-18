@@ -1,7 +1,6 @@
 # NSMBU recompiler notes
 
 This tree is New Super Mario Bros. U.
-The Wind Waker GameCube name match, Link layouts, sea and ship notes, 30 Hz interpolation, and true-60 actor survey are not used here.
 NSMBU logic stays at 60 steps a second.
 The notes below are the crash fixes that still match this port.
 

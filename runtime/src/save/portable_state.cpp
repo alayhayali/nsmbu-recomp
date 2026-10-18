@@ -20,7 +20,7 @@ const Blob kBlobs[] = {
 };
 const char* const kTextKeys[] = {
     "format", "title_id", "title_version", "game_hash", "runtime", "created", "file_slot", "player_name",
-    "stage", "start_point", "start_room", "layer", "room", "link_pos", "link_angle_y", "link_proc", "on_ship",
+    "stage", "start_point", "start_room", "layer", "room", "player_pos", "player_angle_y", "player_proc", "on_ship",
     "has_ship", "ship_pos", "ship_angle_y",
     "time_of_day", "date", "controller",
 };
@@ -200,8 +200,8 @@ std::string write(const State& s, std::string& why) {
     std::string o;
     auto kv = [&](const char* k, const std::string& v) { o += std::string(k) + " = " + v + "\n"; };
     o += "# NSMBU portable save state: progress and position only (no game code or game data).\n";
-    o += "# Attach it to a bug report together with your cking.sav. Load: copy it into the states folder\n";
-    o += "# as slotN.wwstate and load slot N, or start with NSMBU_PORTABLE_LOAD=<this file>.\n";
+    o += "# Attach it to a bug report together with your save file (rp_personal_savedata.dat). Load: copy it\n";
+    o += "# into the states folder as slotN.nsstate and load slot N, or start with NSMBU_PORTABLE_LOAD=<this file>.\n";
     kv("format", std::to_string(s.format));
     kv("title_id", clean(s.title_id));
     kv("title_version", std::to_string(s.title_version));
@@ -216,9 +216,9 @@ std::string write(const State& s, std::string& why) {
     kv("start_room", std::to_string(s.start_room));
     kv("layer", std::to_string(s.layer));
     kv("room", std::to_string(s.room));
-    kv("link_pos", fnum(s.pos[0]) + " " + fnum(s.pos[1]) + " " + fnum(s.pos[2]));
-    kv("link_angle_y", std::to_string(s.angle_y));
-    kv("link_proc", std::to_string(s.link_proc));
+    kv("player_pos", fnum(s.pos[0]) + " " + fnum(s.pos[1]) + " " + fnum(s.pos[2]));
+    kv("player_angle_y", std::to_string(s.angle_y));
+    kv("player_proc", std::to_string(s.player_proc));
     kv("on_ship", s.on_ship ? "1" : "0");
     kv("has_ship", s.has_ship ? "1" : "0");
     kv("ship_pos", fnum(s.ship_pos[0]) + " " + fnum(s.ship_pos[1]) + " " + fnum(s.ship_pos[2]));
@@ -311,7 +311,7 @@ bool read(const std::string& text, State& out, std::string& why) {
     if (!get_int("title_version", 0, 0xFFFF, tv) || !get_int("file_slot", 0, 2, s.file_slot) ||
         !get_int("start_point", -32768, 32767, s.start_point) || !get_int("start_room", -128, 127, s.start_room) ||
         !get_int("layer", -128, 127, s.layer) || !get_int("room", -128, 127, s.room) ||
-        !get_int("link_angle_y", -32768, 65535, s.angle_y) || !get_int("link_proc", -1, 0xFFFF, s.link_proc) ||
+        !get_int("player_angle_y", -32768, 65535, s.angle_y) || !get_int("player_proc", -1, 0xFFFF, s.player_proc) ||
         !get_int("on_ship", 0, 1, ship) || !get_int("date", 0, 0xFFFF, s.date) || !get_int("has_ship", 0, 1, has_ship) ||
         !get_int("ship_angle_y", -32768, 65535, s.ship_angle_y))
         return false;
@@ -326,8 +326,8 @@ bool read(const std::string& text, State& out, std::string& why) {
         why = "on_ship without has_ship";
         return false;
     }
-    if (!m.count("link_pos") || !parse_floats(m["link_pos"], s.pos, 3)) {
-        why = "missing or invalid link_pos";
+    if (!m.count("player_pos") || !parse_floats(m["player_pos"], s.pos, 3)) {
+        why = "missing or invalid player_pos";
         return false;
     }
     if (!m.count("time_of_day") || !parse_floats(m["time_of_day"], &s.time_of_day, 1)) {

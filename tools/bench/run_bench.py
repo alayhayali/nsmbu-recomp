@@ -8,14 +8,11 @@ input. One game process at a time; it is stopped with TERM, then KILL, and check
 
 Example (two variants, interleaved A B B A ..., 6 runs each, 60 fps interpolation, Vulkan):
 
-  tools/bench/run_bench.py --binary build/nsmbu --state-dir my_states --scene outset \\
+  tools/bench/run_bench.py --binary build/nsmbu --state-dir my_states \\
       --fps 60 --renderer vulkan --runs 6 --out bench/sync \\
       --variant base:NSMBU_VK_LAZY_DRAW_DONE=0,NSMBU_VK_ASYNC_PRESENT=0 --variant new:
 
-Scenes (input is timed in game seconds from TV frame --origin, so the fps options see the same
-input):
-outset = walk and look around on Outset Island (state slot 3 by default), windfall = walk
-through Windfall town (slot 2), still = no input (any slot). The state file must be
+Scenes: still = no input (any slot). The state file must be
 <state-dir>/slot<N>.bin, made with the game's own save-state keys.
 """
 import argparse
@@ -34,9 +31,6 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 SCENES = {
-
-    "outset": (3, "0-13:0:1,13-23:1:0.5,23-36:0:-1,36-46:-1:0,46-63:0:1", "20-30:1:0,53-60:-1:0"),
-    "windfall": (2, "0-10:0:1,10-20:1:0,20-33:0:-1,33-43:-1:0,43-56:0:1", "13-23:1:0,46-53:-1:0"),
     "still": (1, "", ""),
 }
 
@@ -414,7 +408,7 @@ def main():
     p.add_argument("--save", default=os.path.join(REPO, "nsmbu", "save"),
                    help="save folder, copied for every run (default: <repo>/nsmbu/save)")
     p.add_argument("--state-dir", required=True, help="folder with slot<N>.bin save states (read only)")
-    p.add_argument("--scene", choices=sorted(SCENES), default="outset")
+    p.add_argument("--scene", choices=sorted(SCENES), default="still")
     p.add_argument("--slot", type=int, default=0, help="state slot (default: the scene's)")
     p.add_argument("--fps", choices=["60", "120", "240"], default="60",
                    help="60, 120, 240 = frame interpolation (120/240: paced unless NSMBU_INTERP_PACED=0)")

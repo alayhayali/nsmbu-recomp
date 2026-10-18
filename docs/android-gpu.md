@@ -34,21 +34,8 @@ Debug switches:
 | Compute synthetic tests | PASS: 7 format variants, 3 shapes including layers/tails, 12 seeds, 252 dispatches |
 | Production surface smoke | PASS: 10 linear/sRGB/signed formats, 2 mip levels, 2 layers, cache reuse and invalidation |
 | Native and forced `--renderer-smoke`, MoltenVK with validation | PASS; no validation errors; existing 3D-image maintenance9 forward-compatibility warnings |
-| Scripted native/forced frame comparison | PASS: two 1280×720 WWHD Windfall (hist.) frames; details below |
 | Upload-cost measurements | PASS: CPU recording and verification costs measured below |
 | Mali/PowerVR device execution | Untested: no physical device available |
-
-The WWHD Windfall frames in this section are historical Wind Waker HD records.
-Scripted MoltenVK comparison uses the same restored WWHD Windfall state, no inputs, private
-caches, copied saves, headless/no audio. Preselected tolerance: RGB mean absolute error ≤1/255,
-and ≥99% of pixels with maximum RGB channel error ≤3/255. Endpoint rounding can differ from
-native compressed filtering, and nonlinear material/edge operations amplify a small number of
-errors. The exact CPU/GPU fallback comparison remains byte-exact.
-
-| TV frame | RGB mean error (byte units) | Pixels within 3 | Maximum channel error |
-| --- | --- | --- | --- |
-| 900 | 0.108692 | 99.9252% | 67 |
-| 960 | 0.107773 | 99.9224% | 41 |
 
 There were zero GPU/CPU mismatches across 2,197 decoded mip uploads (78.9 MiB compressed input).
 With verification disabled, CPU recording cost per mip was median 18.2 µs / p95 53.5 µs after
@@ -105,17 +92,8 @@ system/Turnip selection, package install/remove, 120-frame success and terminati
 120, restart fallback notice, rotation/window recreation and driver-specific pipeline caches.
 No game files, generated game code, saves or screenshots are committed.
 
-CI evidence: [initial Android](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/actions/runs/37810597403),
-[initial Linux including forced fallback smoke](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/actions/runs/37810597404),
-[initial Windows](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/actions/runs/37810597394).
-Follow-up cache handling: [Android](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/actions/runs/37811265631),
-[Windows](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/actions/runs/37811265640),
-[Linux](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/actions/runs/37811265630).
 Local numeric comparison/timing records are retained under excluded `local-evidence/gpu-tests`.
 
-Final validated report/code head `09eb00b`: [Android](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/actions/runs/37812410658),
-[Linux](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/actions/runs/37812411070),
-[Windows](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/actions/runs/37812410746), all PASS.
 Implementation commits: `74c8476` (decoder/custom drivers), `925a1d3` (complete per-driver cache
 cleanup); `09eb00b` records gameplay comparisons and measurements. This final documentation
 update records the CI results. All authors use Lukas S <lukasschaupp@gmail.com>.

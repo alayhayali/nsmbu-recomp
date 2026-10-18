@@ -25,7 +25,7 @@ constexpr size_t kLegacyHeaderSize = offsetof(FullStateHeader, controller);
 static_assert(kLegacyHeaderSize == 96);
 inline bool read_full_state_header(FILE* file, FullStateHeader& h, std::string& why) {
     h = {};
-    if (fread(&h, kLegacyHeaderSize, 1, file) != 1 || memcmp(h.magic, "WWHDSTAT", 8)) {
+    if (fread(&h, kLegacyHeaderSize, 1, file) != 1 || memcmp(h.magic, "NSMBUSAV", 8)) {
         why = "not a save state"; return false;
     }
     if (h.header_size != kLegacyHeaderSize && h.header_size != sizeof h) {

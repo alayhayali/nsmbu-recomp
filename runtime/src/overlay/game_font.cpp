@@ -1,17 +1,13 @@
 
+
 #include "game_font.h"
 
-#include <algorithm>
-#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <map>
-#include <mutex>
 #include <string>
 #include <vector>
 
-#include "text/game_languages.h"
 #include "core/runtime.h"
 
 namespace game_font {
@@ -82,54 +78,6 @@ bool sarc_find(const uint8_t* h, size_t n, const char* name, size_t* off, size_t
     return false;
 }
 
-fs::path find_pack(int language, std::string* why) {
-
-    if (const game_lang::Start s = game_lang::current(); s.pack) return fs::path(s.pack->host);
-    static const char* const kWords[] = {"japanese", "english", "french", "german", "italian", "spanish",
-                                         "chinese", "korean", "dutch", "portuguese", "russian", "chinese"};
-    const std::string word = language >= 0 && language < 12 ? kWords[language] : "english";
-    std::error_code ec;
-    fs::path dir;
-
-    fs::path at = fs::path(config::game_dir) / "content";
-    for (const char* part : {"common", "pack"}) {
-        fs::path next;
-        for (auto& e : fs::directory_iterator(at, ec)) {
-            std::string s = e.path().filename().string();
-            std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)tolower(c); });
-            if (s == part) next = e.path();
-        }
-        if (next.empty()) {
-            *why = "no " + (at / part).string();
-            return {};
-        }
-        at = next;
-    }
-    fs::path match, any;
-    for (auto& e : fs::directory_iterator(at, ec)) {
-        std::string s = e.path().filename().string();
-        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)tolower(c); });
-        if (s.rfind("permanent_2d_", 0) != 0 || s.size() < 5 || s.compare(s.size() - 5, 5, ".pack")) continue;
-        if (s.size() >= word.size() + 5 && s.compare(s.size() - 5 - word.size(), word.size(), word) == 0) match = e.path();
-        if (any.empty() || s.find("english") != std::string::npos) any = e.path();
-    }
-    if (match.empty() && any.empty()) *why = "no permanent_2d_*.pack in " + at.string();
-    return match.empty() ? any : match;
-}
-
-std::shared_ptr<const Glyphs> load(int language) {
-    std::string why;
-    const fs::path pack = find_pack(language, &why);
-    std::shared_ptr<const Glyphs> glyphs = pack.empty() ? nullptr : pack_font(pack.string(), &why);
-    if (!glyphs) {
-        LOG("[text] the game's name font can't be read (%s): the text prompt offers its full character set", why.c_str());
-        return nullptr;
-    }
-    LOG("[text] the game's name font (CKingMsg.bffnt in %s) has %zu characters: the text prompt offers those",
-        pack.filename().string().c_str(), glyphs->size());
-    return glyphs;
-}
-
 }
 
 bool parse_bffnt(const uint8_t* d, size_t n, Glyphs& out) {
@@ -198,14 +146,6 @@ std::shared_ptr<const Glyphs> pack_font(const std::string& pack_path, std::strin
         return nullptr;
     }
     return glyphs;
-}
-
-std::shared_ptr<const Glyphs> name_glyphs(int language) {
-    static std::mutex mu;
-    static std::map<int, std::shared_ptr<const Glyphs>> cache;
-    std::lock_guard<std::mutex> lk(mu);
-    if (auto it = cache.find(language); it != cache.end()) return it->second;
-    return cache[language] = load(language);
 }
 
 }

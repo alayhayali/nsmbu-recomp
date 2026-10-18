@@ -8,7 +8,7 @@ namespace quitprompt {
 
 constexpr int kSaveSlot = 1;
 
-inline bool gameplay_stage(const std::string& stage) { return !stage.empty() && stage != "sea_T" && stage != "Name"; }
+inline bool gameplay_stage(const std::string& stage) { return !stage.empty(); }
 
 using Env = const char* (*)(const env::Var&);
 inline bool env_on(const char* v) { return v && *v && strcmp(v, "0") != 0; }

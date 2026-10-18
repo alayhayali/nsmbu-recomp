@@ -116,10 +116,10 @@ void bidi() {
     assert(visual(A + u" 1,234.5 " + B) == B + u" 1,234.5 " + A);
     assert(visual(A + u" 50% " + B) == B + u" 50% " + A);
 
-    assert(visual(A + B + u" Link " + G) == G + u" Link " + B + A);
-    assert(visual(A + u" Link Hero " + B) == B + u" Link Hero " + A);
+    assert(visual(A + B + u" Mario " + G) == G + u" Mario " + B + A);
+    assert(visual(A + u" Mario Hero " + B) == B + u" Mario Hero " + A);
 
-    assert(visual(u"Link " + A + B) == B + A + u" Link");
+    assert(visual(u"Mario " + A + B) == B + A + u" Mario");
 
     assert(visual(A + u"(" + B + u")") == u"(" + B + u")" + A);
 

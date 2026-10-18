@@ -276,8 +276,8 @@ void resample(id<MTLTexture> src, id<MTLTexture> dst, const FormatInfo& fmt, uin
 }
 
 // One guest surface can be rendered and sampled through views of different formats with the same
-// texel bits, e.g. RGBA8 and RGBA8 sRGB: the Picto Box draws its picture through the sRGB view and
-// then through the plain one (issue #53). Each format gets its own texture here, so before one is
+// texel bits, e.g. RGBA8 and RGBA8 sRGB: the game draws one picture through the sRGB view and then
+// through the plain one (issue #53). Each format gets its own texture here, so before one is
 // used, take over the texels of a more recent compatible one (a raw copy, as the memory is shared).
 static Surface* adopt_newer_alias(Surface* s) {
     if (!s || !s->formatViews || !s->tex) return s;  // the common case: one view per address, nothing to do
@@ -829,8 +829,8 @@ static uint32_t element_offset(const LatteAddrLib::AddrSurfaceInfo_OUT& info, La
 
 // ---------------------------------------------------------------- write-back to guest memory
 // Render results stay on the GPU, except where the game reads them with the CPU: render targets and
-// GX2CopySurface destinations with a linear tile mode (as Cemu reads back linear surfaces). The Picto
-// Box renders its picture into a linear-aligned target and JPEG-encodes it from guest memory (issue
+// GX2CopySurface destinations with a linear tile mode (as Cemu reads back linear surfaces). The game
+// renders some pictures into a linear-aligned target and JPEG-encodes them from guest memory (issue
 // #53). Texels are written at the guest size; only formats whose host texels are the guest's bytes.
 static bool can_write_back(const Surface* img) {
     const FormatInfo& f = img->fmt;

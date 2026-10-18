@@ -8,9 +8,9 @@ Save states come in two kinds that share the five slots:
 
 | | Portable (default) | Full (debugging) |
 |---|---|---|
-| File | `slotN.wwstate` | `slotN.bin` |
+| File | `slotN.nsstate` | `slotN.bin` |
 | Size | a few KB (refused above 64 KB) | about 270–300 MB |
-| Holds | the save data of the current Quest Log, Link's place, a header | all guest memory (game code, decompressed assets), threads, HLE state |
+| Holds | the save data of the current save file, the player's place, a header | all guest memory (game code, decompressed assets), threads, HLE state |
 | Shareable | yes, attach it to bug reports | **never**: it contains game code and data |
 | Loads into | any session of the same game, any build | only the same build, exactly where it was saved |
 | Exact | no (see below) | yes |
@@ -22,7 +22,7 @@ holds both). Crash Recovery's automatic states are always full states.
 ## Choosing the kind
 
 - **Save** (Saves tab of the settings overlay, Shift+F1–F5, the macOS Save States menu) makes a
-  portable state, **only while you control Link** (see below).
+  portable state, **only while you control the player character** (see below).
 - *Full save states (large, contain game data, don't share) – for debugging* in the Saves tab (or
   the Save States menu on macOS) switches Save to full states; the choice is kept in
   `states/full_save_states.cfg`.
@@ -38,28 +38,23 @@ folder if you no longer need it).
 
 ## When a portable state can be saved
 
-Only while the player controls Link: the conditions under which the game itself opens its pause
-menu (`dMw_c` in `d_menu_window.cpp`): no event or cutscene running (`dComIfGp_event_runCheck`,
-and not for 5 frames after one, like the game), no message or dialogue box (`dComIfGp_getMesgStatus`,
-the telescope's message status), no game menu open (`dMenu_flag`), no stage change or wipe in
-progress (`dComIfGp_isEnableNextStage`, `fopOvlpM_IsDoingReq`), Link is the controlled actor
-(not, e.g., a possessed Moblin or the Seagull), and Link is not on a rope: the play state's player
-status 0 (HD play+0x5CD8) bit 0x00800000, tww `daPyStts0_UNK800000_e`, which only Link's rope
-procedures set (`procRopeReady/Swing/HangWait/Up/Down_init`): on a rope or swinging from the
-Grappling Hook (he would restart in mid-air). The menu's Telescope / Picto Box aiming checks
-(`dCamAttnStts_TELESCOPE_LOOK_e`, `dCamAttnStts_PICTO_BOX_AIM_e`) are left out: Link restarts
-standing at the same spot, which is harmless. Otherwise nothing is written; the screen shows
-"can't save during a cutscene or dialogue - try again when you have control of Link" and the log
-names the reason (`[savestate] slot N: portable state refused: ...`). This covers the Save button
+Only while the player controls the player character, under the same conditions under which the game
+itself opens its pause menu: no event or cutscene running (and not for 5 frames after one), no
+message or dialogue box, no game menu open, no stage change or scene transition in progress, the
+player character is the controlled actor, and the player is not on a rope-like actor (the play
+state's player status bit 0x00800000, which only those procedures set): they would restart in
+mid-air. Otherwise nothing is written; the screen shows
+"can't save during a cutscene or dialogue - try again when you have control of the player" and the
+log names the reason (`[savestate] slot N: portable state refused: ...`). This covers the Save button
 and Shift+F1–F5. Full save states and Crash Recovery's automatic states can be made at any time.
 Loading is not affected.
 
 ## Bug reports
 
-The Saves tab's **Copy save for bug report** copies the paths of the newest portable state and of
-`cking.sav`. The issue template asks for both. A developer loads a received state by copying it
-into the states folder as `slotN.wwstate` and loading slot N, or with
-`NSMBU_PORTABLE_LOAD=<file>` (applied as soon as a Quest Log is being played).
+The Saves tab's **Copy save for bug report** copies the paths of the newest portable state and of the
+save files (`rp_personal_savedata.dat` and `rp_savedata.dat`). The issue template asks for them. A
+developer loads a received state by copying it into the states folder as `slotN.nsstate` and loading
+slot N, or with `NSMBU_PORTABLE_LOAD=<file>` (applied as soon as a save file is being played).
 
 ## What a portable state holds
 
@@ -67,18 +62,17 @@ A UTF-8 text file of `key = value` lines (`runtime/src/save/portable_state.h`):
 
 - header: `format` (1), `title_id` and `title_version` (from `meta/meta.xml`), `game_hash` (a hash
   of `red-pro2.rpx`, to tell executables apart; not its contents), `runtime` (version and commit),
-  `created`, `file_slot` (Quest Log 0–2), `player_name`;
-- place: `stage`, `start_point`, `start_room`, `layer` (how the stage was entered), `room` (Link's
-  room), `link_pos`, `link_angle_y` (shape angle), `link_proc`, `on_ship` (Link rides the boat),
-  `has_ship`, `ship_pos`, `ship_angle_y` (the boat, when it is in the stage), `time_of_day` and
-  `date` (day counter; day of week = date % 7);
-- `savedata`: the Quest Log's block of `cking.sav` (0xA94 bytes: 0x768 bytes of save data, zeros, the
-  game's byte sum and complement sum), made by the game's own save functions: `dSv_info_c::putSave`
-  for the current stage and `dComIfGs_setGameStartStage` as the in-game save does before writing
-  (both undone afterwards, so making a state changes nothing in the game), then
-  `dSv_info_c::memory_to_card` (025BA9FC). Inventory, flags, progress, dungeon memory, time of day;
-- `hd_player`, `hd_status`, `hd_event`, `hd_map`: the HD per-file sections of `cking.sav` (16, 4, 20
-  and 220 bytes), the stored ones with the live data copied over by the SaveMgr's own copy functions;
+  `created`, `file_slot` (save file 0–2), `player_name`;
+- place: `stage`, `start_point`, `start_room`, `layer` (how the stage was entered), `room` (the
+  player's room), `player_pos`, `player_angle_y` (shape angle), `player_proc`, `on_ship` (the player
+  rides the ship), `has_ship`, `ship_pos`, `ship_angle_y` (the ship, when it is in the stage),
+  `time_of_day` and `date` (day counter; day of week = date % 7);
+- `savedata`: the save data block, made by the game's own save functions: the current stage's save
+  is put into the save memory and the game's own start-stage save step runs as it does before
+  writing (both undone afterwards, so making a state changes nothing in the game), then the block is
+  written out. Inventory, flags, progress, time of day;
+- `hd_player`, `hd_status`, `hd_event`, `hd_map`: the per-file save sections (16, 4, 20 and 220
+  bytes), the stored ones with the live data copied over by the game's own copy functions;
 - `checksum`: CRC-32 of everything before it.
 
 Weather is not recorded: it follows from the progress, the place and the time of day.
@@ -91,30 +85,25 @@ checksums, the size guard, unknown or repeated fields).
 
 ## Loading
 
-At the frame boundary on the game's main thread, once a Quest Log is being played (the title
+At the frame boundary on the game's main thread, once a save file is being played (the title
 screen and file select wait):
 
-1. `dSv_info_c::card_to_memory` (025BA7B0) puts the save data into the game;
-   `dSv_info_c::getSave` of the current stage makes the stage memory the loaded one (the stage
-   change puts it back), the dungeon bits (`dSv_danBit_c::init(-1)`) and temporary flags start
-   fresh, the HD sections are copied in, and the SaveMgr's refresh (02721880) sets the item buttons
-   and equipment from the loaded data;
-2. Link's room, position and angle go into `dSv_restart_c` (as when the game restarts a room after a
-   fall), and the next stage is the recorded one with spawn point -1, the recorded room and layer:
-   `dStage_playerInit` creates Link at that position.
-   With the boat in the stage (on it, or beside it on an island), the restart the Song of Passing
-   uses instead (`daPy_lk_c` tact, `dStage_turnRestart`): `dSv_turnRestart_c::set` (025B998C) gets
-   Link's and the boat's position and heading, spawn point -3; `dStage_setShipPos` puts the boat
-   back, and Link starts on it (start mode 2, as `getDayNightParamData` sets it when he rides) or
-   standing beside it. The sail is down after the load. As with the Song of Passing, the game puts the
-   boat where Link sat (`daPy_lk_c` create: `initStartPos` with Link's position), a few tens of units
-   from where the boat itself was (35 in the test); the heading is the saved one.
+1. the save data goes into the game, the current stage's save makes the stage memory the loaded one
+   (the stage change puts it back), the dungeon bits and temporary flags start fresh, the per-file
+   sections are copied in, and the game's refresh sets the item buttons and equipment from the
+   loaded data;
+2. the player's room, position and angle go into the game's restart info (as when the game restarts
+   a room after a fall), and the next stage is the recorded one with spawn point -1, the recorded
+   room and layer.
+   With the ship in the stage (on it, or beside it), the turn restart is used instead: it gets the
+   player's and the ship's position and heading with spawn point -3, the ship is put back, and the
+   player starts on it or standing beside it.
 
 The log then says `[savestate] portable load: arrived in <stage> room <n> at x y z (distance d from
-the saved position)` (with the boat also where the boat is and whether Link is on it).
+the saved position)` (with the ship also where the ship is and whether the player is on it).
 
-The state goes into the Quest Log being played. When it was made in another Quest Log, the screen
-shows "This state is from Quest Log N; it is loaded into Quest Log M (saving in game will write it
+The state goes into the save file being played. When it was made in another save file, the screen
+shows "This state is from save file N; it is loaded into save file M (saving in game will write it
 there)" for a few seconds (and the log notes it); loading goes ahead.
 
 Save-state notices (saved, refused, loaded, this one) show at the bottom of the picture for a few
@@ -122,8 +111,8 @@ seconds and in the macOS window title.
 
 **Not restored** (it is not a snapshot): enemies, items lying around, moving platforms and other
 actor state start as the stage starts them; a running cutscene, dialogue or minigame is not resumed;
-Link starts standing, or sitting in the boat with the sail down; the camera starts behind Link;
-the file is loaded into the current Quest Log of the session (saving in game afterwards writes it
-there; `file_slot` only drives the notice above).
+the player starts standing, or aboard the ship when it is in the stage; the camera starts behind the
+player; the file is loaded into the current save file of the session (saving in game afterwards
+writes it there; `file_slot` only drives the notice above).
 
 Controller metadata: format 1 accepts optional `controller = 1` (GamePad) or `controller = 2` (Pro Controller). Loading restores that host input mode. Missing metadata or `0` leaves the current mode unchanged. Unknown values are refused; the existing field and total-size guards still apply.

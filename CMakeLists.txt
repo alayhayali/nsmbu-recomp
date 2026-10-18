@@ -255,10 +255,6 @@ target_include_directories(mod_content_fs_test PRIVATE runtime/src runtime/inclu
 target_compile_options(mod_content_fs_test PRIVATE -UNDEBUG)
 target_link_libraries(mod_content_fs_test PRIVATE ZLIB::ZLIB Threads::Threads)
 
-add_executable(language_source_test runtime/tools/language_source_test.cpp runtime/src/hle/fs.cpp runtime/src/mods/content.cpp runtime/src/mods/mod_archive.cpp runtime/src/text/game_languages.cpp runtime/src/core/guest_addr_identity.c runtime/src/core/env.cpp)
-target_include_directories(language_source_test PRIVATE runtime/src runtime/include)
-target_compile_options(language_source_test PRIVATE -UNDEBUG)
-target_link_libraries(language_source_test PRIVATE ZLIB::ZLIB Threads::Threads)
 
 add_executable(report_header_test runtime/tools/report_header_test.cpp runtime/src/crash/report_header.cpp runtime/src/core/env.cpp ${NSMBU_BUILD_INFO})
 target_include_directories(report_header_test PRIVATE runtime/src runtime/include)
@@ -466,7 +462,6 @@ add_test(NAME screenshot COMMAND screenshot_test)
 add_test(NAME game_font COMMAND game_font_test)
 add_test(NAME rtl_text COMMAND rtl_text_test)
 add_test(NAME game_languages COMMAND game_languages_test ${CMAKE_BINARY_DIR}/game_languages_test_work)
-add_test(NAME language_sources COMMAND language_source_test)
 add_test(NAME interp_pacing COMMAND interp_pacing_test)
 add_test(NAME quit_prompt COMMAND quit_prompt_test)
 add_test(NAME write_watch COMMAND write_watch_test)
