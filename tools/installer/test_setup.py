@@ -109,10 +109,9 @@ class Titles(unittest.TestCase):
     def test_unsupported(self):
         with self.assertRaisesRegex(setup.SetupError, "Japan.*can be built from"):
             setup.check_title("0005000010101c00")
+        setup.check_title("000500001014b700")
         with self.assertRaisesRegex(setup.SetupError, "not New Super Mario Bros. U"):
             setup.check_title("000500001010ec00")
-        with self.assertRaisesRegex(setup.SetupError, "not New Super Mario Bros. U"):
-            setup.check_title("000500001014b700")
 
 def _title(tid, version, files=10, size=1000):
     return {"id": tid, "version": version, "folder": "%s_v%d" % (tid, version), "files": files, "bytes": size}
@@ -161,8 +160,9 @@ class ArchiveTitles(unittest.TestCase):
 
     def test_combo_pack(self):
         combo = _title("000500001014b700", 0)
-        with self.assertRaisesRegex(setup.SetupError, "not New Super Mario Bros. U"):
-            setup.archive_choice(self.info([combo], combo))
+        folder, notes = setup.archive_choice(self.info([combo], combo))
+        self.assertEqual(folder, "000500001014b700_v0")
+        self.assertEqual(notes, [])
 
     def test_other_game(self):
         with self.assertRaisesRegex(setup.SetupError, "does not contain New Super Mario Bros. U.*title 00050000-1010EC00"):

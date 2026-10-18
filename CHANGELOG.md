@@ -6,6 +6,7 @@ At release, move those notes to a version heading and leave Unreleased empty.
 ## Unreleased
 
 -   **Add**: The Europe game (title `00050000-10101e00`, title version 80 / **1.3.0**) works through a USA address map, like the Wind Waker HD port.
+-   **Add**: The USA NSMBU + NSLU pack (title `00050000-1014b700`, title version 0) works through a USA address map that allows the pack's inserted functions.
 -   **Fix**: After a hitch, the game no longer sticks at 30 fps.
     Frame pacing follows the display refresh so courses can hold 60 fps.
 -   **Fix**: World-map paths stay above the hill instead of sinking into the ground.

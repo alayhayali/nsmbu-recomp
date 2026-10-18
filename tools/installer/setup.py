@@ -69,6 +69,7 @@ TITLE_IDS = {
     "0005000010101d00": "USA",
     "0005000010101e00": "Europe",
     "0005000010101c00": "Japan",
+    "000500001014b700": "USA + Luigi U",
 }
 
 sys.path.insert(0, os.path.join(PKG, "tools", "recomp"))
@@ -799,9 +800,9 @@ def file_sha256(path):
             h.update(chunk)
     return h.hexdigest()
 
-GAME_VERSION_FIX = ("Use New Super Mario Bros. U USA (title version 64) or Europe (title version 80) with the "
-                    "matching 1.3.0 update: a disc image plus an update/ folder next to it, a merged game folder "
-                    "(base plus update), or a Cemu archive that already has that title version.")
+GAME_VERSION_FIX = ("Use New Super Mario Bros. U USA (title version 64), Europe (title version 80), or the "
+                    "USA NSMBU + NSLU pack (title version 0): a disc image plus the matching update when needed, "
+                    "a merged game folder, or a Cemu archive that already has that title version.")
 
 UPDATE_DIRNAME = "update"
 

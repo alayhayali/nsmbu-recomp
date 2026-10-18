@@ -1,29 +1,28 @@
 #!/usr/bin/env python3
-"""Derive (and check) the address map between two regional builds of the game.
+"""Derive (and check) the address map between two builds of the game.
 
 usage:
   mkbuildmap.py CANONICAL.rpx OTHER.rpx --name EU --title 0005000010101e00 [--out FILE]
   mkbuildmap.py --check FILE [CANONICAL.rpx OTHER.rpx]
 
 Every game address in this repository (tools/recomp/hooks*.txt, runtime/src, the docs) is an
-address of the USA build: the canonical id of that function or object. Another regional build of
-the same game has the same code, compiled with the region's own language branches, so its
-functions sit at slightly different addresses. A build map (tools/recomp/builds/*.json) is a
-piecewise constant shift that turns a canonical address into that build's address, for code
-(.text) and for data (.rodata/.data/.bss).
+address of the USA build: the canonical id of that function or object. Another build of the same
+game (a region, or a pack that inserts more functions) has the same core code at shifted
+addresses. A build map (tools/recomp/builds/*.json) is a piecewise constant shift that turns a
+canonical address into that build's address, for code (.text) and for data (.rodata/.data/.bss).
 
 The map is derived from the two executables and only then committed; it holds numbers, never any
 of the game's code. Deriving it asserts that the two builds really are the same program:
 
-  - the same number of functions, in the same order;
-  - every function whose body is unique within both builds sits at the same index in both
-    (so the i-th function of one build is the i-th of the other);
+  - functions with a body unique to both builds appear in the same order (they may sit at
+    different indices when the other build inserts extra functions);
+  - every USA function that still exists is paired with exactly one function in the other build;
   - every direct call from a function with an identical body lands on the mapped address;
   - every data address referenced from such a function maps to exactly one address.
 
-Functions whose body differs (the region's own language code) are listed in the map. A hook on
-one of them is not valid for the other build, which is why hooks*.txt files can be marked as
-belonging to a build (see tools/recomp/builds.py).
+Functions whose body differs (region language code, or a pack tweak) are listed in the map. A
+hook on one of them is not valid for the other build, which is why hooks*.txt files can be marked
+as belonging to a build (see tools/recomp/builds.py).
 """
 import argparse
 import bisect
@@ -98,40 +97,133 @@ def steps_of(pairs):
 class Mismatch(Exception):
     pass
 
-def derive(canon, other):
-    """The map from `canon` to `other`, or Mismatch if they are not the same program."""
-    if len(canon.entries) != len(other.entries):
-        raise Mismatch("different number of functions: %d and %d" % (len(canon.entries), len(other.entries)))
-    n = len(canon.entries)
-    bodies_c = [canon.body(i) for i in range(n)]
-    bodies_o = [other.body(i) for i in range(n)]
-    differs = [i for i in range(n) if bodies_c[i] != bodies_o[i]]
+def _digest_body(b):
+    return hashlib.blake2b(b"".join(w.to_bytes(4, "big") for w in b), digest_size=16).digest()
 
-    def digest(b):
-        return hashlib.blake2b(b"".join(w.to_bytes(4, "big") for w in b), digest_size=16).digest()
-    dc = [digest(b) for b in bodies_c]
-    do = [digest(b) for b in bodies_o]
+
+def align_functions(canon, other, bodies_c, bodies_o):
+    """Pair every USA function index with an other-build index, or Mismatch.
+
+    Unique identical bodies are anchors and must appear in the same order in both builds.
+    Between anchors, USA functions are matched greedily by body (allowing the other build to
+    insert extra functions, as in the NSMBU + NSLU pack).
+    """
+    n, m = len(bodies_c), len(bodies_o)
+    dc = [_digest_body(b) for b in bodies_c]
+    do = [_digest_body(b) for b in bodies_o]
     count_c, count_o = collections.Counter(dc), collections.Counter(do)
     index_c = {h: i for i, h in enumerate(dc)}
     index_o = {h: i for i, h in enumerate(do)}
-    anchors = [h for h in count_c if count_c[h] == 1 and count_o.get(h) == 1]
-    moved = [h for h in anchors if index_c[h] != index_o[h]]
-    if moved:
-        h = moved[0]
-        raise Mismatch("%d of %d functions with a body unique to both builds are at a different index, "
-                       "e.g. %08X (#%d) and %08X (#%d): the function order is not the same" % (
-                           len(moved), len(anchors), canon.entries[index_c[h]], index_c[h],
-                           other.entries[index_o[h]], index_o[h]))
+    anchors = sorted(
+        (index_c[h], index_o[h])
+        for h in count_c
+        if count_c[h] == 1 and count_o.get(h) == 1
+    )
     if len(anchors) < n // 8:
         raise Mismatch("only %d of %d functions have a body unique to both builds: too few to tie "
                        "the two together" % (len(anchors), n))
+    for (i0, j0), (i1, j1) in zip(anchors, anchors[1:]):
+        if i1 <= i0 or j1 <= j0:
+            raise Mismatch("functions with a body unique to both builds are not in the same order "
+                           "(USA #%d / other #%d then USA #%d / other #%d)" % (i0, j0, i1, j1))
+    if anchors[0] != (0, 0):
+        raise Mismatch("the first function is not a shared unique body; cannot start the alignment")
+    n_anchors = len(anchors)
+    if anchors[-1][0] < n:
+        anchors = list(anchors) + [(n, m)]
 
-    code_steps = steps_of([(canon.entries[i], other.entries[i]) for i in range(n)])
+    pair = [-1] * n
+    for (i0, j0), (i1, j1) in zip(anchors, anchors[1:]):
+        if i0 < n:
+            pair[i0] = j0
+        if i1 <= i0 + 1:
+            continue
+        usa_idx = list(range(i0 + 1, i1))
+        other_idx = list(range(j0 + 1, j1))
+        # LCS on digests so identical bodies line up; leftover USA slots pair in order with
+        # leftover other slots (differing bodies); leftover other-only slots are inserts;
+        # leftover USA-only slots are absent in the other build (pair to the next anchor).
+        a = [dc[i] for i in usa_idx]
+        b = [do[j] for j in other_idx]
+        lcs = _lcs_index_pairs(a, b)
+        used_u = {u for u, _ in lcs}
+        used_o = {v for _, v in lcs}
+        for u, v in lcs:
+            pair[usa_idx[u]] = other_idx[v]
+        rest_u = [usa_idx[u] for u in range(len(usa_idx)) if u not in used_u]
+        rest_o = [other_idx[v] for v in range(len(other_idx)) if v not in used_o]
+        for u, o in zip(rest_u, rest_o):
+            pair[u] = o
+        # USA functions with no partner in this gap are absent in the other build.
 
+    missing = [i for i, j in enumerate(pair) if j < 0]
+    if missing and len(missing) > n // 50:
+        raise Mismatch("%d USA functions have no partner in the other build (e.g. #%d %08X)" % (
+            len(missing), missing[0], canon.entries[missing[0]]))
+    return pair, n_anchors
+
+
+def _lcs_index_pairs(a, b):
+    """Longest common subsequence of sequences a and b as [(index_in_a, index_in_b), ...]."""
+    na, nb = len(a), len(b)
+    if na == 0 or nb == 0:
+        return []
+    # For typical short gaps this is fine; long equal-length gaps use the O(n*m) DP.
+    dp = [[0] * (nb + 1) for _ in range(na + 1)]
+    for i in range(na - 1, -1, -1):
+        ai = a[i]
+        row, nrow = dp[i], dp[i + 1]
+        for j in range(nb - 1, -1, -1):
+            if ai == b[j]:
+                row[j] = nrow[j + 1] + 1
+            else:
+                row[j] = nrow[j] if nrow[j] >= row[j + 1] else row[j + 1]
+    pairs = []
+    i = j = 0
+    while i < na and j < nb:
+        if a[i] == b[j]:
+            pairs.append((i, j))
+            i += 1
+            j += 1
+        elif dp[i + 1][j] >= dp[i][j + 1]:
+            i += 1
+        else:
+            j += 1
+    return pairs
+
+
+def derive(canon, other):
+    """The map from `canon` to `other`, or Mismatch if they are not the same program."""
+    n = len(canon.entries)
+    bodies_c = [canon.body(i) for i in range(n)]
+    bodies_o = [other.body(i) for i in range(len(other.entries))]
+    pair, n_anchors = align_functions(canon, other, bodies_c, bodies_o)
+
+    paired = [i for i in range(n) if pair[i] >= 0]
+    missing = [i for i in range(n) if pair[i] < 0]
+    differs = [i for i in paired if bodies_c[i] != bodies_o[pair[i]]]
+    # Only one USA function may claim each other function; keep the first.
+    seen_other = {}
+    unique_paired = []
+    for i in paired:
+        j = pair[i]
+        if j in seen_other:
+            pair[i] = -1
+            missing.append(i)
+            continue
+        seen_other[j] = i
+        unique_paired.append(i)
+    paired = unique_paired
+    missing = [i for i in range(n) if pair[i] < 0]
+    differs = [i for i in paired if bodies_c[i] != bodies_o[pair[i]]]
+
+    code_steps = steps_of([(canon.entries[i], other.entries[pair[i]]) for i in paired])
     code = piecewise(code_steps)
+
     checked = wrong = 0
-    for i in range(n):
-        if bodies_c[i] != bodies_o[i]:
+    for i in paired:
+        j = pair[i]
+        if bodies_c[i] != bodies_o[j]:
             continue
         for k in range(0, canon.ends[i] - canon.entries[i], 4):
             a = canon.entries[i] + k
@@ -141,7 +233,10 @@ def derive(canon, other):
             t = (sext(w & 0x03FFFFFC, 26) + (0 if w & 2 else a)) & 0xFFFFFFFF
             if not canon.p.in_text(t):
                 continue
-            b = other.entries[i] + k
+            ti = canon.func_index(t)
+            if ti is None or pair[ti] < 0 or bodies_c[ti] != bodies_o[pair[ti]]:
+                continue
+            b = other.entries[j] + k
             w2 = other.p.word(b)
             t2 = (sext(w2 & 0x03FFFFFC, 26) + (0 if w2 & 2 else b)) & 0xFFFFFFFF
             checked += 1
@@ -153,9 +248,10 @@ def derive(canon, other):
     seen = collections.defaultdict(collections.Counter)
     for a, lst in canon.reloc_target.items():
         i = canon.func_index(a)
-        if i is None or bodies_c[i] != bodies_o[i]:
+        if i is None or pair[i] < 0 or bodies_c[i] != bodies_o[pair[i]]:
             continue
-        lst2 = other.reloc_target.get(other.entries[i] + (a - canon.entries[i]))
+        j = pair[i]
+        lst2 = other.reloc_target.get(other.entries[j] + (a - canon.entries[i]))
         if not lst2 or len(lst2) != len(lst):
             continue
         for (t1, d1), (t2, d2) in zip(lst, lst2):
@@ -168,16 +264,28 @@ def derive(canon, other):
             len(ambiguous), d, ", ".join("%08X" % x for x in c)))
     data_steps = steps_of([(d, c.most_common(1)[0][0]) for d, c in sorted(seen.items())])
 
+    differing = []
+    for i in differs:
+        j = pair[i]
+        differing.append([canon.entries[i], canon.ends[i] - canon.entries[i],
+                          other.entries[j], other.ends[j] - other.entries[j]])
+    for i in missing:
+        # Absent in the other build: keep a code entry so the piecewise map jumps, and mark the
+        # whole USA function as changed so instruction hooks are refused.
+        mapped = code(canon.entries[i])
+        differing.append([canon.entries[i], canon.ends[i] - canon.entries[i], mapped, 0])
+
     return {
         "code_bounds": [canon.p.text_lo, canon.p.text_hi],
         "data_bounds": [min(s.addr for s in canon.p.rpx.sections if s.name in (".rodata", ".data", ".bss")),
                         max(s.addr + s.size for s in canon.p.rpx.sections if s.name in (".rodata", ".data", ".bss"))],
         "code_steps": code_steps,
         "data_steps": data_steps,
-        "differing_functions": [[canon.entries[i], canon.ends[i] - canon.entries[i],
-                                 other.entries[i], other.ends[i] - other.entries[i]] for i in differs],
-        "stats": {"functions": n, "anchors": len(anchors), "calls_checked": checked,
-                  "data_addresses": len(seen)},
+        "differing_functions": differing,
+        "stats": {"functions": n, "other_functions": len(other.entries), "anchors": n_anchors,
+                  "paired": len(paired), "missing": len(missing),
+                  "calls_checked": checked, "data_addresses": len(seen),
+                  "differing": len(differing)},
     }
 
 def piecewise(steps):
@@ -207,8 +315,9 @@ def to_json(m, name, title, sha256, canon_sha256, canon_name):
 
 def report(m):
     s = m["stats"]
-    print("functions %d, bodies unique to both builds %d, direct calls checked %d, data addresses %d" % (
-        s["functions"], s["anchors"], s["calls_checked"], s["data_addresses"]))
+    other = s.get("other_functions", s["functions"])
+    print("functions %d -> %d, bodies unique to both builds %d, direct calls checked %d, data addresses %d" % (
+        s["functions"], other, s["anchors"], s["calls_checked"], s["data_addresses"]))
     print("code: %d steps, data: %d steps, functions with a different body: %d" % (
         len(m["code_steps"]), len(m["data_steps"]), len(m["differing_functions"])))
     for a, d in m["code_steps"]:

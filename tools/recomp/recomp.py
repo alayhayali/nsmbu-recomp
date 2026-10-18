@@ -234,10 +234,24 @@ class Recompiler:
         return "c->pc = c->ctr; MUSTTAIL return ppc_dispatch(c);"
 
     def sym(self, addr):
-        """The canonical (USA) address `addr` is named by: the same number for the USA build, the
-        function's canonical address for any other. Generated symbols use it so that the runtime's
-        f_XXXXXXXX, hook_XXXXXXXX and site_XXXXXXXX never change with the build."""
-        return self.canon_of.get(addr) or self.build.canon_code(addr)
+        """Symbol id for a function at `addr` in this build.
+
+        Hooks and the runtime use canonical (USA) addresses. For a regional or pack build, a
+        function that comes from the USA code is named by its USA address. A function the other
+        build inserted (no USA counterpart) is named with bit 31 set on its own address, so the
+        id cannot collide with a USA canonical f_XXXXXXXX.
+        """
+        if addr in self.canon_of:
+            return self.canon_of[addr]
+        if self.build.canonical:
+            return addr
+        canon = self.build.canon_code(addr)
+        try:
+            if self.build.code(canon) == addr:
+                return canon
+        except ValueError:
+            pass
+        return addr | 0x80000000
 
     def callee(self, addr):
         """The comment for a call site: the callee's name from headers_names.txt."""

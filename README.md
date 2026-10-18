@@ -19,19 +19,18 @@ You supply the disc image, the keys, and the game files.
 
 ## Compatibility
 
-This table is for standalone NSMBU.
-The NSMBU + NSLU combo pack is not supported.
-A base disc needs its matching 1.3.0 update.
 Addresses in the repo are USA.
-Europe uses a USA→EU map ([docs/builds.md](docs/builds.md)).
+Europe and the USA NSMBU + NSLU pack use USA→build maps ([docs/builds.md](docs/builds.md)).
+Standalone USA and Europe discs need their matching 1.3.0 update.
+The USA combo pack is title version 0 (no separate update folder).
 
 | Region | Title ID | Title version | Status |
 |--------|----------|---------------|--------|
 | USA | `00050000-10101d00` | 64 (1.3.0) | Supported and playtested |
 | Europe | `00050000-10101e00` | 80 (1.3.0) | Supported; map derived, recomp and installer checked |
+| USA combo (NSMBU + NSLU) | `00050000-1014b700` | 0 | Supported; map derived, recomp and headless boot checked |
 | Japan | `00050000-10101c00` | — | Not supported yet |
-| USA combo (NSMBU + NSLU) | `00050000-1014b700` | — | Not supported (different program) |
-| Europe combo (NSMBU + NSLU) | `00050000-1014b800` | — | Not supported (different program) |
+| Europe combo (NSMBU + NSLU) | `00050000-1014b800` | — | Not supported yet |
 
 Language packs can still lend European or Japanese text to a USA install
 ([docs/language-packs.md](docs/language-packs.md)).
@@ -56,9 +55,10 @@ Each later start launches the game.
 
 ### 2. Choose your game copy
 
-The installer accepts USA or Europe NSMBU at version 1.3.0.
+The installer accepts USA or Europe NSMBU at version 1.3.0, or the USA NSMBU + NSLU pack at version 0.
 USA is title `00050000-10101d00`, title version 64.
 Europe is title `00050000-10101e00`, title version 80.
+The USA combo pack is title `00050000-1014b700`, title version 0.
 
 Choose one of these:
 

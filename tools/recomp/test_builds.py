@@ -30,13 +30,14 @@ class Registry(unittest.TestCase):
 
     def test_known_builds(self):
         names = {b.name for b in builds.all_builds()}
-        self.assertEqual(names, {"USA", "EU"})
+        self.assertEqual(names, {"USA", "EU", "NSMBU_NSLU_USA"})
         self.assertEqual(builds.by_title("0005000010101d00").name, "USA")
         self.assertEqual(builds.by_title("0005000010101e00").name, "EU")
+        self.assertEqual(builds.by_title("000500001014b700").name, "NSMBU_NSLU_USA")
         self.assertEqual(builds.by_name("eu").title_version, 80)
+        self.assertEqual(builds.by_name("NSMBU_NSLU_USA").title_version, 0)
         self.assertEqual(builds.canonical_build().title_version, 64)
         self.assertIsNone(builds.by_title("0005000010143500"))
-        self.assertIsNone(builds.by_title("000500001014b700"))
 
     def test_titles_and_hashes_are_distinct(self):
         all_builds = builds.all_builds()
@@ -97,6 +98,16 @@ class Hooks(unittest.TestCase):
         self.assertEqual(by_canon[0x02ACD218], 0x02ACD618)
         self.assertEqual(by_canon[0x029CBBB4], 0x029CBC58)
         self.assertTrue(eu.body_differs(0x029CBBB4))
+
+    def test_combo_hooks_map(self):
+        combo = builds.by_name("NSMBU_NSLU_USA")
+        self.assertIsNotNone(combo)
+        entries, skipped = builds.read_hooks(builds.hook_files(), combo)
+        self.assertEqual(skipped, [])
+        by_canon = {canon: addr for _, canon, addr, _ in entries}
+        self.assertNotEqual(by_canon[0x02ACD218], 0x02ACD218)
+        self.assertEqual(by_canon[0x029CBBB4], combo.code(0x029CBBB4))
+        self.assertTrue(combo.body_differs(0x029CBBB4))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
