@@ -5,8 +5,27 @@ import sys
 
 _SLOT = re.compile(r"^([1-5])$")
 _WORLD = re.compile(r"^\d+-\d+$")
+_FILE_PACK = re.compile(r"^([1-9])-([1-9]\d*)$")
 LOAD_FRAME = 200
 INTRO_SKIP_MOD = "example.intro-skip"
+_COURSE_RES_PACK = os.path.join("game", "content", "Common", "course_res_pack")
+
+
+def course_file_pack(arg):
+    base = os.path.basename(arg.replace("\\", "/"))
+    if not base.lower().endswith(".szs"):
+        sys.exit(f"course file must end in .szs: {arg}")
+    stem = base[:-4]
+    match = _FILE_PACK.fullmatch(stem)
+    pack_no = int(match.group(2)) if match else 0
+    if match is None or pack_no < 1 or pack_no > 256:
+        sys.exit(f"course file name must look like 1-27.szs: {base}")
+    path = arg
+    if "/" not in arg and "\\" not in arg:
+        path = os.path.join(_COURSE_RES_PACK, base)
+    if not os.path.isfile(path):
+        sys.exit(f"missing course file {path}")
+    return f"{match.group(1)}-{pack_no}"
 
 
 def take_args(args):
@@ -14,6 +33,14 @@ def take_args(args):
     pack = None
     rest = []
     for arg in args:
+        if arg.lower().endswith(".szs") or "/" in arg or "\\" in arg:
+            found = course_file_pack(arg)
+            if pack is not None:
+                sys.exit("pass one course pack, such as 1-1")
+            if slot is not None:
+                sys.exit("pass a save slot or a course pack, not both")
+            pack = found
+            continue
         if _WORLD.fullmatch(arg):
             if pack is not None:
                 sys.exit("pass one course pack, such as 1-1")

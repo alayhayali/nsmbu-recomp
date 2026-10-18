@@ -184,7 +184,7 @@ once per distinct wider key, translates again under the current registers and co
 the result with the shader the narrow key returned; any difference is logged as
 `[vulkan shader key] VIOLATION` and counted in the stats (`=N` checks one wider key in N).
 WWHD Outset and WWHD Windfall figures are historical Wind Waker HD measurement records.
-The current NSMBU repro is `agent-nsmbu run 1-1` with `NSMBU_STATE_LOAD_AT=700:1` (slot 1); see
+The current NSMBU repro is `nsmbu run 1-1` with `NSMBU_STATE_LOAD_AT=700:1` (slot 1); see
 [docs/performance.md](performance.md).
 
 Sharing shaders whose translation is identical is the idea of PR #46 by rhemfur, who found that

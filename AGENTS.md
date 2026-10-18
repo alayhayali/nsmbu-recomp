@@ -8,13 +8,13 @@ The game dump, keys, and extracted files stay in `game/` on the machine that own
 
 ## Verify
 
-The `agent-nsmbu` cli is installed and can be used to interact with the game.
+The `nsmbu` cli is installed and can be used to interact with the game.
 
 ## Docs
 
-- **cli** — `docs/cli.md` for the global `agent-nsmbu` command, dev recipes, and agent control loop
+- **cli** — `docs/cli.md` for the global `nsmbu` command, dev recipes, and agent control loop
 - **env** — `docs/env.md` when you add, rename, or read an `NSMBU_*` variable (`runtime/src/env.h`: `env::NAME()`, `.name()`, typed reads, `env::unset`)
-- **automation** — `docs/automation.md` for `agent-nsmbu scripted`, headless boots, and scripted inputs or exit frames; CLI overview in `docs/cli.md`
+- **automation** — `docs/automation.md` for `nsmbu scripted`, headless boots, and scripted inputs or exit frames; CLI overview in `docs/cli.md`
 - **names** — `docs/names.md` to name guest symbols (USA v1.3.0 address is the key)
 
 ## Code style

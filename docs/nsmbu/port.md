@@ -57,69 +57,73 @@ User files live under `game/`:
 - `game/game.key` — title key next to the image
 - `game/common.key` — common key (or `WIIU_COMMON_KEY`)
 - `game/update/` — USA 1.3.0 update (title version 64), with `code/`, `content/`, `meta/`
-- `game/code/`, `game/content/`, `game/meta/` — output of `agent-nsmbu extract` (base disc plus update)
+- `game/code/`, `game/content/`, `game/meta/` — output of `nsmbu extract` (base disc plus update)
 
 `.gitignore` ignores all of `game/` except `game/README.md` (layout and steps for this folder).
 
-`agent-nsmbu extract` starts by checking `game/update/` is USA 1.3.0.
+`nsmbu extract` starts by checking `game/update/` is USA 1.3.0.
 It then extracts `game/game.wux` into `game/code`, `game/content`, and `game/meta`.
 It applies `game/update/` over those folders and checks the merged RPX matches the known USA 1.3.0 hash.
 
-`agent-nsmbu build` configures `build/` in **Debug** and builds `nsmbu`.
+`nsmbu build` configures `build/` in **Debug** and builds `nsmbu`.
 
-If `game/code/red-pro2.rpx` exists, `agent-nsmbu build` runs `recomp.py` into `build/gen` when the RPX is newer than the generated code.
+If `game/code/red-pro2.rpx` exists, `nsmbu build` runs `recomp.py` into `build/gen` when the RPX is newer than the generated code.
 
 Otherwise it runs `stubgen.py` so the tree links without your RPX.
 
-`agent-nsmbu build --release` uses **Release**.
+`nsmbu build --release` uses **Release**.
 
-`agent-nsmbu build --sanitizer` adds AddressSanitizer and UBSan.
+`nsmbu build --sanitizer` adds AddressSanitizer and UBSan.
 
 Clang needs a GNU `libstdc++` (for example `libstdc++-14-dev` on Ubuntu).
 `tools/build.py` adds the matching `-L` path when it finds `libstdc++.so` under `/usr/lib/gcc/`.
 
-The `agent-nsmbu` CLI exports `NSMBU_USER_DIR` to the gitignored `nsmbu/` folder on dev commands.
-`agent-nsmbu launch` starts `build/debug/nsmbu` with `--game` set to `game/` and `--save nsmbu/save`.
+The `nsmbu` CLI exports `NSMBU_USER_DIR` to the gitignored `nsmbu/` folder on dev commands.
+`nsmbu launch` starts `build/debug/nsmbu` with `--game` set to `game/` and `--save nsmbu/save`.
 Default debug env vars (`NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, `NSMBU_CRASH_RECOVERY`) are set when they are not already in the environment.
 
-`agent-nsmbu launch --no-debug` skips those debug defaults.
+`nsmbu launch --no-debug` skips those debug defaults.
 It still uses `nsmbu/`.
 
 Portable installer releases keep their own `data/nsmbu` (settings and `save/`) via `portable.txt`.
 The setup importer can also read `<repo>/nsmbu` from a source checkout.
 
-`agent-nsmbu launch --trace` passes `--trace` for HLE logging.
+`nsmbu launch --trace` passes `--trace` for HLE logging.
 
-`agent-nsmbu launch --gdb` and `agent-nsmbu launch --lldb` run the game under a debugger.
+`nsmbu launch --gdb` and `nsmbu launch --lldb` run the game under a debugger.
 
-`agent-nsmbu run` runs `agent-nsmbu build` then `agent-nsmbu launch`.
+`nsmbu run` runs `nsmbu build` then `nsmbu launch`.
 
-`agent-nsmbu run --release` runs `agent-nsmbu build --release` then `agent-nsmbu launch --no-debug`.
+`nsmbu run --release` runs `nsmbu build --release` then `nsmbu launch --no-debug`.
 This is the configuration the released installs use.
 
-`agent-nsmbu launch` / `agent-nsmbu run` symlink each `modding/examples/` package into `nsmbu/mods/<id>/` before start.
+`nsmbu launch` / `nsmbu run` symlink each `modding/examples/` package into `nsmbu/mods/<id>/` before start.
 Real folders already in mods are not replaced.
 Enable packages in Mods.
 Set `NSMBU_NO_EXAMPLE_MODS=1` to skip those links.
 
-`agent-nsmbu run 3` loads save slot 3 after boot.
+`nsmbu run 3` loads save slot 3 after boot.
 The number is the save slot.
 Slots are 1 through 5.
 The load starts at TV frame 200 and waits until the boot threads exist.
 
-`agent-nsmbu run 1-1` does not load a save state.
+`nsmbu run 1-1` does not load a save state.
 It enables the `example.intro-skip` mod and sets its course pack option to `1-1`.
 Any `N-M` token with that shape works the same way.
+A `course_res_pack` file works the same way.
+`nsmbu open game/content/Common/course_res_pack/1-27.szs` starts course `1-27`.
+The loading card needs the pending course, not the save's current course.
+That state is in [course-open.md](course-open.md).
 You cannot pass a slot and a course pack on one launch.
 
-`agent-nsmbu profile` runs `build/debug/nsmbu` with the fixed-scene profile env (`NSMBU_NO_AUDIO`, profile and Vulkan stats, slow-swap log, log file under `.tmp/repro/`).
+`nsmbu profile` runs `build/debug/nsmbu` with the fixed-scene profile env (`NSMBU_NO_AUDIO`, profile and Vulkan stats, slow-swap log, log file under `.tmp/repro/`).
 Default load is slot 2 at TV frame 700; the run stops at TV frame 1100.
 Pass a slot number, or `--exit-at`, `--load-at`, or `--log`.
-Use a Release binary (`agent-nsmbu build --release`) for hitch checks.
+Use a Release binary (`nsmbu build --release`) for hitch checks.
 
-`agent-nsmbu recomp` runs `recomp.py` only.
+`nsmbu recomp` runs `recomp.py` only.
 
-Install the CLI with `cd cli && npm link`; see [cli.md](cli.md).
+Install the CLI with `cd tools/cli && npm link`; see [cli.md](../cli.md).
 
 Put an extracted game you own in `game/`.
 

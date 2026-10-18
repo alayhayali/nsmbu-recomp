@@ -81,25 +81,25 @@ and the actual-device renderer smoke test passed in the local build.
 
 ## How to profile
 
-A full course measurement uses `agent-nsmbu replay --release 1-1`.
+A full course measurement uses `nsmbu replay --release 1-1`.
 
 Read `docs/replay-1-1.md` for the 2026-10-17 Release profile.
 
 Load slot 1 to reach 1-1.
 Do this before you play through the title screen.
-Slot 1 is `nsmbu/states/slot1.bin` when you use `agent-nsmbu run` / `agent-nsmbu launch`.
+Slot 1 is `nsmbu/states/slot1.bin` when you use `nsmbu run` / `nsmbu launch`.
 Otherwise it is under the platform config folder (`~/.config/nsmbu/states/` on Linux).
 `NSMBU_STATE_LOAD_AT` is `TV frame:slot`.
 Frame 700 is after the boot threads exist.
 The log line `Loaded slot 1` means the load worked.
 
 ```sh
-agent-nsmbu build --release
-agent-nsmbu profile
+nsmbu build --release
+nsmbu profile
 ```
 
-`agent-nsmbu profile` writes `.tmp/repro/nsmbu.log`.
-Pass a slot (`agent-nsmbu profile 1`), or `--exit-at`, `--load-at`, or `--log`.
+`nsmbu profile` writes `.tmp/repro/nsmbu.log`.
+Pass a slot (`nsmbu profile 1`), or `--exit-at`, `--load-at`, or `--log`.
 
 Read `[prof]`, `[vulkan perf]`, and `[gx2] frame` in `.tmp/repro/nsmbu.log`.
 A missing live thread logs `does not exist yet`.
@@ -112,15 +112,15 @@ The "Sort by top of stack" section shows where the CPU time goes.
 ### Fixed-scene benchmark
 
 WWHD Outset and WWHD Windfall figures are historical Wind Waker HD measurement records.
-Use `agent-nsmbu run 1-1` and `NSMBU_STATE_LOAD_AT=700:1` (slot 1) in How to profile for the current NSMBU repro.
+Use `nsmbu run 1-1` and `NSMBU_STATE_LOAD_AT=700:1` (slot 1) in How to profile for the current NSMBU repro.
 
 `tools/bench/run_bench.py` runs the game headless (or with `--visible` windows, which presentation
 and vsync pacing need) from a save state with scripted input, one game at a time, with a fresh copy
 of the save and its own caches and settings files. A/B variants run interleaved:
 
 ```sh
-agent-nsmbu build --release
-agent-nsmbu run 1-1
+nsmbu build --release
+nsmbu run 1-1
 ```
 
 For historical WWHD A/B runs, `tools/bench/run_bench.py` still accepts `--scene outset` or
@@ -416,7 +416,7 @@ page tracking in `state_memory.h`/`platform/host.h`: restore 262 to 70-85 ms, ca
 
 ## Per-mip xxHash reuse on full checks (2026-10-13)
 
-After the register-path work, `agent-nsmbu perf` on 1-1 still spent most GX2 render draw time in the
+After the register-path work, `nsmbu perf` on 1-1 still spent most GX2 render draw time in the
 **textures** phase (`XXH3_hashLong_64b_default`, `decode_level_fast`, memcpy, upload).
 Decode already skipped mips whose per-level hash matched; a dirty full check still **re-hashed every
 level** before that decision.
@@ -430,7 +430,7 @@ Single-level surfaces that rewrite every frame still hash in full. `ctest` `writ
 ## Register-state memo and write-watch clock (2026-10-13)
 
 Linux, Intel Arc B580, i5-12600KF (Alder Lake hybrid).
-`agent-nsmbu perf` on the fixed 1-1 scene (`nsmbu/states/slot1.bin`, TV frame 700, exit 1100, 25 s
+`nsmbu perf` on the fixed 1-1 scene (`nsmbu/states/slot1.bin`, TV frame 700, exit 1100, 25 s
 `perf record` at 997 Hz, `-e cycles:u`, DWARF stacks).
 Artifacts: `.tmp/perf/before/` (pre-change) and `.tmp/perf/after/` (with the fixes below);
 `build/nsmbu` was unchanged between each record and `perf report`.

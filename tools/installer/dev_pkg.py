@@ -47,7 +47,7 @@ def host_platform(build):
 
 def require(path, what):
     if not os.path.isfile(path):
-        sys.exit("missing %s (%s); run: agent-nsmbu installer" % (what, path))
+        sys.exit("missing %s (%s); run: nsmbu installer" % (what, path))
 
 
 def first_existing(paths):

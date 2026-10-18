@@ -58,7 +58,7 @@ Explicit startup environment values, including zero, override saved choices at s
 Storage is `<host config directory>`: `mods/<folder>/manifest.json` plus package files, and `mods.json`.
 `NSMBU_MOD_MANAGER_DIR` selects isolated storage (same layout under that directory).
 `NSMBU_NO_HOST_INPUT` skips user preferences and package storage unless an explicit manager directory is supplied for a test.
-Source `agent-nsmbu launch` / `agent-nsmbu run` symlink each `modding/examples/` package into `nsmbu/mods/<id>/`.
+Source `nsmbu launch` / `nsmbu run` symlink each `modding/examples/` package into `nsmbu/mods/<id>/`.
 Real folders already in mods are not replaced.
 Set `NSMBU_NO_EXAMPLE_MODS=1` to skip those links.
 Package files live under the mods folder; the original game files are not changed.

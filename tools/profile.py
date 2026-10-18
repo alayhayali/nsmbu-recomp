@@ -50,10 +50,10 @@ def main():
         slot_num = 1
     exe = nsmbu_exe()
     if not os.path.isfile(exe):
-        sys.exit(f"missing {exe}; run: agent-nsmbu build")
+        sys.exit(f"missing {exe}; run: nsmbu build")
     game = os.path.join(ROOT, "game")
     if not os.path.isdir(game):
-        sys.exit("missing game/; run: agent-nsmbu extract")
+        sys.exit("missing game/; run: nsmbu extract")
     os.makedirs(os.path.dirname(args.log), exist_ok=True)
     env = os.environ.copy()
     _, save = devdata.apply_env(env, ROOT)

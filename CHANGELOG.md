@@ -5,17 +5,20 @@ At release, move those notes to a version heading and leave Unreleased empty.
 
 ## Unreleased
 
--   **Add**: `agent-nsmbu replay --release` plays a course on `build/release/nsmbu`, sets the profile variables when unset, and prints `[replay] log`.
+-   **Fix**: `nsmbu open 1-5` shows that course on the loading card.
+    The card was still reading the save's current course, which is level 1 of Acorn Plains on a new file.
+-   **Add**: `nsmbu open` accepts a `course_res_pack` file, such as `game/content/Common/course_res_pack/1-27.szs`, and starts that course.
+-   **Add**: `nsmbu replay --release` plays a course on `build/release/nsmbu`, sets the profile variables when unset, and prints `[replay] log`.
     `--uncapped`, `--exit-at N`, and `--log PATH` bound that run.
--   **Add**: `agent-nsmbu` CLI (`cli/`, `cd cli && npm link`) for build, launch, profile, and agent control (`open`, `status`, `press`, `screenshot`, `wait`, `close`).
+-   **Add**: `nsmbu` CLI (`tools/cli/`, `cd tools/cli && npm link`) for build, launch, profile, and agent control (`open`, `status`, `press`, `screenshot`, `wait`, `close`).
     A minimal root `justfile` keeps `run`, `record`, and `replay` for humans only.
--   **Change**: Developer docs and agent skills use `agent-nsmbu …` for CLI commands.
+-   **Change**: Developer docs and agent skills use `nsmbu …` for CLI commands.
 -   **Fix**: `Scene.load_pack` / `load_story` show the correct stage number on the course enter banner instead of a comma or blank glyph.
 -   **Add**: Luau `nsmbu.Scene.Factory` named class creator ids for comparing with `onSceneChange(factory)` and `phase()`.
 -   **Add**: Luau `nsmbu.Hooks.onSceneChange(factory)` fires after guest `Scene::setNextScene` returns, with the requested class creator id.
     Nested requests while a handler runs are queued.
     `example.intro-skip` only sets flags from that event and runs `apply_save` / `load_pack` / A pulses on `onLogicStep`.
--   **Add**: `agent-nsmbu run 1-1` enables `example.intro-skip` for that course pack; `agent-nsmbu run 1` still loads save slot 1.
+-   **Add**: `nsmbu run 1-1` enables `example.intro-skip` for that course pack; `nsmbu run 1` still loads save slot 1.
 -   **Fix**: A number option in the Mods tab follows its `step`.
 -   **Add**: A `radio` option shows one button per choice, with a separate label.
     `example.intro-skip` uses that option for save files 1, 2, and 3.

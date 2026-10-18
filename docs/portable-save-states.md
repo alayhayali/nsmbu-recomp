@@ -16,7 +16,7 @@ Save states come in two kinds that share the five slots:
 | Exact | no (see below) | yes |
 
 Both live in the states folder (its path is shown in the Saves tab; releases keep it in `data/nsmbu`, builds from source
-use `nsmbu/states/` with `agent-nsmbu launch` / `agent-nsmbu run`, or `~/Library/Application Support/nsmbu/states/` on macOS and the configuration folder elsewhere; `NSMBU_STATE_DIR` overrides it). Loading a slot loads whichever kind it holds (the newer file if it
+use `nsmbu/states/` with `nsmbu launch` / `nsmbu run`, or `~/Library/Application Support/nsmbu/states/` on macOS and the configuration folder elsewhere; `NSMBU_STATE_DIR` overrides it). Loading a slot loads whichever kind it holds (the newer file if it
 holds both). Crash Recovery's automatic states are always full states.
 
 ## Choosing the kind

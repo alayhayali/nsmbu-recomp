@@ -7,7 +7,7 @@ Every game address in this repository (`tools/recomp/hooks*.txt`, `runtime/src`,
 Those addresses are the *canonical ids* of the game's functions and globals.
 
 The RPX SHA-256 is in `tools/recomp/builds.py`.
-`agent-nsmbu extract` checks `game/update/` and the merged dump against that hash.
+`nsmbu extract` checks `game/update/` and the merged dump against that hash.
 
 ## Regional builds
 

@@ -1,12 +1,12 @@
 ---
-name: agent-nsmbu
-description: "NSMBU developer CLI for build, launch, course replay, screenshots, and short pad pulses. Use when driving the game, measuring a Release replay, or running a dev recipe."
+name: nsmbu
+description: "nsmbu CLI for build, launch, course replay, screenshots, and short pad pulses. Use when driving the game, measuring a Release replay, or running a dev recipe."
 ---
 
-# agent-nsmbu
+# nsmbu
 
-TypeScript CLI under `cli/`.
-Run `agent-nsmbu --help` for the command list.
+TypeScript CLI under `tools/cli/`.
+Run `nsmbu --help` for the command list.
 Canonical reference: `docs/cli.md`.
 
 ## Install once
@@ -14,15 +14,15 @@ Canonical reference: `docs/cli.md`.
 Node 24 or newer.
 
 ```bash
-cd cli && npm link
+cd tools/cli && npm link
 ```
 
-After that, every command is the global `agent-nsmbu` on `PATH`.
+After that, every command is the global `nsmbu` on `PATH`.
 
 ## One game
 
 Only one game process is supported.
-If `agent-nsmbu open` refuses because a game is already running, run `agent-nsmbu status` or `agent-nsmbu close`.
+If `nsmbu open` refuses because a game is already running, run `nsmbu status` or `nsmbu close`.
 
 ## Which command
 
@@ -34,6 +34,9 @@ If `agent-nsmbu open` refuses because a game is already running, run `agent-nsmb
 | Uncapped course, stop at a frame | `replay --release --uncapped --exit-at N <course>` |
 | Scripted boot and frame PNGs | `scripted <name>` |
 | Look and tap | `open` -> `status` / `screenshot` -> `press` / `stick` -> `wait` -> `close` |
+| Open a course file | `open game/content/Common/course_res_pack/1-27.szs` |
+
+The loading card for `open 1-5` is in `docs/nsmbu/course-open.md`.
 
 `screenshot [path]` blocks until the PNG exists and prints the path.
 A long pad timeline stays on `record` and `replay`.

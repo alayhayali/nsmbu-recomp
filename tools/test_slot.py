@@ -33,6 +33,44 @@ class TakeArgs(unittest.TestCase):
         with self.assertRaises(SystemExit):
             slot.take_args(["1", "2"])
 
+    def test_course_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "1-27.szs")
+            with open(path, "wb") as handle:
+                handle.write(b"")
+            s, p, rest = slot.take_args([path, "--trace"])
+            self.assertIsNone(s)
+            self.assertEqual(p, "1-27")
+            self.assertEqual(rest, ["--trace"])
+
+    def test_course_file_basename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pack_dir = os.path.join(tmp, "game", "content", "Common", "course_res_pack")
+            os.makedirs(pack_dir)
+            with open(os.path.join(pack_dir, "1-27.szs"), "wb") as handle:
+                handle.write(b"")
+            old = os.getcwd()
+            os.chdir(tmp)
+            try:
+                s, p, rest = slot.take_args(["1-27.szs"])
+            finally:
+                os.chdir(old)
+            self.assertIsNone(s)
+            self.assertEqual(p, "1-27")
+            self.assertEqual(rest, [])
+
+    def test_missing_course_file(self):
+        with self.assertRaises(SystemExit):
+            slot.take_args(["game/nope/1-27.szs"])
+
+    def test_bad_course_file_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "nope.szs")
+            with open(path, "wb") as handle:
+                handle.write(b"")
+            with self.assertRaises(SystemExit):
+                slot.take_args([path])
+
 
 class ApplyCoursePack(unittest.TestCase):
     def test_updates_mods_json(self):

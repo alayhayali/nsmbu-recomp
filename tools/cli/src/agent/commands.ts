@@ -61,7 +61,7 @@ export async function cmdStatus(repo: string): Promise<void> {
 export async function cmdPress(repo: string, argv: string[]): Promise<void> {
     const { flags, positional } = parseArgv(argv, ["frames"]);
     if (positional.length < 1) {
-        throw new Error("usage: agent-nsmbu press <button|hex> [--frames N]");
+        throw new Error("usage: nsmbu press <button|hex> [--frames N]");
     }
     const bits = parseButtonBits(positional[0]);
     const frames = flagNumber(flags, "frames", 20);
@@ -79,7 +79,7 @@ export async function cmdPress(repo: string, argv: string[]): Promise<void> {
 export async function cmdStick(repo: string, argv: string[], right: boolean): Promise<void> {
     const { flags, positional } = parseArgv(argv, ["frames"]);
     if (positional.length < 2) {
-        throw new Error(`usage: agent-nsmbu ${right ? "rstick" : "stick"} <x> <y> [--frames N]`);
+        throw new Error(`usage: nsmbu ${right ? "rstick" : "stick"} <x> <y> [--frames N]`);
     }
     const x = Number(positional[0]);
     const y = Number(positional[1]);
@@ -129,7 +129,7 @@ export async function cmdWait(repo: string, argv: string[]): Promise<void> {
     const frameTarget = hasFlag(flags, "frame") ? flagNumber(flags, "frame", 0) : null;
     const stepTarget = hasFlag(flags, "step") ? flagNumber(flags, "step", 0) : null;
     if (frameTarget === null && stepTarget === null) {
-        throw new Error("usage: agent-nsmbu wait --frame N | --step N [--timeout SEC]");
+        throw new Error("usage: nsmbu wait --frame N | --step N [--timeout SEC]");
     }
     const timeoutMs = flagNumber(flags, "timeout", 120) * 1000;
     const client = new AgentClient(repo);

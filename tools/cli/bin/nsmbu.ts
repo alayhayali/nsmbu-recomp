@@ -67,7 +67,7 @@ async function main(): Promise<void> {
             case "record": {
                 const [course, ...launchRest] = rest;
                 if (!course) {
-                    throw new Error("usage: agent-nsmbu record <course> […]");
+                    throw new Error("usage: nsmbu record <course> […]");
                 }
                 cmdRecord(repo, course, launchRest);
                 break;
@@ -77,16 +77,16 @@ async function main(): Promise<void> {
                 const [course, ...launchRest] = positional;
                 if (!course) {
                     throw new Error(
-                        "usage: agent-nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course> […]",
+                        "usage: nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course> […]",
                     );
                 }
                 const exitAt = flagString(flags, "exit-at");
                 if (hasFlag(flags, "exit-at") && (exitAt === undefined || !/^\d+$/.test(exitAt))) {
-                    throw new Error("usage: agent-nsmbu replay --exit-at N");
+                    throw new Error("usage: nsmbu replay --exit-at N");
                 }
                 const log = flagString(flags, "log");
                 if (hasFlag(flags, "log") && !log) {
-                    throw new Error("usage: agent-nsmbu replay --log PATH");
+                    throw new Error("usage: nsmbu replay --log PATH");
                 }
                 cmdReplay(
                     repo,
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
             case "scripted": {
                 const [name, ...scriptRest] = rest;
                 if (!name) {
-                    throw new Error("usage: agent-nsmbu scripted <name> […]");
+                    throw new Error("usage: nsmbu scripted <name> […]");
                 }
                 cmdScripted(repo, name, scriptRest);
                 break;
