@@ -166,6 +166,10 @@ class ArchiveTitles(unittest.TestCase):
         self.assertEqual(setup.title_desc("0005000010101d00", 64), "New Super Mario Bros. U (USA), version 64")
         self.assertEqual(setup.title_desc("0005000e10101c00"), "the update for New Super Mario Bros. U (Japan)")
 
+    def test_format_title_id(self):
+        self.assertEqual(setup.format_title_id("0005000010101d00"), "00050000-10101D00")
+        self.assertEqual(setup.format_title_id(""), "")
+
     def test_plan(self):
         self.assertEqual(setup.plan_steps("archive"), ["archive", "compiler", "extract", "translate", "compile", "app"])
         self.assertEqual(setup.EXTRACT_ERRORS[10], "wrong_title")

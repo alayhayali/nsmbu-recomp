@@ -17,6 +17,11 @@ The `nsmbu` cli is installed and can be used to interact with the game.
 - **automation** — `docs/automation.md` for `nsmbu scripted`, headless boots, and scripted inputs or exit frames; CLI overview in `docs/cli.md`
 - **names** — `docs/names.md` to name guest symbols (USA v1.3.0 address is the key)
 
+## Changelog
+
+- Should only contain user facing update.
+- Exclude just, cli and tools changes for example.
+
 ## Code style
 
 Match the file you are editing.

@@ -392,6 +392,10 @@ struct App {
     std::string source_path, source_kind;
     std::string probe_msg;
     bool probe_ok = false;
+    std::string source_title, source_title_id, source_title_id_text, source_build;
+    std::string source_update_title, source_update_sha256;
+    int source_update_version = 0;
+    int source_files = 0;
     std::string disc_key_found, disc_key_file, common_key_found, common_key_file;
     std::string update_dir_found, update_dir;
     int common_mode = 0;
@@ -752,10 +756,35 @@ static void choose_folder(const std::string& target) {
     SDL_ShowOpenFolderDialog(dialog_cb, nullptr, g_window, nullptr, false);
 }
 
+static void clear_source_identity() {
+    A.source_title.clear();
+    A.source_title_id.clear();
+    A.source_title_id_text.clear();
+    A.source_build.clear();
+    A.source_update_title.clear();
+    A.source_update_sha256.clear();
+    A.source_update_version = 0;
+    A.source_bytes = 0;
+    A.source_files = 0;
+}
+
+static void apply_source_identity(const J& ev) {
+    if (ev.get("title")) A.source_title = ev.str("title");
+    if (ev.get("title_id")) A.source_title_id = ev.str("title_id");
+    if (ev.get("title_id_text")) A.source_title_id_text = ev.str("title_id_text");
+    if (ev.get("build")) A.source_build = ev.str("build");
+    if (ev.get("update_title")) A.source_update_title = ev.str("update_title");
+    if (ev.get("update_sha256")) A.source_update_sha256 = ev.str("update_sha256");
+    if (ev.get("update_version")) A.source_update_version = (int)ev.num("update_version");
+    if (ev.get("bytes")) A.source_bytes = ev.num("bytes");
+    if (ev.get("files")) A.source_files = (int)ev.num("files");
+}
+
 static void set_source(const std::string& path) {
     A.source_path = path;
     A.probe_ok = false;
     A.probe_msg = "Checking...";
+    clear_source_identity();
     A.disc_key_found.clear();
     A.common_key_found.clear();
     A.disc_key_file.clear();
@@ -833,18 +862,17 @@ static void handle_reply(const J& ev) {
         A.disc_key_found = ev.str("disc_key");
         A.common_key_found = ev.str("common_key");
         A.update_dir_found = ev.str("update_dir");
-        A.source_bytes = ev.num("bytes");
-        if (A.source_kind == "archive")
+        apply_source_identity(ev);
+        if (ev.get("message") && !ev.str("message").empty())
             A.probe_msg = ev.str("message");
         else if (A.source_kind == "folder")
-            A.probe_msg = ev.boolean("in_place") ? "Extracted game folder: New Super Mario Bros. U (USA). It is used where it is; "
-                                                   "nothing is copied."
-                                                 : "Extracted game folder: New Super Mario Bros. U (USA)";
+            A.probe_msg = "Extracted game folder: New Super Mario Bros. U (USA)";
         else
             A.probe_msg = "Wii U disc image. Setup extracts it, then applies the USA 1.3.0 update folder.";
     } else if (cmd == "check_keys") {
         if (ok) {
             A.keys_msg.clear();
+            apply_source_identity(ev);
             start_install("image");
         } else {
             A.keys_msg = ev.str("message");
@@ -1182,6 +1210,40 @@ static std::string base_name(const std::string& p) {
 static void screen_keys() {
     page_header("Keys and update", base_name(A.source_path));
     static const SDL_DialogFileFilter keyf[] = {{"Key files (.key, .bin, .txt)", "key;bin;txt"}, {"All files", "*"}};
+
+    ImGui::BeginChild("image", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
+    heading("Disc image", 20);
+    muted(A.source_path);
+    if (!A.source_title.empty()) {
+        mark(2);
+        ImGui::TextWrapped("%s", A.source_title.c_str());
+        if (!A.source_title_id_text.empty() || !A.source_build.empty()) {
+            std::string line;
+            if (!A.source_title_id_text.empty()) line = "Title " + A.source_title_id_text;
+            if (!A.source_build.empty()) line += (line.empty() ? "" : " · ") + std::string("build ") + A.source_build;
+            muted(line);
+        }
+        if (A.source_files > 0 || A.source_bytes > 0) {
+            std::string line;
+            if (A.source_files > 0) line = std::to_string(A.source_files) + " files on the disc";
+            if (A.source_bytes > 0) line += (line.empty() ? "" : ", ") + format_size(A.source_bytes);
+            muted(line);
+        }
+    } else {
+        mark(1);
+        ImGui::TextWrapped("Title and size are shown once the disc key and common key decrypt this image.");
+    }
+    if (!A.source_update_title.empty() || !A.source_update_sha256.empty()) {
+        ImGui::Spacing();
+        if (!A.source_update_title.empty())
+            ImGui::TextWrapped("Update: %s", A.source_update_title.c_str());
+        else if (A.source_update_version > 0)
+            ImGui::TextWrapped("Update: title version %d", A.source_update_version);
+        if (!A.source_update_sha256.empty())
+            muted("RPX SHA-256 " + A.source_update_sha256);
+    }
+    ImGui::EndChild();
+    ImGui::Spacing();
 
     ImGui::BeginChild("disc", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
     heading("Disc key", 20);

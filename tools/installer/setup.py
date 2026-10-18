@@ -612,6 +612,51 @@ def disc_info(image, keys):
         info[k] = v
     return None, "", info
 
+def format_title_id(tid):
+    tid = (tid or "").lower()
+    if len(tid) != 16:
+        return tid
+    return "%s-%s" % (tid[:8].upper(), tid[8:].upper())
+
+def image_identity(image, disc_key_path=None, common_key=None, update_dir=None):
+    """Optional title / update fields for a disc image when the keys (and update) are already known.
+
+    Returns a dict suitable for a GUI probe or check_keys reply (empty when nothing can be read yet)."""
+    out = {}
+    keys = Keys()
+    if disc_key_path:
+        keys.disc = read_key_file(disc_key_path)
+    if common_key:
+        keys.common = common_key if isinstance(common_key, (bytes, bytearray)) else None
+    if keys.disc and keys.common:
+        problem, err, info = disc_info(image, keys)
+        if not problem and info:
+            tid = info.get("title_id", "")
+            out["title_id"] = tid
+            out["title"] = title_desc(tid)
+            out["title_id_text"] = format_title_id(tid)
+            try:
+                out["files"] = int(info.get("files", 0))
+            except ValueError:
+                pass
+            try:
+                out["bytes"] = int(info.get("bytes", 0))
+            except ValueError:
+                pass
+            build = SUPPORTED_BUILDS.get(tid.lower())
+            if build:
+                out["build"] = build.name
+    if update_dir:
+        try:
+            build = check_update_folder(update_dir)
+            out["update_name"] = build.name
+            out["update_version"] = SUPPORTED_VERSION
+            out["update_sha256"] = build.sha256
+            out["update_title"] = title_desc(build.title_id, SUPPORTED_VERSION)
+        except SetupError:
+            pass
+    return out
+
 def check_title(title_id):
     """Raises SetupError unless this is a version of the game the port can be built from."""
     if title_id in SUPPORTED_BUILDS:
@@ -2141,11 +2186,17 @@ def gui_main(args):
                 except SetupError as e:
                     return fail(req, "wrong_title", str(e))
             try:
-                check_game_version(folder)
+                build = check_game_version(folder)
             except SetupError as e:
                 return fail(req, "wrong_version", str(e)[0].upper() + str(e)[1:])
-            return reply(req, kind="folder", path=folder, title=title_desc(tid) if tid else "New Super Mario Bros. U",
-                         in_place=PORTABLE, bytes=folder_size(folder))
+            title = title_desc(tid or build.title_id, SUPPORTED_VERSION)
+            return reply(req, kind="folder", path=folder, title=title,
+                         title_id=tid or build.title_id, title_id_text=format_title_id(tid or build.title_id),
+                         build=build.name, update_version=SUPPORTED_VERSION, update_sha256=build.sha256,
+                         update_title=title, in_place=PORTABLE, bytes=folder_size(folder),
+                         message=("Extracted game folder: %s (title %s, RPX SHA-256 %s…).%s"
+                                  % (title, format_title_id(tid or build.title_id), build.sha256[:16],
+                                     " It is used where it is; nothing is copied." if PORTABLE else "")))
         if not os.path.isfile(p):
             return fail(req, "invalid", "File not found.")
         if p.lower().endswith(".wua"):
@@ -2156,18 +2207,36 @@ def gui_main(args):
                 folder, notes = archive_choice(info)
             except SetupError as e:
                 return fail(req, "wrong_title", str(e)[0].upper() + str(e)[1:])
-            msg = ("Cemu Wii U archive: %s (folder %s), no keys needed. The game files are extracted from it into "
-                   "this folder (about %s)." % (title_desc(info["title_id"], int(info["version"])), folder,
-                                                human(int(info.get("bytes", 0)))))
-            return reply(req, kind="archive", path=p, title=title_desc(info["title_id"], int(info["version"])),
-                         folder=folder, bytes=int(info.get("bytes", 0)), message=" ".join([msg] + notes))
+            tid = info["title_id"]
+            ver = int(info["version"])
+            title = title_desc(tid, ver)
+            msg = ("Cemu Wii U archive: %s (title %s, folder %s), no keys needed. The game files are extracted from it "
+                   "into this folder (about %s)." % (title, format_title_id(tid), folder, human(int(info.get("bytes", 0)))))
+            return reply(req, kind="archive", path=p, title=title, title_id=tid, title_id_text=format_title_id(tid),
+                         update_version=ver, folder=folder, bytes=int(info.get("bytes", 0)),
+                         message=" ".join([msg] + notes))
         if not p.lower().endswith((".wux", ".wud")):
             return fail(req, "invalid", "Choose a .wux or .wud disc image, a .wua Cemu archive, or an extracted game "
                         "folder.")
-        src, _ = find_common_key(p)
+        disc_key = find_sidecar_disc_key(p)
+        src, common = find_common_key(p)
         upd = find_sidecar_update(p)
-        reply(req, kind="image", path=p, disc_key=find_sidecar_disc_key(p), common_key=src,
-              update_dir=upd or "")
+        ident = image_identity(p, disc_key, common, upd)
+        msg_bits = []
+        if ident.get("title"):
+            msg_bits.append("%s (title %s)" % (ident["title"], ident.get("title_id_text") or format_title_id(ident.get("title_id"))))
+            if ident.get("files") is not None and ident.get("bytes") is not None:
+                msg_bits.append("%s files, %s on the disc" % (ident["files"], human(ident["bytes"])))
+        if ident.get("update_title"):
+            msg_bits.append("USA 1.3.0 update: %s, RPX SHA-256 %s…" % (ident["update_title"], ident["update_sha256"][:16]))
+        elif ident.get("update_sha256"):
+            msg_bits.append("USA 1.3.0 update RPX SHA-256 %s…" % ident["update_sha256"][:16])
+        if msg_bits:
+            message = "Wii U disc image: %s. Setup extracts it, then applies the USA 1.3.0 update folder." % "; ".join(msg_bits)
+        else:
+            message = "Wii U disc image. Setup extracts it, then applies the USA 1.3.0 update folder."
+        reply(req, kind="image", path=p, disc_key=disc_key, common_key=src, update_dir=upd or "",
+              message=message, **ident)
 
     def request_keys(req, image):
         """(keys, None) or (None, (problem, message)) from a request's key fields (check_keys, add_language_source)."""
@@ -2262,8 +2331,20 @@ def gui_main(args):
         except SetupError as e:
             return fail(req, "wrong_update", str(e)[0].upper() + str(e)[1:])
         session.update(keys=keys, info=info, image=image, update_dir=os.path.abspath(update_dir))
-        reply(req, title_id=info.get("title_id"), files=int(info.get("files", 0)), bytes=int(info.get("bytes", 0)),
-              update_dir=session["update_dir"])
+        ident = image_identity(image, None, None, session["update_dir"])
+        tid = info.get("title_id", "")
+        ident.setdefault("title_id", tid)
+        ident.setdefault("title", title_desc(tid))
+        ident.setdefault("title_id_text", format_title_id(tid))
+        build = SUPPORTED_BUILDS.get((tid or "").lower())
+        if build:
+            ident.setdefault("build", build.name)
+        try:
+            ident.setdefault("files", int(info.get("files", 0)))
+            ident.setdefault("bytes", int(info.get("bytes", 0)))
+        except ValueError:
+            pass
+        reply(req, update_dir=session["update_dir"], **ident)
 
     def do_install(req):
         kind = req.get("source")

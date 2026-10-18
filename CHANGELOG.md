@@ -5,6 +5,7 @@ At release, move those notes to a version heading and leave Unreleased empty.
 
 ## Unreleased
 
+-   **Fix**: The installer Keys and update screen shows the disc image name, title id, size, and the USA 1.3.0 update RPX SHA-256 when the sidecar keys and update folder are present.
 -   **Fix**: Guest vsync pacing no longer locks the game at 30 fps after a hitch.
     Relative waits and flip eligibility now share one paced clock, so a late frame does not need a second vsync before the flip completes.
 -   **Fix**: `nsmbu open 1-5` shows that course on the loading card.

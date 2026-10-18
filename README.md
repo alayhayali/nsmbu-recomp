@@ -18,10 +18,6 @@ You supply your own copy of the game.
 A release contains the runtime, the tools, and the installer.
 You supply the disc image, the keys, and the game files.
 
-## Status
-
-In 0.3.0 World 1 are playable so far not fully tested yet and performance is ~60fps with some drops.
-
 ## Install
 
 Download the zip for your system from the [Releases](https://github.com/nsmbu-recomp/nsmbu-recomp/releases) page.
