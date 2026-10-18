@@ -6,7 +6,7 @@ Usage:
   agent-nsmbu run [--release] [slot|course] […]
   agent-nsmbu extract […]
   agent-nsmbu record <course> […]
-  agent-nsmbu replay <course> […]
+  agent-nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course> […]
   agent-nsmbu profile […]
   agent-nsmbu perf […]
   agent-nsmbu installer [cmake args…]

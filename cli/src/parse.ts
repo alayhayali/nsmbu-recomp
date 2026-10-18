@@ -3,10 +3,11 @@ export type ParsedArgv = {
     positional: string[];
 };
 
-export function parseArgv(argv: string[], flagNames: string[]): ParsedArgv {
+export function parseArgv(argv: string[], flagNames: string[], valueFlags?: string[]): ParsedArgv {
     const flags = new Map<string, string | true>();
     const positional: string[] = [];
     const known = new Set(flagNames);
+    const takesValue = valueFlags === undefined ? known : new Set(valueFlags);
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--") {
@@ -27,6 +28,10 @@ export function parseArgv(argv: string[], flagNames: string[]): ParsedArgv {
             const name = a.slice(2);
             if (!known.has(name)) {
                 positional.push(a);
+                continue;
+            }
+            if (!takesValue.has(name)) {
+                flags.set(name, true);
                 continue;
             }
             const next = argv[i + 1];

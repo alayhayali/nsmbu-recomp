@@ -81,7 +81,7 @@ and the actual-device renderer smoke test passed in the local build.
 
 ## How to profile
 
-A full course measurement uses `agent-nsmbu replay 1-1`.
+A full course measurement uses `agent-nsmbu replay --release 1-1`.
 
 Read `docs/replay-1-1.md` for the 2026-10-17 Release profile.
 

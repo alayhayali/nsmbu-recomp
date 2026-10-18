@@ -5,6 +5,8 @@ At release, move those notes to a version heading and leave Unreleased empty.
 
 ## Unreleased
 
+-   **Add**: `agent-nsmbu replay --release` plays a course on `build/release/nsmbu`, sets the profile variables when unset, and prints `[replay] log`.
+    `--uncapped`, `--exit-at N`, and `--log PATH` bound that run.
 -   **Add**: `agent-nsmbu` CLI (`cli/`, `cd cli && npm link`) for build, launch, profile, and agent control (`open`, `status`, `press`, `screenshot`, `wait`, `close`).
     A minimal root `justfile` keeps `run`, `record`, and `replay` for humans only.
 -   **Change**: Developer docs and agent skills use `agent-nsmbu …` for CLI commands.

@@ -68,7 +68,7 @@ The CLI exports `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout 
 | `agent-nsmbu launch` (+ `--no-debug`, `--trace`, `--gdb`, `--lldb`) | `tools/launch.py` |
 | `agent-nsmbu run` / `run --release` | build then launch |
 | `agent-nsmbu extract` | `tools/extract.py` |
-| `agent-nsmbu record <course>` / `replay <course>` | env + launch (see [automation.md](automation.md)) |
+| `agent-nsmbu record <course>` / `replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course>` | env + launch (see [automation.md](automation.md)) |
 | `agent-nsmbu profile` / `perf` | profiling helpers |
 | `agent-nsmbu installer` / `lint` / `recomp` | installer, Luau lint, recomp only |
 | `agent-nsmbu scripted <name>` | wraps `tools/scripted-run.sh` |

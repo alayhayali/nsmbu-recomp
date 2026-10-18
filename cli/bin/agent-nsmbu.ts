@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { findRepoRoot } from "../src/repo.ts";
 import { HELP } from "../src/help.ts";
-import { hasFlag, parseArgv } from "../src/parse.ts";
+import { flagString, hasFlag, parseArgv } from "../src/parse.ts";
 import {
     cmdBuild,
     cmdExtract,
@@ -38,12 +38,12 @@ async function main(): Promise<void> {
     try {
         switch (cmd) {
             case "build": {
-                const { flags, positional } = parseArgv(rest, ["release", "sanitizer"]);
+                const { flags, positional } = parseArgv(rest, ["release", "sanitizer"], []);
                 cmdBuild(repo, hasFlag(flags, "release"), hasFlag(flags, "sanitizer"), positional);
                 break;
             }
             case "launch": {
-                const { flags, positional } = parseArgv(rest, ["no-debug", "trace", "gdb", "lldb"]);
+                const { flags, positional } = parseArgv(rest, ["no-debug", "trace", "gdb", "lldb"], []);
                 cmdLaunch(
                     repo,
                     {
@@ -57,7 +57,7 @@ async function main(): Promise<void> {
                 break;
             }
             case "run": {
-                const { flags, positional } = parseArgv(rest, ["release"]);
+                const { flags, positional } = parseArgv(rest, ["release"], []);
                 cmdRun(repo, hasFlag(flags, "release"), positional);
                 break;
             }
@@ -73,11 +73,32 @@ async function main(): Promise<void> {
                 break;
             }
             case "replay": {
-                const [course, ...launchRest] = rest;
+                const { flags, positional } = parseArgv(rest, ["release", "uncapped", "exit-at", "log"], ["exit-at", "log"]);
+                const [course, ...launchRest] = positional;
                 if (!course) {
-                    throw new Error("usage: agent-nsmbu replay <course> […]");
+                    throw new Error(
+                        "usage: agent-nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course> […]",
+                    );
                 }
-                cmdReplay(repo, course, launchRest);
+                const exitAt = flagString(flags, "exit-at");
+                if (hasFlag(flags, "exit-at") && (exitAt === undefined || !/^\d+$/.test(exitAt))) {
+                    throw new Error("usage: agent-nsmbu replay --exit-at N");
+                }
+                const log = flagString(flags, "log");
+                if (hasFlag(flags, "log") && !log) {
+                    throw new Error("usage: agent-nsmbu replay --log PATH");
+                }
+                cmdReplay(
+                    repo,
+                    course,
+                    {
+                        release: hasFlag(flags, "release"),
+                        uncapped: hasFlag(flags, "uncapped"),
+                        exitAt,
+                        log,
+                    },
+                    launchRest,
+                );
                 break;
             }
             case "profile":

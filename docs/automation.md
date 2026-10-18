@@ -125,8 +125,16 @@ Intro-skip button pulses stay outside the file, so play the file back with the s
 ```
 agent-nsmbu record 1-1
 agent-nsmbu replay 1-1
+agent-nsmbu replay --release 1-1
 ```
 
 `agent-nsmbu record 1-1` writes `replays/1-1.replay` from the start of that course.
-`agent-nsmbu replay 1-1` plays `replays/1-1.replay`.
+`agent-nsmbu replay 1-1` plays `replays/1-1.replay` on `build/debug/nsmbu`.
+`agent-nsmbu replay --release 1-1` plays it on `build/release/nsmbu`.
+Both set `NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, and `NSMBU_CRASH_RECOVERY` when those variables are unset.
+The command prints `[replay] log <path>`.
+The default path is `nsmbu/logs/nsmbu.log`.
+`--uncapped` sets `NSMBU_UNCAPPED=1`.
+`--exit-at N` quits at that TV frame.
+`--log PATH` writes that file instead.
 The game quits once the guest passes the last recorded step.

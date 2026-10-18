@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { nsmbuUserDir } from "./repo.ts";
 import { baseEnv, runPython, runShell } from "./run.ts";
 
 function runPythonInherit(repo: string, script: string, args: string[], extraEnv: Record<string, string> = {}): void {
@@ -93,11 +94,47 @@ export function cmdRecord(repo: string, course: string, rest: string[]): void {
     });
 }
 
-export function cmdReplay(repo: string, course: string, rest: string[]): void {
+const REPLAY_PROFILE_ENV: Record<string, string> = {
+    NSMBU_PROFILE: "1",
+    NSMBU_VK_STATS: "1",
+    NSMBU_SYNC_STATS: "1",
+    NSMBU_CRASH_RECOVERY: "1",
+};
+
+export type ReplayOpts = {
+    release: boolean;
+    uncapped: boolean;
+    exitAt?: string;
+    log?: string;
+};
+
+export function cmdReplay(repo: string, course: string, opts: ReplayOpts, rest: string[]): void {
     const replayPath = join(repo, "replays", `${course}.replay`);
-    cmdLaunch(repo, { noDebug: false, trace: false, gdb: false, lldb: false }, [course, ...rest], {
+    if (!existsSync(replayPath)) {
+        console.error(`missing ${replayPath}`);
+        process.exit(1);
+    }
+    const extra: Record<string, string> = {
         NSMBU_REPLAY_INPUT: replayPath,
-    });
+    };
+    for (const [key, value] of Object.entries(REPLAY_PROFILE_ENV)) {
+        if (process.env[key] === undefined) {
+            extra[key] = value;
+        }
+    }
+    if (opts.uncapped) {
+        extra.NSMBU_UNCAPPED = "1";
+    }
+    if (opts.exitAt !== undefined) {
+        extra.NSMBU_EXIT_AT_FRAME = opts.exitAt;
+    }
+    const log = opts.log ?? join(nsmbuUserDir(repo), "logs", "nsmbu.log");
+    if (opts.log) {
+        mkdirSync(dirname(opts.log), { recursive: true });
+        extra.NSMBU_LOG_FILE = opts.log;
+    }
+    console.log(`[replay] log ${log}`);
+    cmdLaunch(repo, { noDebug: opts.release, trace: false, gdb: false, lldb: false }, [course, ...rest], extra);
 }
 
 export function cmdProfile(repo: string, rest: string[]): void {
