@@ -1,5 +1,5 @@
 #include "../platform/host.h"
-#include "env.h"
+#include "core/env.h"
 #ifdef __APPLE__
 #include <pthread/qos.h>
 #endif
@@ -23,15 +23,15 @@
 #include "shader_key_dirty.h"
 #include "gfx/vulkan/api.h"
 #endif
-#include "runtime.h"
-#include "savestate.h"
+#include "core/runtime.h"
+#include "save/savestate.h"
 #include "mods/sdk/nsmbu.h"
 #include "guest_addr.h"
-#include "../aspect.h"
+#include "gfx/aspect.h"
 #include "gfx/renderer.h"
 #include "overlay/hostui.h"
 #include "platform/perf_hint.h"
-#include "render_prof.h"
+#include "gfx/render_prof.h"
 #include "mods/packages.h"
 
 using namespace Latte;

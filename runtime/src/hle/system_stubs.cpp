@@ -1,13 +1,13 @@
 #include "mods/mods.h"
 
-#include "../crashrec.h"
-#include "../runtime.h"
-#include "../input.h"
-#include "../rumble.h"
-#include "../motion/motion.h"
+#include "crash/crashrec.h"
+#include "core/runtime.h"
+#include "input/input.h"
+#include "input/rumble.h"
+#include "../input/motion/motion.h"
 #include "../mods/luau_press.h"
 
-#include "env.h"
+#include "core/env.h"
 namespace interp { bool repeat_input(); void trace_read(const char*); uint64_t logic_steps(); }
 
 static constexpr uint32_t kResultOk = 0;

@@ -5,7 +5,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "runtime.h"
+#include "core/runtime.h"
 
 namespace gfx::depth_peek {
 uint64_t next_ticket() { static std::atomic<uint64_t> serial{0}; return ++serial; }

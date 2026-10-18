@@ -7,12 +7,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
-#include "input.h"
-#include "input_map.h"
-#include "rumble.h"
+#include "input/input.h"
+#include "input/input_map.h"
+#include "input/rumble.h"
 #include "platform/input_sdl.h"
-#include "env.h"
-#include "interp.h"
+#include "core/env.h"
+#include "hooks/interp.h"
 static int savedSlot=0, loadedSlot=0, saveRequests=0, loadRequests=0;
 namespace ss { void request_save(int slot){savedSlot=slot;++saveRequests;} void request_load(int slot){loadedSlot=slot;++loadRequests;} }
 static int graphicsRequests=0; static char graphicsKey=0;

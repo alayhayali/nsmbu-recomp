@@ -1,16 +1,16 @@
-#include "../renderer.h"
+#include "gfx/renderer.h"
 
-#include "env.h"
+#include "core/env.h"
 #ifdef NSMBU_SDL_HOST
 #include "backend.h"
 #include "gfx/display_modes.h"
 #include "settings.h"
-#include "input.h"
-#include "interp.h"
+#include "input/input.h"
+#include "hooks/interp.h"
 #include "overlay/hostui.h"
 #include "platform/host.h"
 #include "platform/perf_hint.h"
-#include "runtime.h"
+#include "core/runtime.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <atomic>

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "rtl_text.h"
+#include "text/rtl_text.h"
 
 using rtl::Form;
 

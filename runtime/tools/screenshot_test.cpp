@@ -11,11 +11,11 @@
 #include <string>
 #include <vector>
 
-#include "input_map.h"
+#include "input/input_map.h"
 #include "platform/keycodes.h"
-#include "screenshot.h"
+#include "gfx/screenshot.h"
 
-#include "env.h"
+#include "core/env.h"
 #define CHECK(x)                                                              \
     do {                                                                      \
         if (!(x)) {                                                           \

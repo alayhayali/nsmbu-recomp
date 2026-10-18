@@ -1,7 +1,7 @@
 
 
 #pragma once
-#include "../input_map.h"
+#include "input/input_map.h"
 
 namespace overlay {
 

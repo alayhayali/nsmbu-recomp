@@ -1,6 +1,6 @@
 
 
-#include "display_modes.h"
+#include "gfx/display_modes.h"
 
 #include <algorithm>
 #include <chrono>
@@ -12,11 +12,11 @@
 #include <string>
 #include <vector>
 
-#include "../aspect.h"
-#include "input.h"
-#include "runtime.h"
+#include "gfx/aspect.h"
+#include "input/input.h"
+#include "core/runtime.h"
 
-#include "env.h"
+#include "core/env.h"
 namespace gfx {
 
 const char* const kModeNames[kDrcModeCount] = {"window", "pip", "auto", "off", "gamepad"};

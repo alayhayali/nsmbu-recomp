@@ -1,9 +1,9 @@
-#include "env.h"
+#include "core/env.h"
 #import <AppKit/AppKit.h>
 #include "../overlay/overlay.h"
-#include "../motion/motion.h"
+#include "../input/motion/motion.h"
 #include "mods.h"
-#include "runtime.h"
+#include "core/runtime.h"
 #include <cstdlib>
 
 namespace mods {

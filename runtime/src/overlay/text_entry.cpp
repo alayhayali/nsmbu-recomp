@@ -14,11 +14,11 @@
 #include "imgui.h"
 #include "hostui.h"
 #include "overlay.h"
-#include "../input.h"
-#include "../input_map.h"
+#include "input/input.h"
+#include "input/input_map.h"
 #include "../mods/mods.h"
 #include "../platform/keycodes.h"
-#include "../runtime.h"
+#include "core/runtime.h"
 
 namespace gfx { bool main_picture(float* x, float* y, float* w, float* h); }
 

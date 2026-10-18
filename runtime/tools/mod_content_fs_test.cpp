@@ -1,6 +1,6 @@
 
-#include "runtime.h"
-#include "savestate.h"
+#include "core/runtime.h"
+#include "save/savestate.h"
 #include "mods/content.h"
 #include <cassert>
 #include <chrono>

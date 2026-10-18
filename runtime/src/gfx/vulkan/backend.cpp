@@ -1,4 +1,4 @@
-#include "env.h"
+#include "core/env.h"
 #ifndef VK_ENABLE_BETA_EXTENSIONS
 #define VK_ENABLE_BETA_EXTENSIONS
 #endif
@@ -15,15 +15,15 @@
 #include "bc_decode.h"
 #include "android_driver.h"
 #include "buffer_cache.h"
-#include "render_prof.h"
-#include "report_header.h"
+#include "gfx/render_prof.h"
+#include "crash/report_header.h"
 #include "present.h"
 #include "gfx/display.h"
 #include "gfx/display_modes.h"
 #include "gx2/gx2.h"
-#include "input.h"
+#include "input/input.h"
 #include "mods/mods.h"
-#include "agent_ctl.h"
+#include "agent/agent_ctl.h"
 #include "overlay/hostui.h"
 #include "overlay/overlay.h"
 #ifdef NSMBU_SDL_HOST
@@ -33,13 +33,13 @@
 #include "platform/display_rate.h"
 #include "platform/host.h"
 #include "platform/perf_hint.h"
-#include "runtime.h"
-#include "screenshot.h"
+#include "core/runtime.h"
+#include "gfx/screenshot.h"
 #include "shaders.h"
 #include "settings.h"
-#include "savestate.h"
+#include "save/savestate.h"
 #include "sparse_hash_memo.h"
-#include "write_watch.h"
+#include "core/write_watch.h"
 #include <algorithm>
 #include <functional>
 #include <array>
@@ -63,7 +63,7 @@
 #include <vulkan/vulkan_beta.h>
 
 namespace gx2 { uint64_t flips_presented(); void checkpoint_vulkan_caches(); }
-#include "../../interp.h"
+#include "hooks/interp.h"
 
 namespace gfxvk {
 Renderer R;

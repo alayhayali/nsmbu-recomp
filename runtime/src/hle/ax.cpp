@@ -11,12 +11,12 @@
 #include <thread>
 #include <vector>
 
-#include "../audio_output_mode.h"
+#include "audio/audio_output_mode.h"
 #include "guest_addr.h"
-#include "../audio_out.h"
-#include "../runtime.h"
+#include "audio/audio_out.h"
+#include "core/runtime.h"
 
-#include "env.h"
+#include "core/env.h"
 namespace interp { const char* phase_name(); }
 
 namespace {
@@ -536,7 +536,7 @@ Voice* voice(uint32_t vpb) {
 
 }
 
-#include "../savestate.h"
+#include "save/savestate.h"
 void ax_ss_save(ss::Writer& w) {
     std::lock_guard<std::mutex> lk(g_ax_mutex);
     w.u8(g_running);

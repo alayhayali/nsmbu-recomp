@@ -1,6 +1,6 @@
-#include "aspect.h"
-#include "aspect_panes.h"
-#include "../renderer.h"
+#include "gfx/aspect.h"
+#include "gfx/aspect_panes.h"
+#include "gfx/renderer.h"
 
 #include "Cafe/HW/Latte/Core/FetchShader.h"
 #include "Cafe/HW/Latte/Core/LatteCachedFBO.h"
@@ -8,9 +8,9 @@
 #include "Cafe/HW/Latte/ISA/RegDefines.h"
 #include "backend.h"
 #include "buffer_cache.h"
-#include "render_prof.h"
+#include "gfx/render_prof.h"
 #include "platform/host.h"
-#include "runtime.h"
+#include "core/runtime.h"
 #include "shaders.h"
 #include "settings.h"
 #include "vertex_formats.h"
@@ -30,7 +30,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include "env.h"
+#include "core/env.h"
 extern "C" uint64_t g_shader_state_gen;
 using namespace Latte;
 namespace gfxvk {

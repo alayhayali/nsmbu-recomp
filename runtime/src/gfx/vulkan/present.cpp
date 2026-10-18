@@ -12,7 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include "env.h"
+#include "core/env.h"
 namespace gfxvk {
 namespace {
 const char* vertexSource = R"glsl(#version 450

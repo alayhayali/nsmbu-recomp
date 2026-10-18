@@ -45,7 +45,7 @@ right-to-left letters (a name, a number) is printed by the unchanged code.
 ## How it works
 
 `tools/recomp/hooks_rtl.txt` hooks NintendoWare's text writer in the USA build, and
-`runtime/src/rtl_text_hooks.cpp` (comments there have the details) does the following:
+`runtime/src/hooks/rtl_text_hooks.cpp` (comments there have the details) does the following:
 
 1. `TextWriterBase<wchar_t>::PrintImpl` (0x028709E0) makes a plan of the text it is given
    (`runtime/src/rtl_text.{h,cpp}`: per code unit the shaped or mirrored code to draw, which

@@ -1,12 +1,12 @@
 
 
-#include "env.h"
+#include "core/env.h"
 #import <AppKit/AppKit.h>
 
-#include "../../input.h"
+#include "input/input.h"
 #include "../../overlay/hostui.h"
 #include "../../overlay/overlay.h"
-#include "runtime.h"
+#include "core/runtime.h"
 #include "gfx/display_modes.h"
 #include <atomic>
 #include <cstdlib>

@@ -4,12 +4,12 @@
 
 #include "backend.h"
 #include "buffer_cache.h"
-#include "render_prof.h"
+#include "gfx/render_prof.h"
 #include "settings.h"
 #include "shaders.h"
 #include "sparse_hash_memo.h"
-#include "write_watch.h"
-#include "env.h"
+#include "core/write_watch.h"
+#include "core/env.h"
 #define XXH_INLINE_ALL
 #include "../../../third_party/xxhash/xxhash.h"
 #include "Cafe/HW/Latte/ISA/LatteReg.h"
@@ -17,7 +17,7 @@
 #include "Cafe/HW/Latte/LatteAddrLib/LatteAddrLib.h"
 #include "gx2/gx2.h"
 #include "gx2_texture_regs.h"
-#include "runtime.h"
+#include "core/runtime.h"
 #include <algorithm>
 #include <array>
 #include <atomic>

@@ -3,7 +3,7 @@
 #include "../platform/filesystem.h"
 
 #include <cstdio>
-#include "env.h"
+#include "core/env.h"
 #ifndef _WIN32
 #include <strings.h>
 #endif
@@ -12,11 +12,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "../runtime.h"
-#include "../write_watch.h"
+#include "core/runtime.h"
+#include "core/write_watch.h"
 #include "../mods/content.h"
-#include "../game_languages.h"
-#include "../rtl_text.h"
+#include "text/game_languages.h"
+#include "text/rtl_text.h"
 
 namespace {
 
@@ -368,7 +368,7 @@ HLE(nn_save, SAVEGetSharedSaveDataPath) {
 #include <algorithm>
 #include <vector>
 
-#include "../savestate.h"
+#include "save/savestate.h"
 void fs_ss_save(ss::Writer& w) {
     std::lock_guard<std::mutex> lk(g_fs_mutex);
     w.u32(g_next_handle);

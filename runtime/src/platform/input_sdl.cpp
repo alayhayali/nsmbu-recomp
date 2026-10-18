@@ -2,16 +2,16 @@
 #include "input_sdl.h"
 #include "keycodes.h"
 #include "mouse_sdl.h"
-#include "../input.h"
-#include "../input_map.h"
-#include "../motion/motion.h"
-#include "../interp.h"
-#include "../rumble.h"
-#include "../runtime.h"
-#include "../savestate.h"
-#include "../screenshot.h"
+#include "input/input.h"
+#include "input/input_map.h"
+#include "../input/motion/motion.h"
+#include "hooks/interp.h"
+#include "input/rumble.h"
+#include "core/runtime.h"
+#include "save/savestate.h"
+#include "gfx/screenshot.h"
 #include "../gfx/vulkan/settings.h"
-#include "../agent_ctl.h"
+#include "agent/agent_ctl.h"
 #include "../overlay/hostui.h"
 #include "../overlay/overlay.h"
 #include "../overlay/text_entry.h"
@@ -29,7 +29,7 @@
 #include <thread>
 #include <utility>
 #include <vector>
-#include "env.h"
+#include "core/env.h"
 namespace render { uint64_t frame_count(); }
 namespace gfxvk { bool graphics_hotkey(char key, bool activate); }
 namespace gfx { void display_plus_pressed(); }

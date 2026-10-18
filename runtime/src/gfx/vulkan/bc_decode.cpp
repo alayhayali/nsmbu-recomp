@@ -2,9 +2,9 @@
 #include "bc_reference.h"
 #include "bc_shader.h"
 #include "shaders.h"
-#include "runtime.h"
-#include "render_prof.h"
-#include "env.h"
+#include "core/runtime.h"
+#include "gfx/render_prof.h"
+#include "core/env.h"
 #include <chrono>
 #include <cstdlib>
 #include <cstring>

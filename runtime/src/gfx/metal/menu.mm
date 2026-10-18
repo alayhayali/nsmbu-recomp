@@ -1,26 +1,26 @@
 
 
-#include "env.h"
+#include "core/env.h"
 #import <Cocoa/Cocoa.h>
 #include <Carbon/Carbon.h>
-#include "../../input.h"
+#include "input/input.h"
 #include "platform/host.h"
 #include <sys/stat.h>
 #include <ctime>
 
-#include "../../interp.h"
-#include "../../savestate.h"
-#include "../../screenshot.h"
-#include "../../input_map.h"
+#include "hooks/interp.h"
+#include "save/savestate.h"
+#include "gfx/screenshot.h"
+#include "input/input_map.h"
 #include "../../overlay/hostui.h"
 #include "../../overlay/overlay.h"
-#include "../../crashrec.h"
-#include "../../aspect.h"
+#include "crash/crashrec.h"
+#include "gfx/aspect.h"
 #include "gfx/renderer.h"
 #ifdef NSMBU_HAS_VULKAN
 #include "gfx/vulkan/settings.h"
 #endif
-#include "runtime.h"
+#include "core/runtime.h"
 
 namespace gfx {
 bool drc_window_available();

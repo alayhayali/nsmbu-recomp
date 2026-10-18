@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
-#include "../game_languages.h"
-#include "../runtime.h"
+#include "text/game_languages.h"
+#include "core/runtime.h"
 
 namespace game_font {
 namespace {

@@ -1,6 +1,6 @@
 #include "gfx/depth_peek.h"
 
-#include "env.h"
+#include "core/env.h"
 #import <AppKit/AppKit.h>
 #import <ImageIO/ImageIO.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
@@ -11,8 +11,8 @@
 #include "gx2/gx2.h"
 #include "gx2_texture_regs.h"
 #include "metal.h"
-#include "runtime.h"
-#include "input.h"
+#include "core/runtime.h"
+#include "input/input.h"
 
 namespace gfx {
 Renderer R;

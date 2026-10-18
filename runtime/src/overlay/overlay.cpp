@@ -3,7 +3,7 @@
 #include "app_title.h"
 #include "overlay.h"
 #include "perf_average.h"
-#include "env.h"
+#include "core/env.h"
 #ifdef __ANDROID__
 #include "android_telemetry.h"
 #endif
@@ -26,9 +26,9 @@
 #include "hostui.h"
 #include "controls_view.h"
 #include "text_entry.h"
-#include "../aspect.h"
-#include "../crashrec.h"
-#include "../game_languages.h"
+#include "gfx/aspect.h"
+#include "crash/crashrec.h"
+#include "text/game_languages.h"
 #include "../gfx/renderer.h"
 #ifdef __ANDROID__
 #include "../gfx/vulkan/android_driver.h"
@@ -37,22 +37,22 @@
 #include "../gfx/vulkan/settings.h"
 namespace gfxvk { bool buffer_cache_enabled(); }
 #endif
-#include "../input.h"
-#include "../input_map.h"
+#include "input/input.h"
+#include "input/input_map.h"
 #include "../mods/mods.h"
 #include "../mods/sdk/nsmbu.h"
 #include "../mods/packages.h"
-#include "../motion/motion.h"
+#include "../input/motion/motion.h"
 #include "../platform/keycodes.h"
-#include "../audio_out.h"
-#include "../rumble.h"
-#include "../interp.h"
-#include "../runtime.h"
-#include "../savestate.h"
-#include "../screenshot.h"
-#include "../render_prof.h"
-#include "../build_info.h"
-#include "../report_header.h"
+#include "audio/audio_out.h"
+#include "input/rumble.h"
+#include "hooks/interp.h"
+#include "core/runtime.h"
+#include "save/savestate.h"
+#include "gfx/screenshot.h"
+#include "gfx/render_prof.h"
+#include "core/build_info.h"
+#include "crash/report_header.h"
 
 namespace gx2 { uint64_t flips_presented(); bool uncapped(); void set_uncapped(bool on); }
 

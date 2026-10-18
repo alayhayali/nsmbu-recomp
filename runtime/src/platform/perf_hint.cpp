@@ -1,6 +1,6 @@
 #include "perf_hint.h"
 
-#include "env.h"
+#include "core/env.h"
 #ifdef __ANDROID__
 #include <android/performance_hint.h>
 #include <android/thermal.h>
@@ -17,9 +17,9 @@
 #include <mutex>
 #include <vector>
 
-#include "../runtime.h"
+#include "core/runtime.h"
 
-#include "../interp.h"
+#include "hooks/interp.h"
 
 namespace perf_hint {
 namespace {

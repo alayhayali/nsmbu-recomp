@@ -9,9 +9,9 @@
 
 #include "Cafe/HW/Latte/ISA/RegDefines.h"
 #include "metal.h"
-#include "runtime.h"
+#include "core/runtime.h"
 
-#include "env.h"
+#include "core/env.h"
 namespace gfx {
 
 bool headstart_translate(const uint32_t* regs, bool vertex, bool compileNow);

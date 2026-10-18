@@ -9,11 +9,11 @@
 #include <stdexcept>
 
 #include "backend.h"
-#include "render_prof.h"
-#include "runtime.h"
-#include "write_watch.h"
+#include "gfx/render_prof.h"
+#include "core/runtime.h"
+#include "core/write_watch.h"
 
-#include "env.h"
+#include "core/env.h"
 namespace gfxvk {
 namespace {
 

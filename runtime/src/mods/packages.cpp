@@ -20,7 +20,7 @@
 #include <set>
 #include <stdexcept>
 
-#include "env.h"
+#include "core/env.h"
 namespace mods::packages {
 namespace {
 namespace fs=std::filesystem;

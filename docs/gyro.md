@@ -76,7 +76,7 @@ frame. Measured in R3 look on historical WWHD Outset (`NSMBU_TEST_GYRO`): a Game
 
 ## How the port does it
 
-`runtime/src/motion/`:
+`runtime/src/input/motion/`:
 
 - `fusion.cpp`: the axis mapping of the SDL and Cemuhook sources into one frame (the signs follow the
   GamePad conventions Cemu recorded from real hardware; Cemu is MPL-2.0, as this port), gyro bias
@@ -99,7 +99,7 @@ frame. Measured in R3 look on historical WWHD Outset (`NSMBU_TEST_GYRO`): a Game
   only takes movement while the game aims.
   `motion::set_aiming` records that state.
   The pointer is captured then (`platform/mouse_sdl.cpp`, `mods/mouse.mm`).
-- `game_hooks.cpp` (`tools/recomp/hooks_gyro.txt`): in Pro Controller mode, while a source is on,
+- `runtime/src/hooks/game_hooks.cpp` (`tools/recomp/hooks_gyro.txt`): in Pro Controller mode, while a source is on,
   `02618604` skips its mode-0 check, so the game reads the virtual GamePad's motion exactly as with
   the GamePad: same camera code, the in-game Gyro switch, its stick dead zone (now the Pro
   Controller's right stick) and its per-frame calibration. With the source off nothing changes.

@@ -9,9 +9,9 @@
 #include <cstdlib>
 #include <string>
 
-#include "input_map.h"
+#include "input/input_map.h"
 
-#include "env.h"
+#include "core/env.h"
 using namespace input_map;
 
 static int g_fail = 0, g_pass = 0;

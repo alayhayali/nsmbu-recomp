@@ -1,8 +1,8 @@
-#include "crash_context.h"
+#include "crash/crash_context.h"
 
 #include "../overlay/hostui.h"
-#include "../crashrec.h"
-#include "../game_languages.h"
+#include "crash/crashrec.h"
+#include "text/game_languages.h"
 #include "../platform/host.h"
 #include <cstdlib>
 #include <filesystem>
@@ -13,9 +13,9 @@
 #include <string>
 #include <unordered_map>
 
-#include "../runtime.h"
+#include "core/runtime.h"
 
-#include "env.h"
+#include "core/env.h"
 struct GuestArgs {
     Cpu* c = nullptr;
     int gpr = 0, fpr = 0;

@@ -1,15 +1,15 @@
 
 
-#include "env.h"
+#include "core/env.h"
 #import <AppKit/AppKit.h>
 
 #include <cstdlib>
 #include <string>
 
 #include "../../quit_prompt.h"
-#include "../../savestate.h"
+#include "save/savestate.h"
 #include "gfx/renderer.h"
-#include "runtime.h"
+#include "core/runtime.h"
 
 namespace {
 const char* env(const env::Var& name) { return name(); }

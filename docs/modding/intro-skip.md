@@ -184,6 +184,7 @@ The example uses it with the Course pack option.
 
 ### Course enter banner digits
 
+The loading card for `nsmbu open` is documented in [docs/nsmbu/course-open.md](../nsmbu/course-open.md).
 The green world–course number on the pre-level banner is not MSBT text.
 Course setup (`f_024BD86C`) copies `FieldGameData` and writes picture-pane glyph indices from bytes at the course-task entry `+0x10` (three slots; `0xFF` is blank).
 Entering from the world map fills those bytes via the save/map path (`f_024BADF4`).

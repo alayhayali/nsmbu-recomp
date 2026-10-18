@@ -5,7 +5,7 @@
 #include "graphic_pack_hash.h"
 #include "gfx/area_sample.h"
 #include "exact_state_memo.h"
-#include "render_prof.h"
+#include "gfx/render_prof.h"
 #include "Cafe/HW/Latte/Core/FetchShader.h"
 #include "Cafe/HW/Latte/Core/LatteShader.h"
 #include "Cafe/HW/Latte/ISA/RegDefines.h"
@@ -29,7 +29,7 @@
 #include <future>
 #include <unordered_map>
 
-#include "env.h"
+#include "core/env.h"
 LatteDecompilerShader* FinishDecompiledShader(LatteDecompilerOutput_t& output);
 LatteFetchShader* LatteShaderRecompiler_createFetchShader(LatteFetchShader::CacheHash hash,
     uint32* regs, uint32* code, uint32 size);

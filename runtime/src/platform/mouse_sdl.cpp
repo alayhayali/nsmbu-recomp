@@ -1,10 +1,10 @@
 #include "mouse_sdl.h"
-#include "../motion/motion.h"
+#include "../input/motion/motion.h"
 #include "../overlay/overlay.h"
-#include "../runtime.h"
+#include "core/runtime.h"
 #include <cstdlib>
 
-#include "env.h"
+#include "core/env.h"
 namespace mods {
 namespace {
 SDL_Window* tv = nullptr;

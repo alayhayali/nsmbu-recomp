@@ -6,7 +6,7 @@
 #include "Cafe/HW/Latte/Renderer/Metal/MetalRenderer.h"
 #endif
 #include "gfx/renderer.h"
-#include "runtime.h"
+#include "core/runtime.h"
 
 #ifdef NSMBU_HAS_METAL
 std::unique_ptr<Renderer> g_renderer = std::make_unique<MetalRenderer>();

@@ -6,8 +6,8 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
-#include "game_languages.h"
-#include "env.h"
+#include "text/game_languages.h"
+#include "core/env.h"
 namespace config { std::string game_dir, save_dir; }
 void log_msg(const char*, ...) {}
 int main(int argc, char** argv) {

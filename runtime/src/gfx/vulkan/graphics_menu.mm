@@ -2,10 +2,10 @@
 #import <AppKit/AppKit.h>
 #include <SDL3/SDL.h>
 #include "settings.h"
-#include "../../savestate.h"
-#include "../../crashrec.h"
+#include "save/savestate.h"
+#include "crash/crashrec.h"
 #include <cmath>
-#include "../../interp.h"
+#include "hooks/interp.h"
 static constexpr float scales[]={1,1.5f,2,3};
 @interface NsmbuVulkanStateMenu : NSObject <NSMenuDelegate>
 @end

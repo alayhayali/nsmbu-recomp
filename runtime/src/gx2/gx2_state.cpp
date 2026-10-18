@@ -2,7 +2,7 @@
 
 #include "gx2_cmd.h"
 #include "gx2_regs.h"
-#include "runtime.h"
+#include "core/runtime.h"
 
 using namespace Latte;
 

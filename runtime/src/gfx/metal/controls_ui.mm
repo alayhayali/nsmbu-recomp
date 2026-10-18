@@ -1,6 +1,6 @@
 
 
-#include "env.h"
+#include "core/env.h"
 #import <Cocoa/Cocoa.h>
 #import <GameController/GameController.h>
 #include <Carbon/Carbon.h>
@@ -10,9 +10,9 @@
 #include <string>
 #include <vector>
 
-#include "../../input.h"
-#include "../../input_map.h"
-#include "runtime.h"
+#include "input/input.h"
+#include "input/input_map.h"
+#include "core/runtime.h"
 #include "platform/host.h"
 
 namespace gfx { void show_drc_window(bool on); }

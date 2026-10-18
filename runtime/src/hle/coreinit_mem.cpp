@@ -4,8 +4,8 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "../runtime.h"
-#include "../write_watch.h"
+#include "core/runtime.h"
+#include "core/write_watch.h"
 
 namespace {
 
@@ -272,7 +272,7 @@ HLE(coreinit, OSIsAddressRangeDCValid) { ret(c, 1); }
 #include <algorithm>
 #include <vector>
 
-#include "../savestate.h"
+#include "save/savestate.h"
 void mem_ss_save(ss::Writer& w) {
     std::lock_guard<std::mutex> lk(g_mem_mutex);
     w.u32(g_default_heap);

@@ -1,8 +1,8 @@
-#include "aspect.h"
-#include "aspect_panes.h"
+#include "gfx/aspect.h"
+#include "gfx/aspect_panes.h"
 #include "gfx/renderer.h"
 #include <chrono>
-#include "env.h"
+#include "core/env.h"
 extern "C" uint64_t g_shader_state_gen;
 
 #include "Cafe/HW/Latte/Core/FetchShader.h"
@@ -14,12 +14,12 @@ extern "C" uint64_t g_shader_state_gen;
 #include "Cafe/HW/Latte/LegacyShaderDecompiler/LatteDecompiler.h"
 #include "Cafe/HW/Latte/Renderer/Metal/LatteToMtl.h"
 #include "gx2/gx2.h"
-#include "render_prof.h"
+#include "gfx/render_prof.h"
 #include "gx2/gx2_cmd.h"
-#include "write_watch.h"
+#include "core/write_watch.h"
 #include "metal.h"
 #include "platform/host.h"
-#include "runtime.h"
+#include "core/runtime.h"
 #include "util/helpers/StringBuf.h"
 
 #include <condition_variable>

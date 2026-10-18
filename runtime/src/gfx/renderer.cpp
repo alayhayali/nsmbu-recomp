@@ -1,7 +1,7 @@
 
 #include "app_title.h"
-#include "renderer.h"
-#include "../screenshot.h"
+#include "gfx/renderer.h"
+#include "gfx/screenshot.h"
 
 #include <atomic>
 #include <cerrno>
@@ -10,7 +10,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
-#include "env.h"
+#include "core/env.h"
 #ifdef _WIN32
 #define strcasecmp _stricmp
 #else
@@ -23,7 +23,7 @@
 #include <mach-o/dyld.h>
 #endif
 
-#include "runtime.h"
+#include "core/runtime.h"
 #ifdef NSMBU_SDL_HOST
 #include <SDL3/SDL_messagebox.h>
 #ifdef __ANDROID__

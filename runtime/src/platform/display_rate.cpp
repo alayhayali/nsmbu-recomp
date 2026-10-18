@@ -8,8 +8,8 @@
 #include <cmath>
 
 #include "../gx2/gx2.h"
-#include "../interp.h"
-#include "../runtime.h"
+#include "hooks/interp.h"
+#include "core/runtime.h"
 
 #ifdef __ANDROID__
 #include <jni.h>

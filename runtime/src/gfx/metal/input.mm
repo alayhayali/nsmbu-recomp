@@ -1,6 +1,6 @@
 
 
-#include "env.h"
+#include "core/env.h"
 #import <AppKit/AppKit.h>
 #import <GameController/GameController.h>
 #import <QuartzCore/QuartzCore.h>
@@ -9,13 +9,13 @@
 #include <cmath>
 #include <mutex>
 
-#include "input.h"
-#include "input_map.h"
+#include "input/input.h"
+#include "input/input_map.h"
 #include "gfx/renderer.h"
-#include "runtime.h"
-#include "../../savestate.h"
-#include "../../screenshot.h"
-#include "../../motion/motion.h"
+#include "core/runtime.h"
+#include "save/savestate.h"
+#include "gfx/screenshot.h"
+#include "../../input/motion/motion.h"
 #include "../../overlay/overlay.h"
 
 #include <memory>

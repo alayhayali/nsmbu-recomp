@@ -1,6 +1,6 @@
 
 
-#include "env.h"
+#include "core/env.h"
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -12,15 +12,15 @@
 #include <tuple>
 #include <vector>
 
-#include "../../aspect.h"
+#include "gfx/aspect.h"
 #include "gfx/display.h"
 #include "gfx/display_modes.h"
 #include "gx2/gx2.h"
-#include "input.h"
+#include "input/input.h"
 #include "metal.h"
 #include "gfx/renderer.h"
-#include "runtime.h"
-#include "../../interp.h"
+#include "core/runtime.h"
+#include "hooks/interp.h"
 #ifdef NSMBU_HAS_VULKAN
 #include "gfx/vulkan/api.h"
 #endif
@@ -28,7 +28,7 @@
 #include "backends/imgui_impl_metal.h"
 #include "../../overlay/hostui.h"
 #include "../../overlay/overlay.h"
-#include "../../screenshot.h"
+#include "gfx/screenshot.h"
 
 namespace mods { bool mouse_captured(); }
 

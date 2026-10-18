@@ -6,9 +6,9 @@
 #include <map>
 #include <string>
 
-#include "build_info.h"
-#include "env.h"
-#include "report_header.h"
+#include "core/build_info.h"
+#include "core/env.h"
+#include "crash/report_header.h"
 
 using namespace reporthdr;
 

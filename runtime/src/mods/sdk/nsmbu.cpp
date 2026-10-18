@@ -3,8 +3,8 @@
 #include "mods/luau_guest.h"
 #include "mods/luau_press.h"
 #include "guest_addr.h"
-#include "input.h"
-#include "runtime.h"
+#include "input/input.h"
+#include "core/runtime.h"
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -1965,6 +1965,11 @@ bool scene_load_story_transition(int32_t world, int32_t course, std::string& err
         return false;
     }
     g_story_leave_queued.store(false, std::memory_order_release);
+    uint32_t info = ld32(GD(0x101D18EC));
+    if (info != 0) {
+        st8(info + 0x1C, ld8(info + 0x10));
+        st8(info + 0x1D, ld8(info + 0x11));
+    }
     if (guest_call(t_guest_cpu, kSetCourseStory, {scene, app, (uint32_t)world, (uint32_t)course}) == 0) {
         err = "scene busy";
         return false;

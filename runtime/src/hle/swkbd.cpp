@@ -5,11 +5,11 @@
 #include <chrono>
 #include <thread>
 
-#include "../input.h"
+#include "input/input.h"
 #include "../overlay/text_entry.h"
-#include "../runtime.h"
+#include "core/runtime.h"
 
-#include "env.h"
+#include "core/env.h"
 namespace {
 
 constexpr int kMaxForm = 4096;

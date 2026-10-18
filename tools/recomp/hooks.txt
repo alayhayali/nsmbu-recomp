@@ -14,6 +14,6 @@
 025D8B28  # course enter banner: refill CourseTask digit glyphs before the Multi2D apply
 02672C90  # PreGame WorldCourse text: seed MainGame tag params before MSBT expand
 02681BFC  # TextBox message expand: seed course tags and remember WorldCourse pane
-0267CB3C  # WorldCourse digit tag: use CourseInfo course when MainGame+0x1A8 is unset
+0267CB3C  # WorldCourse digit tag: use the course being entered (CourseInfo next, else now)
 0252F900  # course HUD: AreaTask is null while a course change replaces the area
 025CF020  # course HUD helper: AreaTask is null during course teardown

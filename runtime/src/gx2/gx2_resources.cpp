@@ -6,8 +6,8 @@
 #include "gx2_regs.h"
 #include "gx2_surface_calc.h"
 #include "gx2_texture_regs.h"
-#include "runtime.h"
-#include "../aspect.h"
+#include "core/runtime.h"
+#include "gfx/aspect.h"
 
 using namespace Latte;
 using gx2::set_reg;

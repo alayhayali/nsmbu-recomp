@@ -1,6 +1,6 @@
 #ifdef __ANDROID__
 #include "android_driver.h"
-#include "runtime.h"
+#include "core/runtime.h"
 #include <SDL3/SDL_system.h>
 #include <SDL3/SDL_vulkan.h>
 #include <android/native_window.h>

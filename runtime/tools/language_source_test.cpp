@@ -1,8 +1,8 @@
 
 
-#include "game_languages.h"
-#include "runtime.h"
-#include "savestate.h"
+#include "text/game_languages.h"
+#include "core/runtime.h"
+#include "save/savestate.h"
 
 #include <cassert>
 #include <chrono>
@@ -12,7 +12,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
-#include "env.h"
+#include "core/env.h"
 #ifdef _WIN32
 #include <windows.h>
 #else

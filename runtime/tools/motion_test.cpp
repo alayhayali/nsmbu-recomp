@@ -1,8 +1,8 @@
 
 
-#include "motion/dsu.h"
-#include "motion/fusion.h"
-#include "motion/motion.h"
+#include "input/motion/dsu.h"
+#include "input/motion/fusion.h"
+#include "input/motion/motion.h"
 
 #include <atomic>
 #include <cassert>

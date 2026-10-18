@@ -15,7 +15,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <tuple>
-#include "env.h"
+#include "core/env.h"
 namespace mods::cemu {
 namespace fs=std::filesystem;
 namespace {

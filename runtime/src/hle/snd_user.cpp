@@ -1,4 +1,4 @@
-#include "../runtime.h"
+#include "core/runtime.h"
 
 HLE(snd_user, AXFXGetHooks) {}
 HLE(snd_user, AXFXSetHooks) {}

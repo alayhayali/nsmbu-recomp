@@ -1,5 +1,5 @@
 #include "gfx/depth_peek.h"
-#include "runtime.h"
+#include "core/runtime.h"
 #include "backend.h"
 #include "gx2/gx2.h"
 #include <zlib.h>

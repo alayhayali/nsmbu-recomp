@@ -9,12 +9,12 @@
 #include "Cafe/HW/Latte/ISA/RegDefines.h"
 #include "Cafe/HW/Latte/LatteAddrLib/LatteAddrLib.h"
 #include "gx2/gx2.h"
-#include "render_prof.h"
+#include "gfx/render_prof.h"
 #include "gx2_texture_regs.h"
 #include "metal.h"
-#include "runtime.h"
-#include "write_watch.h"
-#include "env.h"
+#include "core/runtime.h"
+#include "core/write_watch.h"
+#include "core/env.h"
 #define XXH_INLINE_ALL
 #include "../../../third_party/xxhash/xxhash.h"
 

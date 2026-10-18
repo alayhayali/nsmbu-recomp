@@ -1,11 +1,11 @@
 #include "settings.h"
-#include "runtime.h"
+#include "core/runtime.h"
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
-#include "../../interp.h"
+#include "hooks/interp.h"
 #include "gx2/gx2.h"
-#include "env.h"
+#include "core/env.h"
 namespace gfxvk {
 namespace {
 int normalize(int v) { return (v % 3 + 3) % 3; }

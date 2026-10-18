@@ -3,14 +3,14 @@
 
 #include "backend.h"
 #include "buffer_cache.h"
-#include "render_prof.h"
-#include "write_watch.h"
+#include "gfx/render_prof.h"
+#include "core/write_watch.h"
 #include "platform/host.h"
 #include "Cafe/HW/Latte/LatteAddrLib/LatteAddrLib.h"
 #include "shaders.h"
 #include "gx2/gx2.h"
 #include "Cafe/HW/Latte/ISA/RegDefines.h"
-#include "runtime.h"
+#include "core/runtime.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -24,7 +24,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "env.h"
+#include "core/env.h"
 namespace gfxvk {
 extern uint64_t g_stat_full_checks, g_stat_uploads, g_stat_upload_bytes;
 void request_tv_dump(const std::string&,int);

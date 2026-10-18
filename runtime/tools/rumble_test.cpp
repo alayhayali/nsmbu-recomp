@@ -1,6 +1,6 @@
 
 
-#include "rumble.h"
+#include "input/rumble.h"
 
 #include <cassert>
 #include <cmath>
@@ -9,7 +9,7 @@
 #include <cstdlib>
 #include <thread>
 
-#include "env.h"
+#include "core/env.h"
 void log_msg(const char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);

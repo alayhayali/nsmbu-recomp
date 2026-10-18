@@ -4,7 +4,7 @@
 #include <atomic>
 #include <cstdint>
 
-#include "display.h"
+#include "gfx/display.h"
 
 namespace gfx {
 

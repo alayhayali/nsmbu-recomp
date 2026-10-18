@@ -1,0 +1,242 @@
+
+
+#include "crash/crashrec.h"
+#include "crash/crash_context.h"
+
+#include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <filesystem>
+#include <mutex>
+
+#include "gfx/renderer.h"
+#include "core/runtime.h"
+#include "save/savestate.h"
+
+#include "core/env.h"
+namespace crashrec {
+namespace {
+
+constexpr char kMagic[8] = {'W', 'W', 'H', 'D', 'I', 'N', 'P', '1'};
+struct Record {
+    uint32_t seq;
+    uint8_t pad, touch, unused[2];
+    uint32_t buttons;
+    float lx, ly, rx, ry, tx, ty;
+};
+static_assert(sizeof(Record) == 36, "record layout");
+
+std::string auto_dir() {
+    std::string d = ss::states_dir() + "/auto";
+    std::error_code ec;
+    std::filesystem::create_directories(d, ec);
+    return d;
+}
+std::string state_path(int n) { return auto_dir() + "/auto" + std::to_string(n) + ".bin"; }
+std::string input_path(int n) { return auto_dir() + "/auto" + std::to_string(n) + ".input"; }
+std::string cfg_path() { return ss::states_dir() + "/crash_recovery.cfg"; }
+
+std::mutex g_mu;
+std::atomic<int> g_enabled{-1};
+int g_next = 1;
+FILE* g_rec = nullptr;
+uint32_t g_rec_seq = 0;
+std::chrono::steady_clock::time_point g_last_save;
+bool g_save_pending = false;
+
+int g_replay = 0;
+FILE* g_play = nullptr;
+bool g_play_started = false;
+uint64_t g_replay_at = 1500;
+
+char g_note[512] = "crash recovery: off\n";
+
+void update_note(int latest, const char* when) {
+    if (!enabled()) {
+        snprintf(g_note, sizeof g_note, "crash recovery: off (Save States > Crash Recovery to turn it on)\n");
+        return;
+    }
+    if (!latest) {
+        snprintf(g_note, sizeof g_note, "crash recovery: on, no automatic state saved yet in this session\n");
+        return;
+    }
+    snprintf(g_note, sizeof g_note,
+             "crash recovery: latest automatic state %s (saved %s), input since then in %s\n"
+             "  reproduce with: NSMBU_REPLAY=%d ./build/cmake/nsmbu   (loads it and replays the input)\n",
+             state_path(latest).c_str(), when, input_path(latest).c_str(), latest);
+}
+
+bool read_cfg() {
+    if (const char* e = env::CRASH_RECOVERY()) return atoi(e) != 0;
+    if (FILE* f = fopen(cfg_path().c_str(), "r")) {
+        int v = 0;
+        bool ok = fscanf(f, "%d", &v) == 1;
+        fclose(f);
+        if (ok) return v != 0;
+    }
+    return false;
+}
+
+void start_recording(int n) {
+    if (g_rec) fclose(g_rec);
+    g_rec = fopen(input_path(n).c_str(), "wb");
+    g_rec_seq = 0;
+    if (!g_rec) { LOG("[crashrec] can't write %s", input_path(n).c_str()); return; }
+    setvbuf(g_rec, nullptr, _IONBF, 0);
+    fwrite(kMagic, 1, 8, g_rec);
+}
+
+}
+
+bool enabled() {
+    int v = g_enabled.load();
+    if (v < 0) {
+        v = read_cfg() ? 1 : 0;
+        g_enabled = v;
+        if (const char* r = env::REPLAY()) g_replay = atoi(r);
+        if (const char* a = env::REPLAY_AT()) g_replay_at = strtoull(a, nullptr, 10);
+        if (g_replay < 1 || g_replay > kAutoSlots) g_replay = 0;
+        if (g_replay) LOG("[crashrec] replay of automatic state %d from frame %llu", g_replay, (unsigned long long)g_replay_at);
+        if (v && !g_replay) LOG("[crashrec] on: automatic state every %d s", interval_seconds());
+        update_note(0, "");
+    }
+    return v != 0 && !g_replay;
+}
+
+void set_enabled(bool on) {
+    enabled();
+    g_enabled = on ? 1 : 0;
+    if (FILE* f = fopen(cfg_path().c_str(), "w")) { fprintf(f, "%d\n", on ? 1 : 0); fclose(f); }
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_last_save = std::chrono::steady_clock::now();
+    if (!on && g_rec) { fclose(g_rec); g_rec = nullptr; }
+    update_note(0, "");
+    LOG("[crashrec] %s", on ? "on" : "off");
+}
+
+int interval_seconds() {
+    static const int s = [] {
+        const char* e = env::CRASH_RECOVERY_INTERVAL();
+        int v = e ? atoi(e) : 120;
+        return v < 10 ? 10 : v;
+    }();
+    return s;
+}
+
+void service() {
+    static auto next_context = std::chrono::steady_clock::time_point{};
+    auto context_now = std::chrono::steady_clock::now();
+    if (context_now >= next_context) {
+        crash_context::refresh();
+        next_context = context_now + std::chrono::seconds(1);
+    }
+    bool on = enabled();
+
+    static const uint64_t crash_at = env::TEST_CRASH_AT.u64_or(0);
+    if (crash_at && render::frame_count() >= crash_at) {
+        LOG("[crashrec] NSMBU_TEST_CRASH_AT: crashing on purpose");
+        *(volatile uint32_t*)(uintptr_t)0x10 = 0;
+    }
+    std::lock_guard<std::mutex> lk(g_mu);
+    if (g_replay && !g_play_started && render::frame_count() >= g_replay_at) {
+        g_play_started = true;
+        g_play = fopen(input_path(g_replay).c_str(), "rb");
+        char m[8] = {};
+        if (!g_play || fread(m, 1, 8, g_play) != 8 || memcmp(m, kMagic, 8) != 0) {
+            LOG("[crashrec] no input recording %s; loading the state only", input_path(g_replay).c_str());
+            if (g_play) fclose(g_play);
+            g_play = nullptr;
+        }
+        ss::request_load(kAutoBase + g_replay);
+    }
+    if (!on) return;
+    auto now = std::chrono::steady_clock::now();
+    if (g_last_save.time_since_epoch().count() == 0) g_last_save = now;
+    if (g_save_pending && now - g_last_save >= std::chrono::seconds(interval_seconds() + 60)) {
+        g_save_pending = false;
+        g_last_save = now;
+    }
+    if (!g_save_pending && now - g_last_save >= std::chrono::seconds(interval_seconds())) {
+        g_save_pending = true;
+        ss::request_save(kAutoBase + g_next);
+    }
+}
+
+void on_auto_saved(int n) {
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_save_pending = false;
+    g_last_save = std::chrono::steady_clock::now();
+    g_next = n % kAutoSlots + 1;
+    start_recording(n);
+    time_t t = time(nullptr);
+    struct tm tmv;
+#ifdef _WIN32
+    localtime_s(&tmv, &t);
+#else
+    localtime_r(&t, &tmv);
+#endif
+    char when[32];
+    strftime(when, sizeof when, "%H:%M:%S", &tmv);
+    update_note(n, when);
+}
+
+input::PadState read(int pad) {
+    if (g_replay) {
+        std::lock_guard<std::mutex> lk(g_mu);
+        if (g_play && ss::last_load_frame() != 0) {
+            Record r;
+            if (fread(&r, sizeof r, 1, g_play) == 1) {
+                if (r.pad == pad) {
+                    input::PadState p;
+                    p.buttons = r.buttons;
+                    p.lx = r.lx; p.ly = r.ly; p.rx = r.rx; p.ry = r.ry;
+                    p.touch = r.touch != 0;
+                    p.tx = r.tx; p.ty = r.ty;
+                    return p;
+                }
+                fseek(g_play, -(long)sizeof r, SEEK_CUR);
+            } else {
+                LOG("[crashrec] replay: recorded input ended, live input from now on");
+                fclose(g_play);
+                g_play = nullptr;
+            }
+        }
+        if (g_play) return input::PadState{};
+        return input::read();
+    }
+    input::PadState p = input::read();
+    if (g_rec && enabled()) {
+        std::lock_guard<std::mutex> lk(g_mu);
+        if (g_rec) {
+            Record r{};
+            r.seq = g_rec_seq++;
+            r.pad = (uint8_t)pad;
+            r.touch = p.touch;
+            r.buttons = p.buttons;
+            r.lx = p.lx; r.ly = p.ly; r.rx = p.rx; r.ry = p.ry;
+            r.tx = p.tx; r.ty = p.ty;
+            fwrite(&r, sizeof r, 1, g_rec);
+        }
+    }
+    return p;
+}
+
+AutoInfo auto_info(int n) {
+    AutoInfo a;
+    ss::SlotInfo s = ss::slot_info(kAutoBase + n);
+    a.used = s.used && s.compatible;
+    a.when = s.when;
+    a.area = s.area;
+    return a;
+}
+
+void request_load(int n) { ss::request_load(kAutoBase + n); }
+
+void crash_note(int fd, void (*out)(int, const char*, size_t)) {
+    out(fd, g_note, strnlen(g_note, sizeof g_note));
+}
+
+}

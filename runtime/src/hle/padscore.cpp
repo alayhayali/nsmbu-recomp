@@ -1,10 +1,10 @@
 #include "mods/mods.h"
 
-#include "../crashrec.h"
-#include "../runtime.h"
-#include "../input.h"
-#include "../motion/motion.h"
-#include "../rumble.h"
+#include "crash/crashrec.h"
+#include "core/runtime.h"
+#include "input/input.h"
+#include "../input/motion/motion.h"
+#include "input/rumble.h"
 #include "../mods/luau_press.h"
 
 namespace interp { bool repeat_input(); uint64_t logic_steps(); }
