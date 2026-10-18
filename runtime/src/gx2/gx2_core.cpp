@@ -612,6 +612,8 @@ static uint64_t vsync_granule() {
 }
 static std::chrono::steady_clock::time_point g_capped_vsync_last_wake;
 static bool g_capped_vsync_last_wake_valid = false;
+static uint64_t g_paced_vsync = 0;
+static bool g_paced_vsync_valid = false;
 static std::chrono::nanoseconds capped_vsync_wait_period(uint64_t granule) {
     return std::chrono::nanoseconds(uint64_t(vsync_period_ns()) * granule / kTicksPerVsync);
 }
@@ -620,11 +622,24 @@ static bool capped_vsync_same_frame(uint64_t granule, std::chrono::steady_clock:
     if (!g_capped_vsync_last_wake_valid) return false;
     return now < g_capped_vsync_last_wake + std::chrono::milliseconds(2);
 }
+static void capped_vsync_note_wake(uint64_t granule) {
+    if (!g_paced_vsync_valid) {
+        g_paced_vsync = vsync_index() / granule * granule;
+        g_paced_vsync_valid = true;
+    }
+    g_paced_vsync += granule;
+}
+static void capped_vsync_reset_pace() {
+    g_capped_vsync_last_wake_valid = false;
+    g_paced_vsync_valid = false;
+}
+static uint64_t flip_clock() { return g_paced_vsync_valid ? g_paced_vsync : vsync_index(); }
 static void capped_vsync_ready_flip_last_wake(uint64_t granule) {
     const auto now = std::chrono::steady_clock::now();
     if (capped_vsync_same_frame(granule, now)) return;
     g_capped_vsync_last_wake = now;
     g_capped_vsync_last_wake_valid = true;
+    capped_vsync_note_wake(granule);
 }
 static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void (*before_resume)()) {
     const auto now = std::chrono::steady_clock::now();
@@ -633,18 +648,18 @@ static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void
     if (!g_capped_vsync_last_wake_valid) {
         g_capped_vsync_last_wake = now;
         g_capped_vsync_last_wake_valid = true;
+        capped_vsync_note_wake(granule);
         return;
     }
     const auto target = g_capped_vsync_last_wake + period;
     if (now >= target) {
         g_capped_vsync_last_wake = now;
+        capped_vsync_note_wake(granule);
         return;
     }
     threads::park_sleep_until(target, preciseSleep, before_resume);
     g_capped_vsync_last_wake = target;
-}
-static std::chrono::steady_clock::time_point tick_time(uint64_t tick) {
-    return g_vsync_epoch + std::chrono::nanoseconds(tick * uint64_t(vsync_period_ns()) / kTicksPerVsync);
+    capped_vsync_note_wake(granule);
 }
 
 static uint64_t flip_due(const PendingFlip& f) {
@@ -669,13 +684,16 @@ bool gx2::uncapped() {
 void gx2::set_uncapped(bool on) {
     if (uncapped() == on) return;
     g_uncapped = on ? 1 : 0;
-    if (!on) reset_uncapped_guest_pace();
+    if (!on) {
+        reset_uncapped_guest_pace();
+        capped_vsync_reset_pace();
+    }
     LOG("[gx2] uncapped %s", on ? "on (debug: no frame limit, no vsync; the game runs faster than real time)" : "off");
 }
 static bool uncapped_benchmark() { return gx2::uncapped(); }
 
 static void update_flips() {
-    uint64_t now = vsync_index();
+    uint64_t now = uncapped_benchmark() ? vsync_index() : flip_clock();
     while (!g_pending_flips.empty()) {
         uint64_t at = flip_due(g_pending_flips.front());
         if ((!uncapped_benchmark() && at > now) || render::frames_completed() < g_pending_flips.front().swap) break;
@@ -694,7 +712,7 @@ static void ready_flip_before_resume() {
         if(g_pending_flips.empty()) return;
         const auto& front = g_pending_flips.front();
         const uint64_t at = flip_due(front);
-        if(at > vsync_index()) return;
+        if(at > flip_clock()) return;
         needsSync = render::frames_completed() < front.swap;
     }
     if(needsSync) render_sync(kSyncFlip);
@@ -865,7 +883,7 @@ HLE(gx2, GX2SwapScanBuffers) {
         std::lock_guard<std::mutex> lk(g_flip_mutex);
         update_flips();
         g_swap_count++;
-        g_pending_flips.push_back({vsync_index(), g_swap_count});
+        g_pending_flips.push_back({uncapped_benchmark() ? vsync_index() : flip_clock(), g_swap_count});
     }
 
     static const double slow_ms = env::LOG_SLOW_SWAP.real_or(0);
@@ -922,7 +940,7 @@ HLE(gx2, GX2WaitForVsync) {
             if(!g_pending_flips.empty()) {
                 const auto& front = g_pending_flips.front();
                 const uint64_t at = flip_due(front);
-                eligible = at <= vsync_index();
+                eligible = at <= flip_clock();
                 if(eligible) needsSync = render::frames_completed() < front.swap;
             }
         }
@@ -1073,5 +1091,6 @@ void gx2_ss_load(ss::Reader& r) {
         g_count_offset = (int64_t)guest_swaps - (int64_t)g_swap_count;
     }
     reset_uncapped_guest_pace();
+    capped_vsync_reset_pace();
     render::ss_reset();
 }

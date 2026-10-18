@@ -5,6 +5,8 @@ At release, move those notes to a version heading and leave Unreleased empty.
 
 ## Unreleased
 
+-   **Fix**: Guest vsync pacing no longer locks the game at 30 fps after a hitch.
+    Relative waits and flip eligibility now share one paced clock, so a late frame does not need a second vsync before the flip completes.
 -   **Fix**: `nsmbu open 1-5` shows that course on the loading card.
     The card was still reading the save's current course, which is level 1 of Acorn Plains on a new file.
 -   **Add**: `nsmbu open` accepts a `course_res_pack` file, such as `game/content/Common/course_res_pack/1-27.szs`, and starts that course.
