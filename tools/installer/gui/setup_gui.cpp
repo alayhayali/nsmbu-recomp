@@ -1110,7 +1110,7 @@ static void screen_welcome() {
     ImGui::Spacing();
     ImGui::TextUnformatted("You need:");
     ImGui::Bullet();
-    ImGui::TextWrapped("your NSMBU (USA, Europe, or the USA NSMBU + NSLU pack): a disc image (.wud/.wux) plus the "
+    ImGui::TextWrapped("your NSMBU (USA, Europe, or an NSMBU + NSLU pack): a disc image (.wud/.wux) plus the "
                        "matching update when needed, a Cemu archive at that title version (USA 64, Europe 80, or "
                        "combo 0), or an extracted folder (code, content, meta);");
     ImGui::Bullet();
@@ -1181,7 +1181,7 @@ static void screen_menu() {
 static void screen_source() {
     page_header("Choose your game",
                 "A Wii U disc image (.wux or .wud) with the matching update when needed, a Cemu archive (.wua) at "
-                "USA title version 64, Europe 80, or USA combo version 0, or an already extracted game folder.");
+                "USA title version 64, Europe 80, or combo version 0, or an already extracted game folder.");
     static const SDL_DialogFileFilter filters[] = {{"Wii U disc image or Cemu archive (.wux, .wud, .wua)", "wux;wud;wua"},
                                                    {"Wii U disc image (.wux, .wud)", "wux;wud"},
                                                    {"Cemu Wii U archive (.wua)", "wua"},

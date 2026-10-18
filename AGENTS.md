@@ -1,7 +1,7 @@
 # NSMBU native port
 
 Native port of New Super Mario Bros. U.
-Supported builds are USA or Europe v1.3.0, and the USA NSMBU + NSLU pack.
+Supported builds are USA or Europe v1.3.0, and the USA or Europe NSMBU + NSLU packs.
 `tools/recomp/` translates `red-pro2.rpx` to C ahead of time.
 `runtime/` implements Cafe OS and GX2 as native code.
 Linux and Windows render with Vulkan; macOS with Metal.

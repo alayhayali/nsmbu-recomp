@@ -105,11 +105,12 @@ class Titles(unittest.TestCase):
     def test_supported_ok(self):
         setup.check_title("0005000010101d00")
         setup.check_title("0005000010101e00")
+        setup.check_title("000500001014b700")
+        setup.check_title("000500001014b800")
 
     def test_unsupported(self):
         with self.assertRaisesRegex(setup.SetupError, "Japan.*can be built from"):
             setup.check_title("0005000010101c00")
-        setup.check_title("000500001014b700")
         with self.assertRaisesRegex(setup.SetupError, "not New Super Mario Bros. U"):
             setup.check_title("000500001010ec00")
 
@@ -162,6 +163,12 @@ class ArchiveTitles(unittest.TestCase):
         combo = _title("000500001014b700", 0)
         folder, notes = setup.archive_choice(self.info([combo], combo))
         self.assertEqual(folder, "000500001014b700_v0")
+        self.assertEqual(notes, [])
+
+    def test_europe_combo_pack(self):
+        combo = _title("000500001014b800", 0)
+        folder, notes = setup.archive_choice(self.info([combo], combo))
+        self.assertEqual(folder, "000500001014b800_v0")
         self.assertEqual(notes, [])
 
     def test_other_game(self):
