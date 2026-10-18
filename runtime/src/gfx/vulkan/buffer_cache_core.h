@@ -154,8 +154,17 @@ class Cache {
   Status lookup(const Key& key, uint32_t size, Entry*& e) {
     ++stats.lookups;
     const uint32_t epoch = epoch_.load(std::memory_order_acquire);
-    auto [it, inserted] = map_.try_emplace(key);
-    e = &it->second;
+    bool inserted = false;
+    MemoSlot& ms = memo_[(size_t(key.addr) >> 4) & 31];
+    if (ms.entry && ms.key == key) {
+      e = ms.entry;
+    } else {
+      auto [it, ins] = map_.try_emplace(key);
+      inserted = ins;
+      e = &it->second;
+      ms.key = key;
+      ms.entry = e;
+    }
     Entry& x = *e;
     x.lastUse = frame_;
     if (inserted) {
@@ -246,6 +255,7 @@ class Cache {
       if (x.lastUse + kIdleFrames < frame_ && frame_ >= x.dynamicUntil) {
         if (x.region.valid()) ++stats.evictions;
         drop_region(x);
+        forget_memo();
         it = map_.erase(it);
       } else ++it;
     }
@@ -264,6 +274,7 @@ class Cache {
 
   void clear() {
     for (auto& [k, x] : map_) drop_region(x);
+    forget_memo();
     map_.clear();
   }
 
@@ -274,6 +285,9 @@ class Cache {
   void (*onDynamic)(const Key& key, const Entry& entry, bool hintOnly) = nullptr;
 
  private:
+  struct MemoSlot { Key key{}; Entry* entry = nullptr; };
+  MemoSlot memo_[32]{};
+  void forget_memo() { for (auto& s : memo_) s.entry = nullptr; }
   static uint64_t round(uint64_t n) { return (std::max<uint64_t>(n, 16) + kAlign - 1) / kAlign * kAlign; }
   bool current(Entry& e) {
     const uint64_t seq = wwatch::write_seq();

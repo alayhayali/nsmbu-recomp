@@ -748,7 +748,7 @@ int renderer_smoke_test() {
      peek_z(cells,6);flush_async();
     }
     flush();require(ld32(result)==0xFFFFFFu&&ld32(result+4)==0xFFFFFFu,"older GPU depth answer replaced newer answer");
-    R.mainDepthAddr=previousDepth;destroy_surface_image(surface);R.surfaces.erase(entry);
+    R.mainDepthAddr=previousDepth;destroy_surface_image(surface);invalidate_surface_lookup();R.surfaces.erase(entry);
     fprintf(stderr,"[renderer smoke] asynchronous GPU depth peeks passed\n");
    }
    Image rendered(64,64,0x1a);dynamic_uniform_check(rendered.s);vertex_window_check(rendered.s);triangle(rendered.s);

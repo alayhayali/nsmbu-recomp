@@ -23,8 +23,9 @@ Do not invoke `node cli/bin/agent-nsmbu.ts` or a repo-root wrapper.
 ## Dev recipes
 
 ```bash
-agent-nsmbu build                    # Debug configure + build
-agent-nsmbu build --release          # Release
+agent-nsmbu build                    # Debug → build/debug
+agent-nsmbu build --release          # Release → build/release
+agent-nsmbu build --no-debug         # RelWithDebInfo → build/release
 agent-nsmbu build --sanitizer
 agent-nsmbu launch                   # debug env defaults when unset
 agent-nsmbu launch --no-debug        # release-style launch

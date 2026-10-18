@@ -9,7 +9,6 @@ import devdata
 import slot
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BUILD = os.path.join(ROOT, "build")
 LOAD_FRAME = 700
 EXIT_FRAME = 1100
 LOG = os.path.join(ROOT, ".tmp", "repro", "nsmbu.log")
@@ -22,12 +21,19 @@ PROFILE_ENV = {
 }
 
 
-def nsmbu_exe():
-    for name in ("nsmbu", "nsmbu.exe"):
-        path = os.path.join(BUILD, name)
-        if os.path.isfile(path):
-            return path
-    return os.path.join(BUILD, "nsmbu")
+def nsmbu_exe(prefer_release=False):
+    debug = os.path.join(ROOT, "build", "debug")
+    release = os.path.join(ROOT, "build", "release")
+    rel = os.path.join(ROOT, "build", "rel")
+    flat = os.path.join(ROOT, "build")
+    preferred = release if prefer_release else debug
+    other = debug if prefer_release else release
+    for base in (preferred, other, rel, flat):
+        for name in ("nsmbu", "nsmbu.exe"):
+            path = os.path.join(base, name)
+            if os.path.isfile(path):
+                return path
+    return os.path.join(preferred, "nsmbu")
 
 
 def main():
@@ -44,7 +50,7 @@ def main():
         slot_num = 1
     exe = nsmbu_exe()
     if not os.path.isfile(exe):
-        sys.exit(f"missing {exe}; run: agent-nsmbu build --release")
+        sys.exit(f"missing {exe}; run: agent-nsmbu build")
     game = os.path.join(ROOT, "game")
     if not os.path.isdir(game):
         sys.exit("missing game/; run: agent-nsmbu extract")

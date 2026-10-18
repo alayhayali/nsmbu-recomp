@@ -109,13 +109,11 @@ export function cmdPerf(repo: string, rest: string[]): void {
 }
 
 export function cmdInstaller(repo: string, rest: string[]): void {
-    const rel = "build/rel";
+    const rel = "build/release";
     const cmakeExtra = ["-G", "Ninja", "-DNSMBU_SETUP_GUI=ON"];
     for (const target of ["nsmbu", "nsmbu-extract", "nsmbu-setup"]) {
         runPythonInherit(repo, "tools/build.py", [
             "--release",
-            "--dir",
-            rel,
             "--target",
             target,
             "--",

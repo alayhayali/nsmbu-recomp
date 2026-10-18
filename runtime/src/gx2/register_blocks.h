@@ -12,9 +12,12 @@ class RegisterBlocks {
     std::array<bool, (Words + BlockWords - 1) / BlockWords> touched{};
     std::vector<uint32_t> blocks;
 public:
-    void touch(size_t first, size_t count) {
+    [[gnu::always_inline]] void touch(size_t first, size_t count) {
         if (!count || first >= Words || count > Words - first) return;
-        for (size_t b = first / BlockWords; b <= (first + count - 1) / BlockWords; ++b)
+        const size_t b0 = first / BlockWords;
+        const size_t b1 = (first + count - 1) / BlockWords;
+        if (b0 == b1 && touched[b0]) return;
+        for (size_t b = b0; b <= b1; ++b)
             if (!touched[b]) { touched[b] = true; blocks.push_back(uint32_t(b)); }
     }
     void include(const uint32_t* regs) {

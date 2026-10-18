@@ -31,7 +31,7 @@ flowchart LR
   Agent["Agent shell"] --> CLI["agent-nsmbu on PATH"]
   CLI --> Tools["tools/*.py build launch profile"]
   CLI --> Sock["UDS / named pipe"]
-  Game["build/nsmbu"] --> Sock
+  Game["build/debug/nsmbu"] --> Sock
   Game --> Input["agent pad overlay"]
   Game --> Shot["screenshot::request"]
 ```

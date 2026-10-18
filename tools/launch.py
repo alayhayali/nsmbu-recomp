@@ -11,8 +11,6 @@ import slot
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-BUILD = os.path.join(ROOT, "build")
-
 LAUNCH_DEBUG_ENV = {
     "NSMBU_PROFILE": "1",
     "NSMBU_VK_STATS": "1",
@@ -20,12 +18,19 @@ LAUNCH_DEBUG_ENV = {
     "NSMBU_CRASH_RECOVERY": "1",
 }
 
-def nsmbu_exe():
-    for name in ("nsmbu", "nsmbu.exe"):
-        path = os.path.join(BUILD, name)
-        if os.path.isfile(path):
-            return path
-    return os.path.join(BUILD, "nsmbu")
+def nsmbu_exe(prefer_release=False):
+    debug = os.path.join(ROOT, "build", "debug")
+    release = os.path.join(ROOT, "build", "release")
+    rel = os.path.join(ROOT, "build", "rel")
+    flat = os.path.join(ROOT, "build")
+    preferred = release if prefer_release else debug
+    other = debug if prefer_release else release
+    for base in (preferred, other, rel, flat):
+        for name in ("nsmbu", "nsmbu.exe"):
+            path = os.path.join(base, name)
+            if os.path.isfile(path):
+                return path
+    return os.path.join(preferred, "nsmbu")
 
 def main():
     parser = argparse.ArgumentParser()
@@ -37,7 +42,7 @@ def main():
     args = parser.parse_args()
     slot_num, course_pack, args.run_args = slot.take_args(args.run_args)
     use_debug_env = not args.no_debug
-    exe = nsmbu_exe()
+    exe = nsmbu_exe(prefer_release=args.no_debug)
     if not os.path.isfile(exe):
         sys.exit(f"missing {exe}; run: agent-nsmbu build")
     game = os.path.join(ROOT, "game")

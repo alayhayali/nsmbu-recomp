@@ -93,31 +93,33 @@ static void apply_small_regs(uint32 first, const uint32* v, uint32 n) {
         return e && !strcmp(e, "1");
     }();
     static const bool collectStats = env::VK_STATS() != nullptr;
+    if (!memcmp(&g_regs[first], v, n * 4)) {
+        if (g_shadow && memcmp(&g_shadow[first], v, n * 4))
+            memcpy(&g_shadow[first], v, n * 4);
+        return;
+    }
     const bool classify = rprof::enabled();
-    bool changed = false, baselineBump = false, actualBump = false;
+    bool baselineBump = false, actualBump = false;
     uint64_t maskedWords = 0;
     for (uint32 i = 0; i < n; ++i) {
         const uint32 reg = first + i, value = v[i], old = g_regs[reg];
-        if (old != value) {
-            changed = true;
-            if (classify) {
-                if (rprof::fast_class_reg(reg)) rprof::g_reg_dirty |= 1;
-                else rprof::note_other_reg(reg);
-            }
-            if ((collectStats || !actualBump) && !shader_irrelevant(reg)) {
-                baselineBump = true;
-                uint32 mask;
-                if (keyDirty && vulkan_shader_key_mask(reg, mask) && !((old ^ value) & mask)) {
-                    if (collectStats) ++maskedWords;
-                } else actualBump = true;
-            }
-            g_regs[reg] = value;
+        if (old == value) continue;
+        if (classify) {
+            if (rprof::fast_class_reg(reg)) rprof::g_reg_dirty |= 1;
+            else rprof::note_other_reg(reg);
         }
-
-        if (g_shadow && g_shadow[reg] != value) g_shadow[reg] = value;
+        if ((collectStats || !actualBump) && !shader_irrelevant(reg)) {
+            baselineBump = true;
+            uint32 mask;
+            if (keyDirty && vulkan_shader_key_mask(reg, mask) && !((old ^ value) & mask)) {
+                if (collectStats) ++maskedWords;
+            } else actualBump = true;
+        }
     }
+    memcpy(&g_regs[first], v, n * 4);
+    if (g_shadow) memcpy(&g_shadow[first], v, n * 4);
     if (actualBump) ++g_shader_state_gen;
-    if (changed && collectStats) {
+    if (collectStats) {
         ++shaderKeyDirtyStats.changedBatches;
         shaderKeyDirtyStats.baselineWouldBumps += baselineBump;
         shaderKeyDirtyStats.actualBumps += actualBump;

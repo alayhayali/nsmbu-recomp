@@ -12,7 +12,10 @@ import slot
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-BUILD = os.path.join(ROOT, "build")
+def default_build_dir(release, no_debug):
+    if release or no_debug:
+        return os.path.join(ROOT, "build", "release")
+    return os.path.join(ROOT, "build", "debug")
 
 def debug_compile_flags(install_flags, sanitizer=False):
     flags = install_flags
@@ -104,13 +107,21 @@ def main():
     parser.add_argument("--no-debug", action="store_true")
     parser.add_argument("--sanitizer", action="store_true")
     parser.add_argument("--target", default="nsmbu", help="CMake target to build (default: nsmbu)")
-    parser.add_argument("--dir", default=None, help="CMake build directory (default: build)")
+    parser.add_argument(
+        "--dir",
+        default=None,
+        help="CMake build directory (default: build/debug; build/release with --release or --no-debug)",
+    )
     parser.add_argument("cmake_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     _, args.cmake_args = slot.take_slot(args.cmake_args)
     if args.cmake_args and args.cmake_args[0] == "--":
         args.cmake_args = args.cmake_args[1:]
-    build_dir = os.path.abspath(args.dir) if args.dir else BUILD
+    build_dir = (
+        os.path.abspath(args.dir)
+        if args.dir
+        else default_build_dir(args.release, args.no_debug)
+    )
     debug_build = not args.release and not args.no_debug
     ensure_gen_dir()
     libdir = libstdcxx_libdir()

@@ -13,7 +13,7 @@ usage:
 Attachments need `perf_event_paranoid` at 1 or lower. When it is higher, the
 script prompts for sudo and sets 1 for this boot.
 The binary that ran must still be on disk when you (or perf) read the data:
-perf matches samples to it by build ID. Keep build/nsmbu until the data is read.
+perf matches samples to it by build ID. Keep that binary unchanged until the data is read.
 """
 import argparse
 import os

@@ -2,7 +2,7 @@
 """Build a local release-shaped package under .tmp/ so nsmbu-setup can install for real.
 
 Needs a Ninja Release build (package.py reads the link line with `ninja -t commands`).
-Default build dir is build/rel (override with NSMBU_INSTALLER_BUILD).
+Default build dir is build/release (override with NSMBU_INSTALLER_BUILD).
 
 Prints the package directory path.
 """
@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BUILD = os.path.abspath(os.environ.get("NSMBU_INSTALLER_BUILD", os.path.join(ROOT, "build", "rel")))
+BUILD = os.path.abspath(os.environ.get("NSMBU_INSTALLER_BUILD", os.path.join(ROOT, "build", "release")))
 OUT = os.path.join(ROOT, ".tmp", "installer-out")
 
 

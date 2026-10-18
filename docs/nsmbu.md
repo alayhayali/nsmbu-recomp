@@ -79,7 +79,7 @@ Clang needs a GNU `libstdc++` (for example `libstdc++-14-dev` on Ubuntu).
 `tools/build.py` adds the matching `-L` path when it finds `libstdc++.so` under `/usr/lib/gcc/`.
 
 The `agent-nsmbu` CLI exports `NSMBU_USER_DIR` to the gitignored `nsmbu/` folder on dev commands.
-`agent-nsmbu launch` starts `build/nsmbu` with `--game` set to `game/` and `--save nsmbu/save`.
+`agent-nsmbu launch` starts `build/debug/nsmbu` with `--game` set to `game/` and `--save nsmbu/save`.
 Default debug env vars (`NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, `NSMBU_CRASH_RECOVERY`) are set when they are not already in the environment.
 
 `agent-nsmbu launch --no-debug` skips those debug defaults.
@@ -112,7 +112,7 @@ It enables the `example.intro-skip` mod and sets its course pack option to `1-1`
 Any `N-M` token with that shape works the same way.
 You cannot pass a slot and a course pack on one launch.
 
-`agent-nsmbu profile` runs `build/nsmbu` with the fixed-scene profile env (`NSMBU_NO_AUDIO`, profile and Vulkan stats, slow-swap log, log file under `.tmp/repro/`).
+`agent-nsmbu profile` runs `build/debug/nsmbu` with the fixed-scene profile env (`NSMBU_NO_AUDIO`, profile and Vulkan stats, slow-swap log, log file under `.tmp/repro/`).
 Default load is slot 2 at TV frame 700; the run stops at TV frame 1100.
 Pass a slot number, or `--exit-at`, `--load-at`, or `--log`.
 Use a Release binary (`agent-nsmbu build --release`) for hitch checks.

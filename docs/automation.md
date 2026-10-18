@@ -1,7 +1,7 @@
 # Automation runs
 
 Headless boots use `agent-nsmbu scripted <name>` from the repo root (wraps `tools/scripted-run.sh`).
-The script copies `nsmbu/save` into `.tmp/<name>/save`, then starts `build/nsmbu` with that save.
+The script copies `nsmbu/save` into `.tmp/<name>/save`, then starts `build/debug/nsmbu` (or another build dir if present) with that save.
 Frame dumps land in `.tmp/<name>/` as `frame_<n>.png`.
 The repo `nsmbu/save` stays unread by the game.
 

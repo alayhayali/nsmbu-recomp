@@ -26,8 +26,8 @@ Canonical addresses are USA v1.3.0 `red-pro2.rpx` (see `docs/names.md`).
 ## Read the artifacts
 
 - `[gx2] frame N, X swaps/s`, `[gx2] slow swap` and `[prof]` per-phase ms lines are the first check. Steady 60 fps holds ~59.9 swaps/s.
-- `[game sample]` report: counts are `pc - binary_base` of `build/nsmbu`, CPU-time sampled. The thread table at the bottom gives the busy share per game thread (`GX2 render` ≈ 60-70%, `game` ≈ 20% is normal).
-- `.tmp/perf/nsmbu.data` resolves against the binary by build ID: keep `build/nsmbu` unchanged until the data is read.
+- `[game sample]` report: counts are `pc - binary_base` of the built `nsmbu` binary (usually `build/debug/nsmbu`), CPU-time sampled. The thread table at the bottom gives the busy share per game thread (`GX2 render` ≈ 60-70%, `game` ≈ 20% is normal).
+- `.tmp/perf/nsmbu.data` resolves against the binary by build ID: keep that binary unchanged until the data is read.
 
 ## In-binary sample rows
 

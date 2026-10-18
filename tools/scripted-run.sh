@@ -26,4 +26,19 @@ export NSMBU_NO_HOST_INPUT=1
 export NSMBU_VK_PRESENT_MODE=immediate
 export NSMBU_NO_AUDIO=1
 export NSMBU_RES_SCALE="${NSMBU_RES_SCALE:-1}"
-exec "$root/build/nsmbu" --game "$root/game" --save "$run/save"
+nsmbu_bin=""
+for base in "$root/build/debug" "$root/build/release" "$root/build/rel" "$root/build"; do
+    if [ -f "$base/nsmbu" ]; then
+        nsmbu_bin="$base/nsmbu"
+        break
+    fi
+    if [ -f "$base/nsmbu.exe" ]; then
+        nsmbu_bin="$base/nsmbu.exe"
+        break
+    fi
+done
+if [ -z "$nsmbu_bin" ]; then
+    echo "missing $root/build/debug/nsmbu; run: agent-nsmbu build" >&2
+    exit 2
+fi
+exec "$nsmbu_bin" --game "$root/game" --save "$run/save"

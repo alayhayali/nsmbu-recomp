@@ -1214,8 +1214,47 @@ static Surface* adopt_newer_alias(Surface* s) {
     mark_gpu_written(s);
     return s;
 }
+static uint32_t g_surface_lookup_epoch = 1;
+
+struct SurfaceLookupMemoSlot {
+    uint32_t addr = 0, width = 0, height = 0, slices = 0, format = 0, dim = 0, mips = 0;
+    bool isDepth = false, forRendering = false;
+    uint32_t epoch = 0;
+    Surface* surface = nullptr;
+};
+
+static SurfaceLookupMemoSlot g_surface_lookup_memo[64];
+
+void invalidate_surface_lookup() { ++g_surface_lookup_epoch; }
+
+static void store_surface_lookup_memo(const SurfaceDesc& d, bool forRendering, Surface* s) {
+    auto& slot = g_surface_lookup_memo[(d.addr >> 8) & 63];
+    slot.addr = d.addr;
+    slot.width = d.width;
+    slot.height = d.height;
+    slot.slices = d.slices;
+    slot.format = d.format;
+    slot.dim = d.dim;
+    slot.mips = d.mips;
+    slot.isDepth = d.isDepth;
+    slot.forRendering = forRendering;
+    slot.epoch = g_surface_lookup_epoch;
+    slot.surface = s;
+}
+
 Surface* find_or_create_surface(const SurfaceDesc& d,bool forRendering) {
     if(!d.addr)return nullptr;
+    {
+        auto& slot = g_surface_lookup_memo[(d.addr >> 8) & 63];
+        if (slot.surface && slot.epoch == g_surface_lookup_epoch && slot.addr == d.addr &&
+            slot.width == d.width && slot.height == d.height && slot.slices == d.slices &&
+            slot.format == d.format && slot.dim == d.dim && slot.mips == d.mips &&
+            slot.isDepth == d.isDepth && slot.forRendering == forRendering) {
+            Surface* s = slot.surface;
+            if (forRendering) return adopt_newer_alias(rescale(s));
+            return s->gpuWritten ? adopt_newer_alias(s) : s;
+        }
+    }
     auto range=R.surfaces.equal_range(d.addr);
     Surface* exact=nullptr;Surface* rendered=nullptr;
     auto score=[&](Surface* s){return std::make_tuple(s->width==d.width&&s->height==d.height,s->slices==d.slices,s->writeSeq);};
@@ -1235,18 +1274,30 @@ Surface* find_or_create_surface(const SurfaceDesc& d,bool forRendering) {
         bool sameVolume=(s->imageType==VK_IMAGE_TYPE_3D)==(dimType(d.dim)==VK_IMAGE_TYPE_3D);
         if(s->width==d.width&&s->height==d.height&&s->format==d.format&&s->slices==d.slices&&sameVolume&&
            (forRendering||s->mips>=d.mips||s->gpuWritten)) {
-            if(forRendering)return adopt_newer_alias(rescale(s));
+            if(forRendering) {
+                if(std::distance(range.first,range.second)==1)store_surface_lookup_memo(d,forRendering,s);
+                return adopt_newer_alias(rescale(s));
+            }
             if(!exact||s->writeSeq>exact->writeSeq)exact=s;
         } else if(!forRendering&&s->gpuWritten&&(s->format&0x3f)==(d.format&0x3f))consider(s);
     }
-    if(exact&&(exact->gpuWritten||!rendered||exact->writeSeq>rendered->writeSeq))return exact->gpuWritten?adopt_newer_alias(exact):exact;
+    if(exact&&(exact->gpuWritten||!rendered||exact->writeSeq>rendered->writeSeq)) {
+        if(std::distance(range.first,range.second)==1 && exact->mips>=d.mips)
+            store_surface_lookup_memo(d,forRendering,exact);
+        return exact->gpuWritten?adopt_newer_alias(exact):exact;
+    }
     if(rendered)return rendered;if(exact)return exact;
     auto s=std::make_unique<Surface>();
     s->addr=d.addr;s->mipAddr=d.mipAddr;s->width=std::max(d.width,1u);s->height=std::max(d.height,1u);
     s->slices=std::max(d.slices,1u);s->pitch=d.pitch;s->mips=forRendering?1:std::max(d.mips,1u);
     s->format=d.format;s->dim=d.dim;s->tileMode=d.tileMode;s->swizzle=d.swizzle;s->isDepth=d.isDepth;
     s->fmt=format_info(d.format,d.isDepth);create_surface_image(s.get(),forRendering);
+    ++g_surface_lookup_epoch;
     auto* raw=s.get();R.surfaces.emplace(d.addr,std::move(s));
+    {
+        auto post = R.surfaces.equal_range(d.addr);
+        if(std::distance(post.first,post.second)==1)store_surface_lookup_memo(d,forRendering,raw);
+    }
 
     if(!raw->isDepth&&!raw->fmt.compressed&&raw->fmt.convert==Convert::NONE) {
         auto views=R.surfaces.equal_range(d.addr);

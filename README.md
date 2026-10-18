@@ -152,15 +152,15 @@ The file layout is in [game/README.md](game/README.md).
 |---------|--------|
 | `agent-nsmbu` | List commands (`agent-nsmbu` with no args prints help) |
 | `agent-nsmbu extract` | Check `game/update/` (USA 1.3.0), extract `game/game.wux`, then apply the update |
-| `agent-nsmbu build` | Configure `build/` in Debug and build `nsmbu` |
+| `agent-nsmbu build` | Configure `build/debug` in Debug and build `nsmbu` |
 | `agent-nsmbu build --release` | Build in Release |
 | `agent-nsmbu build --sanitizer` | Build with AddressSanitizer and UBSan |
-| `agent-nsmbu launch` | Start `build/nsmbu` with `--game` set to `game/` |
+| `agent-nsmbu launch` | Start `build/debug/nsmbu` with `--game` set to `game/` |
 | `agent-nsmbu launch --no-debug` | Start without the debug environment defaults |
 | `agent-nsmbu launch --trace` | Start with `--trace` for HLE logging |
 | `agent-nsmbu run` | Run `agent-nsmbu build`, then `agent-nsmbu launch` |
 | `agent-nsmbu run 3` | Same, and load save slot 3 |
-| `agent-nsmbu installer` | Ninja Release under `build/rel`, package a real SDK, open setup |
+| `agent-nsmbu installer` | Ninja Release under `build/release`, package a real SDK, open setup |
 | `agent-nsmbu recomp` | Translate `game/code/red-pro2.rpx` into `build/gen` |
 | `agent-nsmbu launch --gdb` | Start the game under gdb |
 | `agent-nsmbu launch --lldb` | Start the game under lldb |
