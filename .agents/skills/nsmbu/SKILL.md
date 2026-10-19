@@ -24,6 +24,8 @@ cd tools/cli && npm link
 
 After that, every command is the global `nsmbu` on `PATH`.
 
+Fish completions: `nsmbu completion fish --install` (then `source ~/.config/fish/completions/nsmbu.fish` in open shells).
+
 ## One game
 
 Only one game process is supported.

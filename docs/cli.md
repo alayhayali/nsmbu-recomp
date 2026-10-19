@@ -24,6 +24,17 @@ cd tools/cli && npm link
 After that, use the global `nsmbu` on `PATH`.
 Do not invoke `node tools/cli/bin/nsmbu.ts` or a repo-root shim.
 
+### Fish completions
+
+```
+nsmbu completion fish --install
+```
+
+That writes `~/.config/fish/completions/nsmbu.fish`.
+New fish sessions load it automatically.
+In an already-open shell, run `source ~/.config/fish/completions/nsmbu.fish`.
+To print the script instead of installing: `nsmbu completion fish`.
+
 ## Architecture
 
 ```mermaid

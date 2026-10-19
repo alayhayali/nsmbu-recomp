@@ -1,4 +1,4 @@
-const BUTTON_BITS: Record<string, number> = {
+export const BUTTON_BITS: Record<string, number> = {
     A: 0x8000,
     B: 0x4000,
     X: 0x2000,
@@ -15,6 +15,8 @@ const BUTTON_BITS: Record<string, number> = {
     Left: 0x0800,
     Right: 0x0400,
 };
+
+export const BUTTON_NAMES = Object.keys(BUTTON_BITS);
 
 export function parseButtonBits(token: string): number {
     const named = BUTTON_BITS[token];

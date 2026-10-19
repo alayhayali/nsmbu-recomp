@@ -13,6 +13,7 @@ Usage:
   nsmbu lint
   nsmbu recomp
   nsmbu scripted <name> […]
+  nsmbu completion fish [--install]
 
 Agent control (single game instance):
   nsmbu open [slot|course|course-file] […]

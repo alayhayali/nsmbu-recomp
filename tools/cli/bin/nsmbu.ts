@@ -25,6 +25,7 @@ import {
     cmdStick,
     cmdWait,
 } from "../src/agent/commands.ts";
+import { cmdCompletion } from "../src/completion.ts";
 
 async function main(): Promise<void> {
     const argv = process.argv.slice(2);
@@ -33,6 +34,16 @@ async function main(): Promise<void> {
         return;
     }
     const [cmd, ...rest] = argv;
+    if (cmd === "completion") {
+        try {
+            cmdCompletion(rest);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error(msg);
+            process.exit(1);
+        }
+        return;
+    }
     const repo = findRepoRoot();
 
     try {
