@@ -62,7 +62,7 @@ static bool read_course_info(uint8_t* world_out, uint8_t* course_out) {
     return true;
 }
 
-static bool course_banner_state(uint8_t g[3], uint8_t* world_out, uint8_t* course_out, int* display_out) {
+static bool course_banner_state(uint8_t g[3], uint8_t* world_out, uint8_t* course_out) {
     uint8_t world = 0;
     uint8_t course = 0;
     if (!read_course_info(&world, &course)) return false;
@@ -78,7 +78,6 @@ static bool course_banner_state(uint8_t g[3], uint8_t* world_out, uint8_t* cours
     }
     if (world_out) *world_out = world;
     if (course_out) *course_out = course;
-    if (display_out) *display_out = display;
     return true;
 }
 
@@ -154,8 +153,7 @@ static void fill_course_banner_digits(Cpu* c, uint32_t glyph_base, bool refresh)
     uint8_t g[3];
     uint8_t world = 0;
     uint8_t course = 0;
-    int display = 0;
-    if (!course_banner_state(g, &world, &course, &display)) return;
+    if (!course_banner_state(g, &world, &course)) return;
     seed_maingame_course_tags(world, course);
     if (glyph_base != 0) {
         write_three_glyphs(glyph_base, g);
@@ -171,15 +169,6 @@ static void fill_course_banner_digits(Cpu* c, uint32_t glyph_base, bool refresh)
         uint32_t data = field_game + 0x10;
         write_three_glyphs(data + 0x10, g);
         write_three_glyphs(data + 0x13D, g);
-    }
-    static int logged = 0;
-    if (logged++ < 12) {
-        uint32_t game = ld32(kMainGame);
-        LOG("[banner-digits] base=%08X task=%08X world=%u course=%u display=%d +19C=%u +1A8=%u tb=%08X",
-            glyph_base, task, world, course, display,
-            game != 0 ? ld32(game + 0x19Cu) : 0u,
-            game != 0 ? ld32(game + 0x1A8u) : 0u,
-            g_world_course_textbox);
     }
     if (refresh) reapply_world_course_textbox(c != nullptr ? c : threads::current());
 }
