@@ -355,7 +355,7 @@ void shutdown() {
     if (!g_active.load()) return;
     g_stop = true;
 #ifndef _WIN32
-    if (g_listen >= 0) shutdown(g_listen, SHUT_RDWR);
+    if (g_listen >= 0) ::shutdown(g_listen, SHUT_RDWR);
 #endif
     if (g_thread.joinable()) g_thread.join();
     g_active.store(false);
