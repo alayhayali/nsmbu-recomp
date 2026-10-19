@@ -125,17 +125,10 @@ static void reapply_world_course_textbox(Cpu* c) {
             textbox = cand;
             g_world_course_textbox = cand;
             g_world_course_multi2d = multi2d;
-            static int find_logged = 0;
-            if (find_logged++ < 4)
-                LOG("[banner-text] scan hit off=%03X tb=%08X name=%s course=%u", off, cand, name.c_str(),
-                    course);
             break;
         }
     }
     if (textbox == 0) return;
-    static int logged = 0;
-    if (logged++ < 8)
-        LOG("[banner-text] reapply tb=%08X m2d=%08X course=%u", textbox, multi2d, course);
     uint32_t saved[6] = {c->r[3], c->r[4], c->r[5], c->r[6], c->r[7], c->r[8]};
     c->r[3] = textbox;
     c->r[4] = 0;
@@ -250,10 +243,6 @@ extern "C" void hook_02681BFC(Cpu* c) {
     if (read_course_info(&world, &course)) seed_maingame_course_tags(world, course);
     f_02681BFC_orig(c);
     std::string name = textbox_name_string(textbox);
-    static int logged = 0;
-    if (logged++ < 32)
-        LOG("[banner-text] expand tb=%08X course=%u lr=%08X name=%s", textbox, course, c->lr,
-            name.empty() ? "?" : name.c_str());
     if (name.find("WorldCourse") != std::string::npos) {
         g_world_course_textbox = textbox;
         uint32_t task = ld32(kCourseTask);
@@ -261,10 +250,6 @@ extern "C" void hook_02681BFC(Cpu* c) {
             uint32_t pregame = ld32(task + 0xCC);
             if (pregame != 0) g_world_course_multi2d = ld32(pregame);
         }
-        static int cap = 0;
-        if (cap++ < 4)
-            LOG("[banner-text] capture name=%s tb=%08X m2d=%08X course=%u", name.c_str(), textbox,
-                g_world_course_multi2d, course);
     }
 }
 
