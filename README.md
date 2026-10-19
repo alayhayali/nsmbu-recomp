@@ -185,3 +185,5 @@ Build from source, CLI commands, and developer docs are in [CONTRIBUTING.md](CON
 ## Credits
 
 This repository was forked from the [Wind Waker HD recompilation](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp).
+
+The Collision Viewer is based on the collision viewer from [Tsuru](https://github.com/Zenith-Team/Tsuru).
