@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <filesystem>
@@ -21,7 +22,9 @@
 #include <windows.h>
 #endif
 
+#ifdef NSMBU_SDL_HOST
 #include <SDL3/SDL.h>
+#endif
 
 #include "core/env.h"
 #include "gfx/renderer.h"
@@ -368,11 +371,15 @@ void service() {
         expire_pad(render::frame_count());
     }
     if (g_quit.exchange(false)) {
+#ifdef NSMBU_SDL_HOST
         hostui::post([] {
             SDL_Event ev{};
             ev.type = SDL_EVENT_QUIT;
             SDL_PushEvent(&ev);
         });
+#else
+        std::_Exit(0);
+#endif
     }
     std::vector<std::pair<int, std::string>> to_request;
     {

@@ -39,8 +39,8 @@ Use the `changelog` skill when editing.
 
 - Large courses run smoother.
 - World-map paths stay above the hill.
-- Closing the error viewer no longer pauses or slows the map.
 - Report crash closes the error dialog after opening GitHub and the logs folder.
+- Closing the error viewer no longer pauses or slows the map.
 
 ## [0.4.2] - 2026-10-14
 

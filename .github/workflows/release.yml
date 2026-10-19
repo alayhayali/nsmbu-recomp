@@ -100,7 +100,7 @@ jobs:
             --data-dir "$RUNNER_TEMP/data"
           "$RUNNER_TEMP/data/bin/nsmbu" --game "$RUNNER_TEMP/nogame" > run.log 2>&1 || true
           cat run.log
-          grep -q "cannot load" run.log
+          grep -q "Game folder not found" run.log
           # the graphical installer: starts setup.py through the launcher and renders its first screen
           SDL_VIDEO_DRIVER=offscreen "./NSMBU.app/Contents/MacOS/nsmbu-launcher" --self-test \
             --screenshots "$RUNNER_TEMP" --data-dir "$RUNNER_TEMP/data"
@@ -261,7 +261,7 @@ jobs:
           ldd "$RUNNER_TEMP/data/bin/nsmbu"
           "$RUNNER_TEMP/data/bin/nsmbu" --game "$RUNNER_TEMP/nogame" > run.log 2>&1 || true
           cat run.log
-          grep -q "cannot load" run.log
+          grep -q "Game folder not found" run.log
           ldd ./nsmbu-launcher
           SDL_VIDEO_DRIVER=offscreen ./nsmbu-launcher --self-test --data-dir "$RUNNER_TEMP/data"
 
@@ -418,13 +418,13 @@ jobs:
           if (-not (Test-Path (Join-Path $data 'install.json'))) { throw "the console setup did not finish" }
           $exe = Join-Path $data 'bin\nsmbu.exe'
           if (-not (Test-Path (Join-Path $data 'bin\SDL3.dll'))) { throw "SDL3.dll was not installed" }
-          # no game files: the executable must start and stop with "cannot load ..." (abort() may leave
+          # no game files: the executable must start and stop with "Game folder not found" (abort() may leave
           # an error-reporting process around, so do not wait forever)
           $p = Start-Process -FilePath $exe -ArgumentList '--game', (Join-Path $env:RUNNER_TEMP 'nogame') `
             -RedirectStandardError run.log -RedirectStandardOutput out.log -NoNewWindow -PassThru
           if (-not $p.WaitForExit(120000)) { $p.Kill() }
           Get-Content run.log, out.log
-          if (-not (Select-String -Path run.log, out.log -Pattern 'cannot load' -Quiet)) { throw "the installed executable did not start" }
+          if (-not (Select-String -Path run.log, out.log -Pattern 'Game folder not found' -Quiet)) { throw "the installed executable did not start" }
           # the graphical installer (GUI subsystem: wait for it explicitly)
           $env:SDL_VIDEO_DRIVER = 'offscreen'
           $g = Start-Process -FilePath (Join-Path $pkg 'NSMBU.exe') `
