@@ -15,10 +15,13 @@ def check_update(game):
     known = ", ".join("%s %s (v%d)" % (b.name, b.title_id, b.title_version) for b in builds.all_builds())
     print("game: %s" % game)
     print("known builds: %s" % known)
-    print("required update folder: %s/" % game_dump.UPDATE_DIRNAME)
+    print("update folder: %s/ (optional for a known base-disc RPX)" % game_dump.UPDATE_DIRNAME)
     print("")
     print("== update (1.3.0) ==")
     errors, rpx = game_dump.folder_layout_errors(update, game_dump.UPDATE_DIRNAME)
+    if not os.path.isdir(update):
+        print("no update folder; will use the base disc if its RPX is a known build")
+        return False
     if rpx:
         e, _ = game_dump.check_rpx(
             rpx,
@@ -32,11 +35,12 @@ def check_update(game):
         for e in errors:
             print("  %s" % e)
         sys.exit(
-            "put the matching 1.3.0 update under game/%s/ (code/, content/, meta/) before extract"
+            "fix game/%s/ (code/, content/, meta/) or remove it to use a known base disc alone"
             % game_dump.UPDATE_DIRNAME
         )
     print("")
     print("update check ok")
+    return True
 
 
 def main():
@@ -48,7 +52,7 @@ def main():
     if not os.path.isfile(key):
         sys.exit("put the title key as game/game.key (next to game.wux)")
 
-    check_update(game)
+    have_update = check_update(game)
 
     print("")
     print("extracting base disc into game/...")
@@ -64,8 +68,9 @@ def main():
         cwd=ROOT,
     )
 
-    print("applying game/%s onto game/..." % game_dump.UPDATE_DIRNAME)
-    game_dump.apply_update(game)
+    if have_update:
+        print("applying game/%s onto game/..." % game_dump.UPDATE_DIRNAME)
+        game_dump.apply_update(game)
 
     rpx = os.path.join(game, "code", "red-pro2.rpx")
     digest = builds.file_sha256(rpx)
@@ -73,10 +78,20 @@ def main():
     if not build:
         known = ", ".join("%s %s..." % (b.name, b.sha256[:16]) for b in builds.all_builds())
         sys.exit(
-            "after applying the update, code/red-pro2.rpx is %s... (need one of: %s)"
-            % (digest[:16], known)
+            "code/red-pro2.rpx is %s... (need one of: %s)%s"
+            % (
+                digest[:16],
+                known,
+                "" if have_update else "; put the matching 1.3.0 update under game/%s/" % game_dump.UPDATE_DIRNAME,
+            )
         )
-    print("extract ok: base disc + %s -> %s 1.3.0" % (game_dump.UPDATE_DIRNAME, build.name))
+    if have_update:
+        print("extract ok: base disc + %s -> %s (title version %d)" % (
+            game_dump.UPDATE_DIRNAME, build.name, build.title_version))
+    else:
+        print("extract ok: base disc -> %s (title version %d)" % (build.name, build.title_version))
+    if not build.mods:
+        print("note: mods are not supported on this build; install the 1.3.0 update for mod support")
 
 
 if __name__ == "__main__":

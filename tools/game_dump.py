@@ -93,7 +93,7 @@ def check_rpx(rpx_path, label, require_update_title=False):
     if not build:
         known = ", ".join("%s %s..." % (b.name, b.sha256[:16]) for b in builds.all_builds())
         errors.append(
-            "%s is not a known 1.3.0 RPX (sha256 %s...; need one of: %s)"
+            "%s is not a known RPX (sha256 %s...; need one of: %s)"
             % (label, digest[:16], known)
         )
         return errors, None

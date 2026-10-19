@@ -30,6 +30,7 @@ class Build:
         self.title_id = d["title_id"]
         self.sha256 = d["rpx_sha256"]
         self.title_version = int(d.get("title_version", 64))
+        self.mods = bool(d.get("mods", True))
         self.bounds = {kind: tuple(int(a, 16) for a in d[kind + "_bounds"])
                        for kind in ("code", "data") if kind + "_bounds" in d}
         if self.name != CANONICAL and len(self.bounds) != 2:
@@ -128,6 +129,7 @@ _CANONICAL = {
     "title_id": "0005000010101d00",
     "rpx_sha256": "ebd147ce4cdedb563db3ac6278186ca5dea282ad315271925b8bb5ac16c7dc8e",
     "title_version": 64,
+    "mods": True,
 }
 
 def canonical_build():
@@ -146,8 +148,18 @@ def by_sha256(digest):
     return None
 
 def by_title(title_id):
-    for b in all_builds():
-        if b.title_id == title_id:
+    """Preferred build for this title id (highest title version, canonical first on ties)."""
+    matches = [b for b in all_builds() if b.title_id == (title_id or "").lower()]
+    if not matches:
+        return None
+    return max(matches, key=lambda b: (b.title_version, b.canonical))
+
+def builds_for_title(title_id):
+    return [b for b in all_builds() if b.title_id == (title_id or "").lower()]
+
+def by_title_version(title_id, version):
+    for b in builds_for_title(title_id):
+        if b.title_version == version:
             return b
     return None
 
@@ -191,7 +203,13 @@ def read_hooks(paths, build):
             where = "%s:%d" % (os.path.basename(path), lineno)
             site = text.startswith("@")
             canon = int(text[1:] if site else text, 16)
-            entries.append((site, canon, build.code(canon), where))
+            try:
+                mapped = build.code(canon)
+            except ValueError:
+                # Interior of a differently compiled function: keep the piecewise address so the
+                # recompiler can skip or error with a useful location.
+                mapped = build._code.apply(canon)
+            entries.append((site, canon, mapped, where))
     return entries, skipped
 
 def hook_files(directory=None):

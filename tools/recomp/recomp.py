@@ -94,6 +94,7 @@ class Recompiler:
         self._imm_overrides()
 
         hook_entries, self.skipped_hooks = game_builds.read_hooks(game_builds.hook_files(), self.build)
+        hook_entries = self._check_hooks(hook_entries)
         self.canon_of = {}
         self.hooks, self.sites = set(), set()
         for site, canon, addr, _ in hook_entries:
@@ -101,7 +102,6 @@ class Recompiler:
             (self.sites if site else self.hooks).add(addr)
         self._fixpoint()
         self._build_interior_dispatch()
-        self._check_hooks(hook_entries)
 
     def _check_hooks(self, hook_entries):
         """A hook is written against the canonical code, so check that it can mean the same thing in
@@ -109,9 +109,14 @@ class Recompiler:
         build compiled differently patches different code: that is an error. A hook on the entry of
         such a function wraps it whole, which usually still holds, but it is reported."""
         self.hooks_in_changed = []
+        kept = []
         for site, canon, addr, where in hook_entries:
             if self.build.body_differs(canon):
                 if site or addr not in self.entries:
+                    if not self.build.mods:
+                        print("warning: %s: skipping site %08X on %s (changed code; mods unsupported on this build)"
+                              % (where, canon, self.build.name), file=sys.stderr)
+                        continue
                     raise SystemExit('%s: %08X is inside a function the %s build compiled differently; the '
                                      'hook is written for the canonical (USA) code. Mark its file with '
                                      '"# builds: USA" or write the hook for this build.' % (
@@ -121,11 +126,21 @@ class Recompiler:
                       "the whole function, so check that it still means the same thing" % (
                           where, self.build.name, canon, addr), file=sys.stderr)
             if not self.p.in_text(addr):
+                if not self.build.mods:
+                    print("warning: %s: skipping %08X on %s (outside code; mods unsupported on this build)"
+                          % (where, canon, self.build.name), file=sys.stderr)
+                    continue
                 raise SystemExit("%s: %08X (%s build: %08X) is outside the game's code" % (
                     where, canon, self.build.name, addr))
             if not site and addr not in self.entries:
+                if not self.build.mods:
+                    print("warning: %s: skipping %08X on %s (not a function start there; mods unsupported)"
+                          % (where, canon, self.build.name), file=sys.stderr)
+                    continue
                 raise SystemExit("%s: %08X (%s build: %08X) is not the start of a function there" % (
                     where, canon, self.build.name, addr))
+            kept.append((site, canon, addr, where))
+        return kept
 
     def _imm_overrides(self):
         """Resolve the immediates of instructions referencing imported symbols."""
@@ -565,6 +580,7 @@ class Recompiler:
         f.write('\n/* %s build: canonical (USA) address -> this build\'s (tools/recomp/builds.py) */\n' % b.name)
         f.write('const char g_guest_build_name[] = "%s";\n' % b.name)
         f.write('const char g_guest_build_title_id[] = "%s";\n' % b.title_id)
+        f.write('const int g_guest_build_mods = %d;\n' % (1 if b.mods else 0))
         for kind, steps in (("code", b.code_steps()), ("data", b.data_steps())):
             f.write("const GuestStep g_guest_%s_steps[] = {%s};\n" % (
                 kind, ", ".join("{0x%08Xu, %d}" % (a, d) for a, d in steps)))

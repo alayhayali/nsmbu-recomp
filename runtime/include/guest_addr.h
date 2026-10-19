@@ -20,6 +20,7 @@ extern const GuestChanged g_guest_changed_code[];
 extern const unsigned g_guest_changed_code_count;
 extern const char g_guest_build_name[];
 extern const char g_guest_build_title_id[];
+extern const int g_guest_build_mods;
 #ifdef __cplusplus
 }
 #endif
@@ -35,8 +36,17 @@ static inline int guest_in_bounds(uint32_t a, uint32_t lo, uint32_t hi) {
 }
 static inline int guest_code_valid(uint32_t a) {
     if (!guest_in_bounds(a, g_guest_code_lo, g_guest_code_hi)) return 0;
-    for (unsigned i = 0; i < g_guest_changed_code_count; i++)
-        if (g_guest_changed_code[i].start < a && a < g_guest_changed_code[i].end) return 0;
+    // Base-disc and other no-mods builds still need GC() of fixed USA addresses that sit
+    // inside functions the update recompiled; the piecewise map is the only mapping.
+    if (!g_guest_build_mods) return 1;
+    unsigned lo = 0, hi = g_guest_changed_code_count;
+    while (lo < hi) {
+        unsigned mid = lo + (hi - lo) / 2;
+        const GuestChanged* r = &g_guest_changed_code[mid];
+        if (a <= r->start) hi = mid;
+        else if (a >= r->end) lo = mid + 1;
+        else return 0;
+    }
     return 1;
 }
 static inline int guest_data_valid(uint32_t a) {

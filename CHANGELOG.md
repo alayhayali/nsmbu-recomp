@@ -5,6 +5,9 @@ At release, move those notes to a version heading and leave Unreleased empty.
 
 ## Unreleased
 
+-   **Add**: The USA base disc (title version 0) works without the 1.3.0 update.
+    Mods are not supported on that build; the Mods tab says so.
+    Prefer the 1.3.0 update (title version 64) for mods and the usual install path.
 -   **Change**: Save state files carry neutral names: portable states are `slotN.nsstate` (was `slotN.wwstate`) and full states are written with a new file magic, so full states saved by older versions no longer load.
 -   **Remove**: The experimental language source: the installer option, `NSMBU_LANGUAGE_REGION`, `NSMBU_LANG_DIR`, and the "From your European or Japanese game" settings entries are gone.
 -   **Change**: The installer's save import looks for NSMBU save files (`rp_personal_savedata.dat` and `rp_savedata.dat`).

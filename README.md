@@ -19,14 +19,16 @@ You supply the disc image, the keys, and the game files.
 
 ## Compatibility
 
-Addresses in the repo are USA.
-Europe and the NSMBU + NSLU packs use USA→build maps ([docs/builds.md](docs/builds.md)).
-Standalone USA and Europe discs need their matching 1.3.0 update.
-Combo packs are title version 0 (no separate update folder).
+Addresses in the repo are USA 1.3.0.
+Europe, the USA base disc, and the NSMBU + NSLU packs use USA→build maps ([docs/builds.md](docs/builds.md)).
+Standalone USA and Europe discs should use their matching 1.3.0 update for full support and mods.
+The USA base disc alone (title version 0) is playable; mods are not supported on that build.
+Combo packs are title version 0 (no separate update folder) and support mods.
 
 | Region | Title ID | Title version | Status |
 |--------|----------|---------------|--------|
 | USA | `00050000-10101d00` | 64 (1.3.0) | Supported and playtested |
+| USA base disc | `00050000-10101d00` | 0 | Supported; mods not supported |
 | Europe | `00050000-10101e00` | 80 (1.3.0) | Supported; map derived, recomp and installer checked |
 | USA combo (NSMBU + NSLU) | `00050000-1014b700` | 0 | Supported; map derived, recomp and headless boot checked |
 | Europe combo (NSMBU + NSLU) | `00050000-1014b800` | 0 | Supported; map derived, recomp and headless boot checked |

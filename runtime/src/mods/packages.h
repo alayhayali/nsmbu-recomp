@@ -20,6 +20,8 @@ struct View {
 };
 
 void initialize();
+bool supported();
+std::string unsupported_reason();
 std::string directory();
 std::vector<View> list();
 bool install(const std::string& source,std::string& error,std::string* installed_id=nullptr);

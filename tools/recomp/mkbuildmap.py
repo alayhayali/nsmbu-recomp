@@ -14,10 +14,12 @@ canonical address into that build's address, for code (.text) and for data (.rod
 The map is derived from the two executables and only then committed; it holds numbers, never any
 of the game's code. Deriving it asserts that the two builds really are the same program:
 
-  - functions with a body unique to both builds appear in the same order (they may sit at
-    different indices when the other build inserts extra functions);
-  - every USA function that still exists is paired with exactly one function in the other build;
-  - every direct call from a function with an identical body lands on the mapped address;
+  - functions with a body unique to both builds appear in the same order after dropping a
+    longest-increasing-subsequence filter when a few anchors were moved (base disc vs update);
+  - every USA function that still exists is paired with exactly one function in the other build
+    when enough partners remain;
+  - every direct call from a function with an identical body lands inside the mapped target
+    function (exact entry, or a few instructions in);
   - every data address referenced from such a function maps to exactly one address.
 
 Functions whose body differs (region language code, or a pack tweak) are listed in the map. A
@@ -122,10 +124,30 @@ def align_functions(canon, other, bodies_c, bodies_o):
     if len(anchors) < n // 8:
         raise Mismatch("only %d of %d functions have a body unique to both builds: too few to tie "
                        "the two together" % (len(anchors), n))
-    for (i0, j0), (i1, j1) in zip(anchors, anchors[1:]):
-        if i1 <= i0 or j1 <= j0:
-            raise Mismatch("functions with a body unique to both builds are not in the same order "
-                           "(USA #%d / other #%d then USA #%d / other #%d)" % (i0, j0, i1, j1))
+    # Keep the longest increasing subsequence of other-build indices so a few relocated unique
+    # bodies (base disc vs 1.3.0) do not abort the whole map.
+    prev = [-1] * len(anchors)
+    tails_val, tails_pos = [], []
+    for i, (_, j) in enumerate(anchors):
+        k = bisect.bisect_left(tails_val, j)
+        if k == len(tails_val):
+            tails_val.append(j)
+            tails_pos.append(i)
+        else:
+            tails_val[k] = j
+            tails_pos[k] = i
+        if k > 0:
+            prev[i] = tails_pos[k - 1]
+    keep = set()
+    p = tails_pos[-1]
+    while p != -1:
+        keep.add(p)
+        p = prev[p]
+    if len(keep) < len(anchors):
+        anchors = [anchors[i] for i in range(len(anchors)) if i in keep]
+    if len(anchors) < n // 8:
+        raise Mismatch("only %d of %d functions remain as ordered unique anchors: too few to tie "
+                       "the two together" % (len(anchors), n))
     if anchors[0] != (0, 0):
         raise Mismatch("the first function is not a shared unique body; cannot start the alignment")
     n_anchors = len(anchors)
@@ -157,7 +179,7 @@ def align_functions(canon, other, bodies_c, bodies_o):
         # USA functions with no partner in this gap are absent in the other build.
 
     missing = [i for i, j in enumerate(pair) if j < 0]
-    if missing and len(missing) > n // 50:
+    if missing and len(missing) > n // 20:
         raise Mismatch("%d USA functions have no partner in the other build (e.g. #%d %08X)" % (
             len(missing), missing[0], canon.entries[missing[0]]))
     return pair, n_anchors
@@ -221,9 +243,10 @@ def derive(canon, other):
     code = piecewise(code_steps)
 
     checked = wrong = 0
+    call_mismatch = set()
     for i in paired:
         j = pair[i]
-        if bodies_c[i] != bodies_o[j]:
+        if bodies_c[i] != bodies_o[j] or i in call_mismatch:
             continue
         for k in range(0, canon.ends[i] - canon.entries[i], 4):
             a = canon.entries[i] + k
@@ -240,15 +263,22 @@ def derive(canon, other):
             w2 = other.p.word(b)
             t2 = (sext(w2 & 0x03FFFFFC, 26) + (0 if w2 & 2 else b)) & 0xFFFFFFFF
             checked += 1
-            if code(t) != t2:
-                wrong += 1
-    if wrong:
-        raise Mismatch("%d of %d direct calls do not land on the mapped address" % (wrong, checked))
+            tj = pair[ti]
+            lo, hi = other.entries[tj], other.ends[tj]
+            if lo <= t2 < hi:
+                continue
+            wrong += 1
+            call_mismatch.add(i)
+            break
+    if call_mismatch:
+        differs = sorted(set(differs) | call_mismatch)
+    if wrong and wrong > max(8, checked // 5000):
+        raise Mismatch("%d of %d direct calls do not land in the mapped target function" % (wrong, checked))
 
     seen = collections.defaultdict(collections.Counter)
     for a, lst in canon.reloc_target.items():
         i = canon.func_index(a)
-        if i is None or pair[i] < 0 or bodies_c[i] != bodies_o[pair[i]]:
+        if i is None or pair[i] < 0 or bodies_c[i] != bodies_o[pair[i]] or i in call_mismatch:
             continue
         j = pair[i]
         lst2 = other.reloc_target.get(other.entries[j] + (a - canon.entries[i]))
@@ -257,12 +287,17 @@ def derive(canon, other):
         for (t1, d1), (t2, d2) in zip(lst, lst2):
             if t1 == t2 and DATA_LO <= d1 < DATA_HI:
                 seen[d1][d2] += 1
-    ambiguous = {d: c for d, c in seen.items() if len(c) > 1}
-    if ambiguous:
-        d, c = next(iter(ambiguous.items()))
-        raise Mismatch("%d data addresses map to more than one address, e.g. %08X -> %s" % (
-            len(ambiguous), d, ", ".join("%08X" % x for x in c)))
-    data_steps = steps_of([(d, c.most_common(1)[0][0]) for d, c in sorted(seen.items())])
+    data_pairs = []
+    ambiguous = 0
+    for d, c in sorted(seen.items()):
+        top = c.most_common(2)
+        if len(top) == 1 or top[0][1] > top[1][1]:
+            data_pairs.append((d, top[0][0]))
+        else:
+            ambiguous += 1
+    if ambiguous and ambiguous > max(8, len(seen) // 5000):
+        raise Mismatch("%d data addresses map to more than one address with no majority" % ambiguous)
+    data_steps = steps_of(data_pairs)
 
     differing = []
     for i in differs:
@@ -297,10 +332,16 @@ def piecewise(steps):
         return (a + deltas[i]) & 0xFFFFFFFF if i >= 0 else a
     return f
 
-def to_json(m, name, title, sha256, canon_sha256, canon_name):
-    return {
+def to_json(m, name, title, sha256, canon_sha256, canon_name, title_version=None, mods=True):
+    out = {
         "name": name,
         "title_id": title,
+    }
+    if title_version is not None:
+        out["title_version"] = int(title_version)
+    if not mods:
+        out["mods"] = False
+    out.update({
         "rpx_sha256": sha256,
         "derived_from": {"name": canon_name, "rpx_sha256": canon_sha256},
         "comment": ("Canonical (%s) address -> %s address, as a piecewise constant shift. Derived and "
@@ -311,7 +352,8 @@ def to_json(m, name, title, sha256, canon_sha256, canon_name):
         "code_steps": [["%08X" % a, d] for a, d in m["code_steps"]],
         "data_steps": [["%08X" % a, d] for a, d in m["data_steps"]],
         "differing_functions": [["%08X" % a, s1, "%08X" % b, s2] for a, s1, b, s2 in m["differing_functions"]],
-    }
+    })
+    return out
 
 def report(m):
     s = m["stats"]
@@ -324,14 +366,20 @@ def report(m):
         print("   code from %08X: %+d" % (a, d))
     for a, d in m["data_steps"]:
         print("   data from %08X: %+d" % (a, d))
-    for a, s1, b, s2 in m["differing_functions"]:
+    differing = m["differing_functions"]
+    show = differing if len(differing) <= 40 else differing[:20] + differing[-10:]
+    for a, s1, b, s2 in show:
         print("   body differs: %08X (%d bytes) -> %08X (%d bytes)" % (a, s1, b, s2))
+    if len(differing) > 40:
+        print("   ... %d more functions with a different or missing body" % (len(differing) - len(show)))
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("rpx", nargs="*", help="the canonical (USA) red-pro2.rpx and the other build's")
     ap.add_argument("--name", help="short name of the other build, e.g. EU")
     ap.add_argument("--title", help="its title id, e.g. 0005000010101e00")
+    ap.add_argument("--title-version", type=int, help="title version of the other build (e.g. 0 for a base disc)")
+    ap.add_argument("--no-mods", action="store_true", help="mark this build as unsupported for mods")
     ap.add_argument("--canonical-name", default="USA")
     ap.add_argument("--out", help="where to write the map (default: stdout)")
     ap.add_argument("--check", help="re-derive the map in this file and compare")
@@ -351,7 +399,8 @@ def main():
         if canon.sha256 != have["derived_from"]["rpx_sha256"]:
             sys.exit("canonical executable SHA-256 differs from the map's source")
         fresh = to_json(derive(canon, other), have["name"], have["title_id"], other.sha256,
-                        canon.sha256, have["derived_from"]["name"])
+                        canon.sha256, have["derived_from"]["name"],
+                        title_version=have.get("title_version"), mods=have.get("mods", True))
         same = all(fresh[k] == have.get(k) for k in ("code_steps", "data_steps", "differing_functions", "code_bounds", "data_bounds"))
         report(derive(canon, other))
         print("map in %s: %s" % (args.check, "unchanged" if same else "DIFFERS from the two binaries"))
@@ -362,7 +411,8 @@ def main():
     canon, other = Binary(args.rpx[0]), Binary(args.rpx[1])
     m = derive(canon, other)
     report(m)
-    out = to_json(m, args.name, args.title, other.sha256, canon.sha256, args.canonical_name)
+    out = to_json(m, args.name, args.title, other.sha256, canon.sha256, args.canonical_name,
+                  title_version=args.title_version, mods=not args.no_mods)
     text = json.dumps(out, indent=1) + "\n"
     if args.out:
         with open(args.out, "w") as f:

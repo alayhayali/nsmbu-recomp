@@ -957,6 +957,10 @@ void package_controls() {
 
 void tab_mods() {
     heading("Mod manager");
+    if (!mods::packages::supported()) {
+        note("%s", mods::packages::unsupported_reason().c_str());
+        return;
+    }
     auto path = mods::packages::directory();
     if (hostui::can_open_folder() && !path.empty()) {
         if (ImGui::Button("Open mods folder")) {

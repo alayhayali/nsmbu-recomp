@@ -56,7 +56,8 @@ User files live under `game/`:
 - `game/game.wux` — disc image
 - `game/game.key` — title key next to the image
 - `game/common.key` — common key (or `WIIU_COMMON_KEY`)
-- `game/update/` — matching 1.3.0 update (USA title version 64, or Europe 80), with `code/`, `content/`, `meta/`
+- `game/update/` — optional matching 1.3.0 update (USA title version 64, or Europe 80), with `code/`, `content/`, `meta/`.
+  Without it, a known USA base-disc RPX (title version 0) is allowed; mods are unsupported on that build.
 - `game/code/`, `game/content/`, `game/meta/` — output of `nsmbu extract` (base disc plus update)
 
 `.gitignore` ignores all of `game/` except `game/README.md` (layout and steps for this folder).

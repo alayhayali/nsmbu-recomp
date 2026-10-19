@@ -66,7 +66,8 @@ TITLE_IDS = {
 
 sys.path.insert(0, os.path.join(PKG, "tools", "recomp"))
 import builds as game_builds
-SUPPORTED_BUILDS = {b.title_id: b for b in game_builds.all_builds()}
+ALL_BUILDS = game_builds.all_builds()
+SUPPORTED_BUILDS = {b.title_id: game_builds.by_title(b.title_id) for b in ALL_BUILDS}
 SUPPORTED_TITLE = game_builds.canonical_build().title_id
 
 SUPPORTED_VERSION = game_builds.canonical_build().title_version
@@ -78,12 +79,15 @@ def supported_titles_text():
                        for b in SUPPORTED_BUILDS.values())
 
 def build_title_version(title_id):
-    """Title version the port needs for this base title id, or None if the title is unknown."""
+    """Preferred title version for this base title id, or None if the title is unknown."""
     build = SUPPORTED_BUILDS.get((title_id or "").lower())
     return build.title_version if build else None
 
+def accepted_title_versions(title_id):
+    return {b.title_version for b in game_builds.builds_for_title(title_id)}
+
 def supported_versions_text():
-    return " or ".join("%s title version %d" % (b.name, b.title_version) for b in SUPPORTED_BUILDS.values())
+    return " or ".join("%s title version %d" % (b.name, b.title_version) for b in ALL_BUILDS)
 
 EXTRACT_ERRORS = {
     3: "disc_key_bad",
@@ -743,10 +747,11 @@ def archive_choice(info):
     base_tid = "00050000" + selected_id[8:] if selected_id[:8] in ("00050000", "0005000e") else selected_id
     if base_tid not in SUPPORTED_BUILDS:
         check_title(base_tid if base_tid in TITLE_IDS else selected_id)
-    need_ver = build_title_version(base_tid)
-    if need_ver is not None and version != need_ver:
-        raise SetupError("the game in this archive is version %d; the port is built for title version %d "
-                         "(%s, folder %s)." % (version, need_ver, SUPPORTED_BUILDS[base_tid].name, info["selected"]))
+    accepted = accepted_title_versions(base_tid)
+    if accepted and version not in accepted:
+        raise SetupError("the game in this archive is version %d; the port accepts title version %s "
+                         "(%s, folder %s)." % (version, " or ".join(str(v) for v in sorted(accepted)),
+                                              SUPPORTED_BUILDS[base_tid].name, info["selected"]))
     notes = []
     for t in titles:
         if t["folder"] == info["selected"]:
@@ -792,9 +797,10 @@ def file_sha256(path):
             h.update(chunk)
     return h.hexdigest()
 
-GAME_VERSION_FIX = ("Use New Super Mario Bros. U USA (title version 64), Europe (title version 80), or an "
-                    "NSMBU + NSLU pack (USA or Europe, title version 0): a disc image plus the matching update "
-                    "when needed, a merged game folder, or a Cemu archive that already has that title version.")
+GAME_VERSION_FIX = ("Use New Super Mario Bros. U USA (title version 64 or base disc 0), Europe (title version 80), "
+                    "or an NSMBU + NSLU pack (USA or Europe, title version 0): a disc image, optionally with the "
+                    "matching 1.3.0 update, a merged game folder, or a Cemu archive. Mods need USA/Europe 1.3.0 "
+                    "or a combo pack, not the standalone base disc.")
 
 UPDATE_DIRNAME = "update"
 
@@ -813,18 +819,19 @@ def check_game_version(path):
     tid, ver = code_title_version(path)
     updates = ["0005000e" + t[8:] for t in SUPPORTED_BUILDS]
     base_tid = "00050000" + tid[8:] if tid and tid[:8] in ("00050000", "0005000e") else tid
-    need_ver = build_title_version(base_tid) if base_tid else None
+    accepted = accepted_title_versions(base_tid) if base_tid else set()
     if tid and tid not in SUPPORTED_BUILDS and tid not in updates:
         found = "the game code (code/red-pro2.rpx) is from %s (title %s-%s)" % (title_desc(tid, ver), tid[:8].upper(),
                                                                             tid[8:].upper())
-    elif need_ver is not None and ver is not None and ver != need_ver:
-        found = ("the game code (code/red-pro2.rpx) is %s (per the folder's app.xml/meta.xml); need title version %d"
-                 % (title_desc(tid, ver) if tid else "an unknown build", need_ver))
+    elif accepted and ver is not None and ver not in accepted:
+        found = ("the game code (code/red-pro2.rpx) is %s (per the folder's app.xml/meta.xml); need title version %s"
+                 % (title_desc(tid, ver) if tid else "an unknown build",
+                    " or ".join(str(v) for v in sorted(accepted))))
     else:
         found = ("the game code (code/red-pro2.rpx) is not a file the port knows (SHA-256 %s...): not a supported "
-                 "1.3.0 build (%s), or a modified or damaged copy" % (digest[:16], supported_versions_text()))
+                 "build (%s), or a modified or damaged copy" % (digest[:16], supported_versions_text()))
     LOG.write("red-pro2.rpx SHA-256 %s, known: %s" % (
-        digest, ", ".join("%s %s" % (b.name, b.sha256[:16]) for b in SUPPORTED_BUILDS.values())))
+        digest, ", ".join("%s %s" % (b.name, b.sha256[:16]) for b in ALL_BUILDS)))
     raise SetupError("%s. The port needs New Super Mario Bros. U, %s (%s). %s"
                      % (found, supported_titles_text(), supported_versions_text(), GAME_VERSION_FIX))
 
@@ -841,6 +848,9 @@ def check_update_folder(path):
     if not valid_game_folder(path):
         raise SetupError("%s is not an update folder (needs code/red-pro2.rpx, content/, meta/meta.xml)" % path)
     build = check_game_version(path)
+    if not build.mods:
+        raise SetupError("%s is %s (title version %d); a 1.3.0 update is required here, not the base disc"
+                         % (path, build.name, build.title_version))
     tid, ver = code_title_version(path)
     update_tid = "0005000e" + build.title_id[8:]
     if tid and tid not in (build.title_id, update_tid):
@@ -860,7 +870,8 @@ def apply_update_to(dst, update_dir):
         shutil.copytree(src, os.path.join(dst, name), dirs_exist_ok=True)
 
 def get_update_dir(image, ui, args):
-    """Matching 1.3.0 update next to the disc image, --update-dir, or chosen interactively."""
+    """Matching 1.3.0 update next to the disc image, --update-dir, chosen interactively, or None
+    to install the base disc alone (mods unsupported when that RPX is USA_V0)."""
     path = getattr(args, "update_dir", None) or find_sidecar_update(image)
     if path:
         path = os.path.abspath(path)
@@ -868,10 +879,16 @@ def get_update_dir(image, ui, args):
         say("  OK: %s 1.3.0 update in %s" % (build.name, path))
         return path
     if not ui.interactive:
-        raise SetupError("put the 1.3.0 update in %s/ next to the disc image (code/, content/, meta/), "
-                         "or pass --update-dir" % UPDATE_DIRNAME)
+        say("  No 1.3.0 update folder; will use the base disc if its RPX is known (mods unsupported on USA_V0).")
+        return None
+    if not ui.yesno("Use a 1.3.0 update folder? (No = base disc alone; mods need the update)", default=True):
+        say("  Continuing without an update folder.")
+        return None
     while True:
         p = ui.pick_path("Choose the 1.3.0 update folder (it contains code, content and meta)", folder=True)
+        if not p:
+            say("  Continuing without an update folder.")
+            return None
         try:
             check_update_folder(p)
             return os.path.abspath(p)
@@ -954,7 +971,10 @@ def extract_game(image, keys, info, data_dir, title=None, update_dir=None):
         if update_dir:
             say("  Applying 1.3.0 update from %s" % update_dir)
             apply_update_to(tmp, update_dir)
-        check_game_version(tmp)
+        build = check_game_version(tmp)
+        if not build.mods:
+            say("  Note: mods are not supported on %s (title version %d). Install the 1.3.0 update for mods."
+                % (build.name, build.title_version))
     except SetupError:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
@@ -1658,13 +1678,17 @@ def install(ctx, source, keys=None, info=None, ui=None, check_keys=None):
             check_title(tid)
         build = check_game_version(source[1])
         say("  OK: %s (%s, title version %d)" % (source[1], build.name, build.title_version))
+        if not build.mods:
+            say("  Note: mods are not supported on %s. Install the 1.3.0 update for mods." % build.name)
     elif kind == "installed":
         if not valid_game_folder(ctx.game_dir):
             raise SetupError("no installed game files in %s; run setup with your disc image" % ctx.game_dir)
         tid = game_folder_title(ctx.game_dir)
         if tid:
             check_title(tid)
-        check_game_version(ctx.game_dir)
+        build = check_game_version(ctx.game_dir)
+        if not build.mods:
+            say("  Note: mods are not supported on %s. Install the 1.3.0 update for mods." % build.name)
 
     begin("compiler")
     tc = get_toolchain(manifest["toolchain"], data_dir, ui)
@@ -2024,9 +2048,11 @@ def gui_main(args):
         elif ident.get("update_sha256"):
             msg_bits.append("1.3.0 update RPX SHA-256 %s…" % ident["update_sha256"][:16])
         if msg_bits:
-            message = "Wii U disc image: %s. Setup extracts it, then applies the matching 1.3.0 update folder." % "; ".join(msg_bits)
+            message = ("Wii U disc image: %s. Setup extracts it and applies a 1.3.0 update folder when present "
+                       "(base disc alone is allowed; mods need the update)." % "; ".join(msg_bits))
         else:
-            message = "Wii U disc image. Setup extracts it, then applies the matching 1.3.0 update folder."
+            message = ("Wii U disc image. Setup extracts it and applies a 1.3.0 update folder when present "
+                       "(base disc alone is allowed; mods need the update).")
         reply(req, kind="image", path=p, disc_key=disc_key, common_key=src, update_dir=upd or "",
               message=message, **ident)
 
@@ -2070,14 +2096,13 @@ def gui_main(args):
         except SetupError as e:
             return fail(req, "wrong_title", str(e))
         update_dir = req.get("update_dir") or find_sidecar_update(image)
-        if not update_dir:
-            return fail(req, "update_missing",
-                        "Choose the 1.3.0 update folder (code, content and meta), or put it in update/ next to the disc image.")
-        try:
-            check_update_folder(update_dir)
-        except SetupError as e:
-            return fail(req, "wrong_update", str(e)[0].upper() + str(e)[1:])
-        session.update(keys=keys, info=info, image=image, update_dir=os.path.abspath(update_dir))
+        if update_dir:
+            try:
+                check_update_folder(update_dir)
+            except SetupError as e:
+                return fail(req, "wrong_update", str(e)[0].upper() + str(e)[1:])
+            update_dir = os.path.abspath(update_dir)
+        session.update(keys=keys, info=info, image=image, update_dir=update_dir)
         ident = image_identity(image, None, None, session["update_dir"])
         tid = info.get("title_id", "")
         ident.setdefault("title_id", tid)
@@ -2091,7 +2116,10 @@ def gui_main(args):
             ident.setdefault("bytes", int(info.get("bytes", 0)))
         except ValueError:
             pass
-        reply(req, update_dir=session["update_dir"], **ident)
+        if not update_dir:
+            ident["message"] = (ident.get("message") or "") + (
+                " No update folder: the base disc will be used if its RPX is known. Mods are not supported on USA_V0.")
+        reply(req, update_dir=session["update_dir"] or "", **ident)
 
     def do_install(req):
         kind = req.get("source")
@@ -2100,9 +2128,7 @@ def gui_main(args):
         if kind == "image":
             if not session["keys"] or session["image"] != req.get("path"):
                 return fail(req, "keys", "Check the keys first.")
-            if not session.get("update_dir"):
-                return fail(req, "update_missing", "Check the 1.3.0 update folder with the keys.")
-            ctx.args.update_dir = session["update_dir"]
+            ctx.args.update_dir = session.get("update_dir") or None
             source = ("image", req["path"])
         elif kind == "archive":
             source = ("archive", req.get("path") or "")

@@ -179,7 +179,7 @@ class ArchiveTitles(unittest.TestCase):
 
     def test_other_version(self):
         v2 = _title("0005000010101d00", 2)
-        with self.assertRaisesRegex(setup.SetupError, "version 2.*title version 64"):
+        with self.assertRaisesRegex(setup.SetupError, "version 2.*title version 0 or 64"):
             setup.archive_choice(self.info([v2], v2))
 
     def test_title_desc(self):
@@ -235,7 +235,7 @@ class GameVersion(unittest.TestCase):
     def test_wrong_version_or_update_without_known_rpx(self):
         with tempfile.TemporaryDirectory() as d:
             self.make(d, rpx=b"other code", app_ver="0010")
-            with self.assertRaisesRegex(setup.SetupError, "need title version 64"):
+            with self.assertRaisesRegex(setup.SetupError, "need title version 0 or 64"):
                 setup.check_game_version(d)
             self.make(d, rpx=b"other code", app_tid="0005000e10101d00", app_ver="0040")
             with self.assertRaisesRegex(setup.SetupError, "not a file the port knows"):

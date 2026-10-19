@@ -5,16 +5,18 @@ The title is `00050000-10101d00`.
 The executable is `code/red-pro2.rpx` from USA 1.3.0 (title version 64).
 Those addresses are the *canonical ids* of the game's functions and globals.
 
-| Build | Title | Title version | `red-pro2.rpx` SHA-256 | Map |
-| --- | --- | --- | --- | --- |
-| USA (canonical) | `00050000-10101d00` | 64 | `ebd147ce…dc8e` | the identity |
-| Europe | `00050000-10101e00` | 80 | `0ea59f40…ea51` | [`tools/recomp/builds/eu.json`](../tools/recomp/builds/eu.json) |
-| USA + Luigi U | `00050000-1014b700` | 0 | `1031c741…2b05` | [`tools/recomp/builds/nsmbu_nslu_usa.json`](../tools/recomp/builds/nsmbu_nslu_usa.json) |
-| Europe + Luigi U | `00050000-1014b800` | 0 | `1faa7ce3…a285` | [`tools/recomp/builds/nsmbu_nslu_eu.json`](../tools/recomp/builds/nsmbu_nslu_eu.json) |
+| Build | Title | Title version | Mods | `red-pro2.rpx` SHA-256 | Map |
+| --- | --- | --- | --- | --- | --- |
+| USA (canonical) | `00050000-10101d00` | 64 | yes | `ebd147ce…dc8e` | the identity |
+| USA base disc | `00050000-10101d00` | 0 | no | `ec31a785…5069` | [`tools/recomp/builds/usa_v0.json`](../tools/recomp/builds/usa_v0.json) |
+| Europe | `00050000-10101e00` | 80 | yes | `0ea59f40…ea51` | [`tools/recomp/builds/eu.json`](../tools/recomp/builds/eu.json) |
+| USA + Luigi U | `00050000-1014b700` | 0 | yes | `1031c741…2b05` | [`tools/recomp/builds/nsmbu_nslu_usa.json`](../tools/recomp/builds/nsmbu_nslu_usa.json) |
+| Europe + Luigi U | `00050000-1014b800` | 0 | yes | `1faa7ce3…a285` | [`tools/recomp/builds/nsmbu_nslu_eu.json`](../tools/recomp/builds/nsmbu_nslu_eu.json) |
 
-A standalone base disc is still title version 0.
-`nsmbu extract` and the installer apply the matching 1.3.0 update folder for USA and Europe, then check the merged RPX hash.
-An NSMBU + NSLU pack is already a complete title at version 0.
+A standalone base disc is title version 0.
+`nsmbu extract` and the installer apply a matching 1.3.0 update folder when present, then check the RPX hash.
+Without an update, a known base-disc RPX (USA_V0) is allowed; the Mods tab explains that mods are unsupported on that build.
+An NSMBU + NSLU pack is already a complete title at version 0 and supports mods.
 
 ## Regional and pack builds
 
@@ -26,7 +28,10 @@ Derive or re-check a map with `tools/recomp/mkbuildmap.py` from your own dumps, 
 
 ```sh
 python3 tools/recomp/mkbuildmap.py usa/code/red-pro2.rpx eur/code/red-pro2.rpx \
-    --name EU --title 0005000010101e00 --out tools/recomp/builds/eu.json
+    --name EU --title 0005000010101e00 --title-version 80 --out tools/recomp/builds/eu.json
+python3 tools/recomp/mkbuildmap.py usa-1.3/code/red-pro2.rpx usa-base/code/red-pro2.rpx \
+    --name USA_V0 --title 0005000010101d00 --title-version 0 --no-mods \
+    --out tools/recomp/builds/usa_v0.json
 python3 tools/recomp/mkbuildmap.py usa/code/red-pro2.rpx combo-usa/code/red-pro2.rpx \
     --name NSMBU_NSLU_USA --title 000500001014b700 --out tools/recomp/builds/nsmbu_nslu_usa.json
 python3 tools/recomp/mkbuildmap.py usa/code/red-pro2.rpx combo-eu/code/red-pro2.rpx \
