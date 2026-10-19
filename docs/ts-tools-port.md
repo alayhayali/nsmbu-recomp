@@ -28,7 +28,7 @@ Rough size today (line counts, including tests):
 | `tools/recomp/` | ~3400 | recompiler, PPC→C, builds, names, tests |
 | `tools/installer/` | ~2800 | `setup.py` (~2200) plus `dev_pkg` / tests |
 | Dev wrappers (`build`, `launch`, `extract`, `slot`, …) | ~900 | CLI already wraps most of these |
-| `tools/release/` | ~1000 | package, guard, notes, AppImage, VirusTotal |
+| `tools/release/` | ~1000 | package, guard, notes, AppImage |
 | Misc (`shaderprep`, `wudextract`, `bench`, `perf`, …) | ~1900 | mostly not on `nsmbu` yet |
 | **Total** | **~10k** | **~41 `.py` files** |
 
@@ -60,7 +60,7 @@ Also shell, not Python: `nsmbu scripted` → `tools/scripted-run.sh`, `nsmbu lin
 | `tools/recomp/test_*.py`, `write_map_fixture.py` | CMake/`ctest` and CI |
 | `tools/installer/setup.py` | End-user first-run setup (shipped in releases) |
 | `tools/installer/test_setup.py` | CI unit tests |
-| `tools/release/{package,guard,notes,appimage,virustotal}.py` | Release workflow |
+| `tools/release/{package,guard,notes,appimage}.py` | Release workflow |
 | `tools/release/test_sdk_package.py` | CMake test |
 | `tools/bench/run_bench.py` | Renderer bench orchestration |
 | `tools/shaderprep.py` | Shader cache head-start |
@@ -101,7 +101,7 @@ tools/cli/
     dev/                    # build, launch, extract, profile, perf, scripted
     recomp/                 # RPX parse, analyze, ppc2c, recomp, builds, names, stubgen
     installer/              # setup / dev_pkg (or thin wrappers over native setup)
-    release/                # package, guard, notes, appimage, virustotal
+    release/                # package, guard, notes, appimage
     disc/                   # game_dump checks; spawn nsmbu-extract
     bench/
   test/                     # node:test (or similar) replacing unittest scripts
@@ -160,7 +160,7 @@ Largest correctness surface: `rpx.py`, `analyze.py`, `ppc2c.py`, `singleflow.py`
 
 ### Wave 4 — Release tooling
 
-Port `package.py`, `guard.py`, `notes.py`, `appimage.py`, `virustotal.py`, and `test_sdk_package.py`.
+Port `package.py`, `guard.py`, `notes.py`, `appimage.py`, and `test_sdk_package.py`.
 
 - Update `.github/workflows/release.yml` (and android guard) to `nsmbu release …` equivalents.
 - Keep guard failing the job on any game-derived or key material.

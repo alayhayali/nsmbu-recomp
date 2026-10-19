@@ -78,8 +78,6 @@ Done when local verify passed, the tag is on `origin`, the release workflow conc
 | --- | --- |
 | version | Sets `VERSION` from the tag |
 | macos / windows / linux-x86_64 / linux-aarch64 | Build, package, unit tests |
-| virustotal | After package jobs |
 | publish | Upload zips / AppImage and `gh release create` |
-| vt-notes | Append VirusTotal section to the release notes |
 
 Any failed package job skips publish.
