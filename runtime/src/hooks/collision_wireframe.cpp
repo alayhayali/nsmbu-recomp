@@ -61,7 +61,11 @@ constexpr uint32_t kBgPosOffX = 0xAC;
 constexpr uint32_t kBgPosOffY = 0xB0;
 constexpr uint32_t kBgPointCount = 0x158;
 constexpr uint32_t kBgPointPtr = 0x15C;
+constexpr uint32_t kBgRideCount = 0x160;
+constexpr uint32_t kBgRidePtr = 0x164;
 constexpr uint32_t kBgInactive = 0xDC;
+constexpr uint32_t kRideSeg = 0x4;
+constexpr uint32_t kRideStride = 0x20;
 constexpr uint32_t kActorPos = 0x6C;
 constexpr uint32_t kBlockBoxBg = 0x17D8;
 
@@ -114,10 +118,8 @@ uint64_t bg_check(Cpu* c, uint32_t bg, uint16_t x, uint16_t y, uint8_t layer) {
     return (uint64_t(c->r[3]) << 32) | c->r[4];
 }
 
-bool tile_visible(uint64_t data) {
-    const uint32_t type = uint32_t(data & 0xFFFF);
-    const uint32_t hit = uint32_t((data >> 32) & 0xF);
-    return hit != 0 || type != 0;
+bool tile_solid(uint64_t data) {
+    return uint32_t((data >> 32) & 0xF) != 0;
 }
 
 void push_box(Snapshot& s, float x0, float y0, float x1, float y1, bool tile, bool circle) {
@@ -133,12 +135,13 @@ void capture_tiles(Cpu* c, Snapshot& s, uint32_t bg) {
     const int right = ((int)std::ceil(s.right) + unit - 1) & mask;
     const int bottom = ((int)std::ceil(-s.bottom) + unit - 1) & mask;
     const int top = (int)std::floor(-s.top) & mask;
+    if (right <= left || bottom <= top) return;
     size_t tiles = 0;
-    for (int ty = top; ty < bottom && tiles < kMaxTiles; ty += unit) {
+    for (int ty = bottom - unit; ty >= top && tiles < kMaxTiles; ty -= unit) {
         for (int tx = left; tx < right && tiles < kMaxTiles; tx += unit) {
             bool hit = false;
-            for (uint8_t layer = 0; layer < 2 && !hit; layer++) {
-                if (tile_visible(bg_check(c, bg, (uint16_t)tx, (uint16_t)ty, layer))) hit = true;
+            for (uint8_t layer = 0; layer < 3 && !hit; layer++) {
+                if (tile_solid(bg_check(c, bg, (uint16_t)tx, (uint16_t)ty, layer))) hit = true;
             }
             if (!hit) continue;
             push_box(s, (float)tx, (float)-(ty + unit), (float)(tx + unit), (float)-ty, true, false);
@@ -260,6 +263,39 @@ bool push_aabb(Snapshot& s, float x0, float y0, float x1, float y1) {
     return true;
 }
 
+bool expand_aabb(float& x0, float& y0, float& x1, float& y1, float x, float y, bool& any) {
+    if (!std::isfinite(x) || !std::isfinite(y)) return false;
+    if (!any) {
+        x0 = x1 = x;
+        y0 = y1 = y;
+        any = true;
+    } else {
+        if (x < x0) x0 = x;
+        if (y < y0) y0 = y;
+        if (x > x1) x1 = x;
+        if (y > y1) y1 = y;
+    }
+    return true;
+}
+
+bool capture_bg_ride(Snapshot& s, uint32_t bgc) {
+    uint32_t count_u = 0, lines = 0;
+    if (!read_u32(bgc + kBgRideCount, count_u) || !read_u32(bgc + kBgRidePtr, lines)) return false;
+    const int32_t count = (int32_t)count_u;
+    if (count < 1 || count > 32 || !lines) return false;
+    float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    bool any = false;
+    for (int32_t i = 0; i < count; i++) {
+        const uint32_t seg = lines + (uint32_t)i * kRideStride + kRideSeg;
+        float ax = 0, ay = 0, bx = 0, by = 0;
+        if (!read_f32(seg, ax) || !read_f32(seg + 4, ay) || !read_f32(seg + 8, bx) || !read_f32(seg + 12, by))
+            return false;
+        if (!expand_aabb(x0, y0, x1, y1, ax, ay, any) || !expand_aabb(x0, y0, x1, y1, bx, by, any)) return false;
+    }
+    if (!any) return false;
+    return push_aabb(s, x0, y0, x1, y1);
+}
+
 bool capture_bg_points(Snapshot& s, uint32_t bgc, uint32_t actor) {
     uint32_t count_u = 0, pts = 0;
     if (!read_u32(bgc + kBgPointCount, count_u) || !read_u32(bgc + kBgPointPtr, pts)) return false;
@@ -272,18 +308,7 @@ bool capture_bg_points(Snapshot& s, uint32_t bgc, uint32_t actor) {
     for (int32_t i = 0; i < count; i++) {
         float lx = 0, ly = 0;
         if (!read_f32(pts + (uint32_t)i * 8, lx) || !read_f32(pts + (uint32_t)i * 8 + 4, ly)) return false;
-        const float wx = px + lx, wy = py + ly;
-        if (!std::isfinite(wx) || !std::isfinite(wy)) return false;
-        if (!any) {
-            x0 = x1 = wx;
-            y0 = y1 = wy;
-            any = true;
-        } else {
-            if (wx < x0) x0 = wx;
-            if (wy < y0) y0 = wy;
-            if (wx > x1) x1 = wx;
-            if (wy > y1) y1 = wy;
-        }
+        if (!expand_aabb(x0, y0, x1, y1, px + lx, py + ly, any)) return false;
     }
     if (!any) return false;
     return push_aabb(s, x0, y0, x1, y1);
@@ -302,6 +327,7 @@ bool capture_one_bg(Snapshot& s, uint32_t bgc, std::unordered_set<uint32_t>& see
     if (!bgc || !seen.insert(bgc).second) return false;
     uint8_t inactive = 0;
     if (read_u8(bgc + kBgInactive, inactive) && inactive) return false;
+    if (capture_bg_ride(s, bgc)) return true;
     uint32_t owner = 0;
     read_u32(bgc + kBgOwner, owner);
     if (capture_bg_points(s, bgc, owner)) return true;
@@ -402,7 +428,8 @@ void capture(Cpu* c) {
         g_snap = {};
         return;
     }
-    if (!read_screen(scroll, s.left, s.right, s.top, s.bottom)) {
+    if (!read_screen_prev(scroll, s.left, s.right, s.top, s.bottom) &&
+        !read_screen(scroll, s.left, s.right, s.top, s.bottom)) {
         std::lock_guard<std::mutex> lk(g_mu);
         g_snap = {};
         return;
@@ -426,12 +453,7 @@ void draw(ImDrawList* dl, float display_w, float display_h) {
     }
     if (!s.valid) return;
 
-    float left = s.left, right = s.right, top = s.top, bottom = s.bottom;
-    uint32_t scroll = 0;
-    if (read_u32(kBgScrollMgr, scroll) && scroll) {
-        if (!read_screen_prev(scroll, left, right, top, bottom))
-            read_screen(scroll, left, right, top, bottom);
-    }
+    const float left = s.left, right = s.right, top = s.top, bottom = s.bottom;
     const float w = right - left, h = top - bottom;
     if (w <= 1 || h <= 1 || display_w <= 1 || display_h <= 1) return;
 
