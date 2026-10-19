@@ -147,7 +147,7 @@ grep -rn "setNextScene" references/headers
 | `0x029D7200` | write default player character/color tables | called by the apply |
 | `0x024C2230` | map-entry setup from `FieldGameData` | called by the apply |
 | `0x024C203C` | `FieldGameData` write coin count (`+0x134`) | called by the apply |
-| `0x024C1FC4` | apply record `+0x10..0x13` flags to player entry 0 | called by the apply |
+| `0x024C1FC4` | reorder player entries so the entry characters match the record bytes (+0x10..0x13) | called by the apply |
 | `0x029CF2D0` | reset `MainGame` run state (new game) | called by the apply |
 | `0x029CF590` | copy record player/Mii setup into `MainGame` | called by the apply |
 | `0x029D6E8C` | `SaveMgr` init savedata to defaults | load error epilogue |
@@ -159,6 +159,16 @@ grep -rn "setNextScene" references/headers
 | `0x029D9AD8` | `SaveMgr` load `save_act://rp_personal_savedata.dat` | state 5 |
 | `0x029D9CBC` | `SaveMgr` save `save_act://rp_personal_savedata.dat` | state 6 |
 | `0x029D9E30` | `SaveMgr` state dispatch | states 1..6 |
+| `0x02699394` | `CourseData` static pool pre-clean (build path runs before the ctor) | below `CourseData::instance` |
+| `0x0269972C` | `CourseDataFile` block-table fill from image data (drives the 0x3B8 pool with block ranges) | parses `course%d.bin` |
+| `0x02699AD4` | `CourseData` load one pack entry at `r3` from mgr at `0x101E7D94`; name `course/course%d.bin` (index + 1) | per-slot |
+| `0x0269A1B0` | `CourseData::instance` create; singleton `0x101EB048` / alias `0x101EB04C` | value valid only after `loadRecordCourseFiles` |
+| `0x0269A144` | `CourseData` ctor entry (prologue guess shared with the loader fast path) | slow path build |
+| `0x0269A244` | `CourseData::loadRecordCourseFiles` loop the four save-device slots | per world-course |
+| `0x0269A2DC` | `CourseData::getFile(index)`: null-safe pure getter, index clamp < 4 | used by map boot |
+| `0x029CB390` | world-map boot: pack name, mgr record lookup, `CourseData` fill | custom-courses consumers |
+| `0x024BDEF0` | map actor/area feed from `CourseData` slots | consumers |
+| `f_029D3150` | pack loader keyed by `world-course` name through the personal savedata mgr | course open (`load_pack`) |
 | `0x029E2924` | verify a `SaveData` block CRC trailer | all loads |
 | `0x029E2994` | recompute and store a `SaveData` block CRC trailer | all saves |
 | `0x029F19C4` | CRC32 over a block (poly `0xEDB88320`) | CRC helpers |
