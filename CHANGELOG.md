@@ -8,14 +8,6 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
-### Changed
-
-- Report crash and Report issue leave Logs empty for you to attach, fill Platform from this machine, and put the error dialog text in From the app.
-
-### Fixed
-
-- Report crash closes the error dialog after opening GitHub and the logs folder.
-
 ## [0.5.0] - 2026-10-19
 
 ### Added
@@ -24,10 +16,11 @@ Use the `changelog` skill when editing.
 - The USA and Europe NSMBU + NSLU packs work.
 - The USA base disc runs without the 1.3.0 update.
   Mods still need that update.
-- Crash and setup error dialogs stay compact and offer Report crash / Report issue with logs ready to attach.
+- Crash and setup error dialogs stay compact and offer Report crash / Report issue.
 
 ### Changed
 
+- Report crash and Report issue leave Logs empty for you to attach, fill Platform from this machine, and put the error dialog text in From the app.
 - You can install from the base disc alone.
   The 1.3.0 update folder is optional.
 - Setup refuses update-only dumps with a clear message.
@@ -47,6 +40,7 @@ Use the `changelog` skill when editing.
 - Large courses run smoother.
 - World-map paths stay above the hill.
 - Closing the error viewer no longer pauses or slows the map.
+- Report crash closes the error dialog after opening GitHub and the logs folder.
 
 ## [0.4.2] - 2026-10-14
 
