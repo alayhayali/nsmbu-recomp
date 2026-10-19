@@ -27,6 +27,7 @@
 #endif
 #ifdef __APPLE__
 #include <CoreGraphics/CoreGraphics.h>
+#include <sys/sysctl.h>
 #endif
 
 #include "imgui.h"
@@ -398,6 +399,7 @@ struct App {
     int source_files = 0;
     std::string disc_key_found, disc_key_file, common_key_found, common_key_file;
     std::string update_dir_found, update_dir;
+    bool update_skipped = false;
     int disc_mode = 0, common_mode = 0;
     char disc_paste[128] = {}, paste[128] = {};
     std::string keys_msg;
@@ -541,6 +543,10 @@ static void apply_style(float scale) {
         c[ImGuiCol_WindowBg] = ImVec4(0.12f, 0.13f, 0.15f, 1);
         c[ImGuiCol_ChildBg] = ImVec4(0.16f, 0.17f, 0.20f, 1);
         c[ImGuiCol_PopupBg] = ImVec4(0.14f, 0.15f, 0.18f, 1);
+        c[ImGuiCol_TitleBg] = c[ImGuiCol_PopupBg];
+        c[ImGuiCol_TitleBgActive] = c[ImGuiCol_PopupBg];
+        c[ImGuiCol_TitleBgCollapsed] = c[ImGuiCol_PopupBg];
+        c[ImGuiCol_ModalWindowDimBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.55f);
         c[ImGuiCol_Border] = ImVec4(0.32f, 0.35f, 0.40f, 1);
         c[ImGuiCol_Text] = ImVec4(0.92f, 0.93f, 0.95f, 1);
         c[ImGuiCol_Button] = ImVec4(0.22f, 0.24f, 0.28f, 1);
@@ -565,6 +571,11 @@ static void apply_style(float scale) {
         g_clear_b = 251;
         c[ImGuiCol_WindowBg] = ImVec4(0.975f, 0.98f, 0.985f, 1);
         c[ImGuiCol_ChildBg] = ImVec4(1, 1, 1, 1);
+        c[ImGuiCol_PopupBg] = ImVec4(1, 1, 1, 1);
+        c[ImGuiCol_TitleBg] = c[ImGuiCol_PopupBg];
+        c[ImGuiCol_TitleBgActive] = c[ImGuiCol_PopupBg];
+        c[ImGuiCol_TitleBgCollapsed] = c[ImGuiCol_PopupBg];
+        c[ImGuiCol_ModalWindowDimBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.35f);
         c[ImGuiCol_Border] = ImVec4(0.82f, 0.85f, 0.88f, 1);
         c[ImGuiCol_Text] = ImVec4(0.12f, 0.14f, 0.17f, 1);
         c[ImGuiCol_Button] = ImVec4(0.92f, 0.94f, 0.96f, 1);
@@ -709,6 +720,141 @@ static void copy_log() {
     show_toast("The log is on the clipboard.");
 }
 
+static std::string url_encode(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() * 3);
+    for (unsigned char c : s) {
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') out.push_back((char)c);
+        else if (c == ' ') out += "%20";
+        else if (c == '\n') out += "%0A";
+        else if (c == '\r') continue;
+        else {
+            char b[4];
+            snprintf(b, sizeof b, "%%%02X", c);
+            out += b;
+        }
+    }
+    return out;
+}
+
+static std::string trim_ws(std::string s) {
+    while (!s.empty() && isspace((unsigned char)s.front())) s.erase(s.begin());
+    while (!s.empty() && isspace((unsigned char)s.back())) s.pop_back();
+    return s;
+}
+
+static std::string setup_platform_label() {
+#if defined(_WIN32)
+    return "Windows";
+#elif defined(__APPLE__)
+    return "macOS";
+#elif defined(__aarch64__) || defined(__arm64__)
+    return "Linux (arm64)";
+#else
+    return "Linux (x86-64)";
+#endif
+}
+
+static std::string setup_hardware_label() {
+    std::string cpu;
+#if defined(_WIN32)
+    wchar_t buf[256];
+    DWORD size = sizeof buf;
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                     L"ProcessorNameString", RRF_RT_REG_SZ, nullptr, buf, &size) == ERROR_SUCCESS) {
+        char out[256];
+        if (WideCharToMultiByte(CP_UTF8, 0, buf, -1, out, sizeof out, nullptr, nullptr) > 0) cpu = trim_ws(out);
+    }
+#elif defined(__APPLE__)
+    char buf[256] = {};
+    size_t n = sizeof buf;
+    if (sysctlbyname("machdep.cpu.brand_string", buf, &n, nullptr, 0) == 0 && buf[0]) cpu = trim_ws(buf);
+    else {
+        n = sizeof buf;
+        if (sysctlbyname("hw.model", buf, &n, nullptr, 0) == 0 && buf[0]) cpu = trim_ws(buf);
+    }
+#else
+    if (FILE* f = fopen("/proc/cpuinfo", "r")) {
+        char line[512];
+        while (fgets(line, sizeof line, f)) {
+            const char* keys[] = {"model name", "Hardware", "cpu model"};
+            for (const char* key : keys) {
+                size_t klen = strlen(key);
+                if (strncmp(line, key, klen) != 0) continue;
+                char* colon = strchr(line, ':');
+                if (!colon) continue;
+                cpu = trim_ws(colon + 1);
+                while (!cpu.empty() && (cpu.back() == '\n' || cpu.back() == '\r')) cpu.pop_back();
+                if (!cpu.empty()) break;
+            }
+            if (!cpu.empty()) break;
+        }
+        fclose(f);
+    }
+#endif
+    std::string gpu;
+#if !defined(_WIN32) && !defined(__APPLE__)
+    if (FILE* f = popen("lspci -nn 2>/dev/null", "r")) {
+        char line[512];
+        while (fgets(line, sizeof line, f)) {
+            if (!strstr(line, "VGA compatible controller") && !strstr(line, "3D controller") &&
+                !strstr(line, "Display controller"))
+                continue;
+            char* colon = strstr(line, ": ");
+            if (!colon) continue;
+            gpu = trim_ws(colon + 2);
+            while (!gpu.empty() && (gpu.back() == '\n' || gpu.back() == '\r')) gpu.pop_back();
+            if (!gpu.empty()) break;
+        }
+        pclose(f);
+    }
+#endif
+    std::string ram;
+    int mb = SDL_GetSystemRAM();
+    if (mb > 0) {
+        int gb = (mb + 512) / 1024;
+        if (gb < 1) gb = 1;
+        ram = std::to_string(gb) + " GB";
+    }
+    std::string out;
+    if (!cpu.empty()) out = cpu;
+    if (!gpu.empty()) {
+        if (!out.empty()) out += ", ";
+        out += gpu;
+    }
+    if (!ram.empty()) {
+        if (!out.empty()) out += ", ";
+        out += ram;
+    }
+    return out.empty() ? "unknown" : out;
+}
+
+static void open_folder(const std::string& path);
+
+static void report_issue() {
+    std::string err = !A.error_msg.empty() ? A.error_msg : A.fatal;
+    if (!A.fatal_hint.empty()) err += (err.empty() ? "" : "\n\n") + A.fatal_hint;
+    std::string file_log = read_file(A.log_path);
+    if (file_log.size() > 1200) file_log = file_log.substr(file_log.size() - 1200);
+    std::string logs = "=== error dialog ===\n";
+    logs += err.empty() ? "Setup failed (see logs)." : err;
+    logs += "\n\n=== setup.log ===\n";
+    logs += file_log.empty() ? "(attach setup.log from the folder that opened with this report)\n" : file_log;
+    if (logs.size() > 3500) logs = logs.substr(0, 3500) + "\n…\n";
+    std::string url = "https://github.com/nsmbu-recomp/nsmbu-recomp/issues/new?template=2-setup-or-other-bug.yml";
+    url += "&version=" + url_encode(A.version);
+    url += "&platform=" + url_encode(setup_platform_label());
+    url += "&hardware=" + url_encode(setup_hardware_label());
+    url += "&logs=" + url_encode(logs);
+    if (!SDL_OpenURL(url.c_str())) show_toast(std::string("Could not open the browser: ") + SDL_GetError());
+    std::string folder = A.data_dir;
+    if (folder.empty() && !A.log_path.empty()) {
+        size_t slash = A.log_path.find_last_of("/\\");
+        if (slash != std::string::npos) folder = A.log_path.substr(0, slash);
+    }
+    if (!folder.empty()) open_folder(folder);
+}
+
 static std::string file_url(const std::string& path) {
     std::string u = "file://";
 #ifdef _WIN32
@@ -790,6 +936,7 @@ static void set_source(const std::string& path) {
     A.disc_key_file.clear();
     A.update_dir_found.clear();
     A.update_dir.clear();
+    A.update_skipped = false;
     A.keys_msg.clear();
     request("probe", "\"path\":" + jstr(path));
 }
@@ -800,7 +947,20 @@ static void keys_changed() {
 
 static void set_disc_key_file(const std::string& p) { A.disc_key_file = p, keys_changed(); }
 static void set_common_key_file(const std::string& p) { A.common_key_file = p, keys_changed(); }
-static void set_update_dir(const std::string& p) { A.update_dir = p, keys_changed(); }
+static void set_update_dir(const std::string& p) {
+    A.update_dir = p;
+    A.update_skipped = false;
+    keys_changed();
+}
+static void skip_update_dir() {
+    A.update_dir.clear();
+    A.update_skipped = true;
+    keys_changed();
+}
+static std::string chosen_update_dir() {
+    if (A.update_skipped) return {};
+    return !A.update_dir.empty() ? A.update_dir : A.update_dir_found;
+}
 static void set_disc_mode(int m) {
     if (A.disc_mode != m) A.disc_mode = m, keys_changed();
 }
@@ -837,9 +997,8 @@ static void check_keys() {
     else if (A.disc_mode == 0 && !A.disc_key_file.empty()) f += ",\"disc_key_file\":" + jstr(A.disc_key_file);
     if (A.common_mode == 1 && A.paste[0]) f += ",\"common_key_hex\":" + jstr(A.paste);
     else if (A.common_mode == 0 && !A.common_key_file.empty()) f += ",\"common_key_file\":" + jstr(A.common_key_file);
-    if (!A.update_dir.empty()) f += ",\"update_dir\":" + jstr(A.update_dir);
-    else if (!A.update_dir_found.empty()) f += ",\"update_dir\":" + jstr(A.update_dir_found);
-    A.keys_msg = "Checking the keys and update...";
+    f += ",\"update_dir\":" + jstr(chosen_update_dir());
+    A.keys_msg = chosen_update_dir().empty() ? "Checking the keys..." : "Checking the keys and update...";
     request("check_keys", f);
     f.assign(f.size(), '\0');
     SDL_memset(A.disc_paste, 0, sizeof A.disc_paste);
@@ -873,7 +1032,8 @@ static void handle_reply(const J& ev) {
         else if (A.source_kind == "folder")
             A.probe_msg = "Extracted game folder: New Super Mario Bros. U (USA)";
         else
-            A.probe_msg = "Wii U disc image. Setup extracts it, then applies the matching 1.3.0 update folder.";
+            A.probe_msg = "Wii U disc image. Setup extracts it and applies an optional 1.3.0 update folder when you "
+                          "provide one.";
     } else if (cmd == "check_keys") {
         if (ok) {
             A.keys_msg.clear();
@@ -1022,16 +1182,31 @@ static void pump_child() {
 }
 
 static bool details_open = false;
+static bool details_force_open = false;
 
 static void centered_button_row(float w) {
     float x = ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - w) * 0.5f;
     if (x > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(x);
 }
 
+static bool begin_confirm(const char* title) {
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(420, 0), ImVec2(FLT_MAX, FLT_MAX));
+    if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) return false;
+    heading(title, 20);
+    ImGui::Spacing();
+    return true;
+}
+
 static bool details_header() {
-    if (details_open) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-    else ImGui::SetNextItemOpen(false, ImGuiCond_Appearing);
-    return ImGui::CollapsingHeader("Details");
+    if (details_force_open) {
+        ImGui::SetNextItemOpen(true);
+        details_force_open = false;
+    }
+    bool open = ImGui::CollapsingHeader("Details");
+    details_open = open;
+    return open;
 }
 
 static float space_above_footer() {
@@ -1110,13 +1285,13 @@ static void screen_welcome() {
     ImGui::Spacing();
     ImGui::TextUnformatted("You need:");
     ImGui::Bullet();
-    ImGui::TextWrapped("your NSMBU (USA, Europe, or an NSMBU + NSLU pack): a disc image (.wud/.wux) plus the "
-                       "matching update when needed, a Cemu archive at that title version (USA 64, Europe 80, or "
-                       "combo 0), or an extracted folder (code, content, meta);");
+    ImGui::TextWrapped("your NSMBU (USA, Europe, or an NSMBU + NSLU pack): a disc image (.wud/.wux), a Cemu archive "
+                       "at that title version (USA 64, Europe 80, or combo 0), or an extracted folder (code, content, "
+                       "meta);");
     ImGui::Bullet();
-    ImGui::TextWrapped("for a disc image: its disc key, the Wii U common key (from your console), and the matching "
-                       "1.3.0 update (update/ next to the image, or chosen on the next screen). A Cemu archive or an "
-                       "extracted folder needs no keys.");
+    ImGui::TextWrapped("for a disc image: its disc key and the Wii U common key (from your console). The matching "
+                       "1.3.0 update is optional (update/ next to the image, or chosen on the next screen); mods need "
+                       "it. A Cemu archive or an extracted folder needs no keys.");
     ImGui::Spacing();
     if (A.portable) {
         ImGui::TextUnformatted("Space, all of it in this folder:");
@@ -1180,8 +1355,8 @@ static void screen_menu() {
 
 static void screen_source() {
     page_header("Choose your game",
-                "A Wii U disc image (.wux or .wud) with the matching update when needed, a Cemu archive (.wua) at "
-                "USA title version 64, Europe 80, or combo version 0, or an already extracted game folder.");
+                "A Wii U disc image (.wux or .wud), optionally with the 1.3.0 update, a Cemu archive (.wua) at USA "
+                "title version 64, Europe 80, or combo version 0, or an already extracted game folder.");
     static const SDL_DialogFileFilter filters[] = {{"Wii U disc image or Cemu archive (.wux, .wud, .wua)", "wux;wud;wua"},
                                                    {"Wii U disc image (.wux, .wud)", "wux;wud"},
                                                    {"Cemu Wii U archive (.wua)", "wua"},
@@ -1233,7 +1408,7 @@ static void screen_source() {
                 muted("Update: " + upd);
             }
             if (A.source_kind == "image")
-                muted("Setup extracts it, then applies the matching 1.3.0 update folder.");
+                muted("Setup extracts it. The 1.3.0 update folder on the next screen is optional (needed for mods).");
             else if (A.source_kind == "archive")
                 muted("No keys needed. Game files are extracted from the archive.");
         } else {
@@ -1360,22 +1535,27 @@ static void screen_keys() {
     ImGui::Spacing();
 
     ImGui::BeginChild("update", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
-    heading("1.3.0 update", 20);
-    muted("Folder with code, content and meta (USA title version 64, or Europe 80).");
-    if (!A.update_dir.empty()) {
+    heading("1.3.0 update (optional)", 20);
+    muted("Folder with code, content and meta (USA title version 64, or Europe 80). Mods need this update. The USA "
+          "base disc alone also works.");
+    std::string upd = chosen_update_dir();
+    if (!upd.empty()) {
         mark(2);
-        ImGui::TextWrapped("Update folder: %s", A.update_dir.c_str());
-    } else if (!A.update_dir_found.empty()) {
-        mark(2);
-        ImGui::TextWrapped("Found next to the image: %s", base_name(A.update_dir_found).c_str());
+        if (!A.update_dir.empty()) ImGui::TextWrapped("Update folder: %s", A.update_dir.c_str());
+        else ImGui::TextWrapped("Found next to the image: %s", base_name(A.update_dir_found).c_str());
+    } else if (A.update_skipped) {
+        muted("Skipped. Install continues with the base disc if its RPX is known.");
     } else {
-        mark(3);
-        ImGui::TextWrapped("Not found. Put an update/ folder next to the disc image, or choose it here.");
+        muted("Not selected. Put an update/ folder next to the disc image, choose one here, or continue without it.");
     }
-    if (button(A.update_dir_found.empty() && A.update_dir.empty() ? "Choose update folder...##upd"
-                                                                  : "Choose a different update folder...##upd",
-               ImVec2(-1, 0)))
+    float upd_half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+    if (button(upd.empty() ? "Choose update folder...##upd" : "Choose a different update folder...##upd",
+               ImVec2(upd.empty() ? -1.0f : upd_half, 0)))
         choose_folder("update");
+    if (!upd.empty()) {
+        ImGui::SameLine();
+        if (button("Don't use an update##updskip", ImVec2(upd_half, 0))) skip_update_dir();
+    }
     ImGui::EndChild();
     ImGui::PopStyleVar();
 
@@ -1391,8 +1571,7 @@ static void screen_keys() {
     bool have_disc = A.disc_mode == 1 ? strlen(A.disc_paste) > 0
                                       : (!A.disc_key_file.empty() || !A.disc_key_found.empty());
     bool have_common = A.common_mode == 1 ? strlen(A.paste) > 0 : (!A.common_key_file.empty() || !A.common_key_found.empty());
-    bool have_update = !A.update_dir_found.empty() || !A.update_dir.empty();
-    int b = footer({"Back", "Check keys and install"}, 1, (have_disc && have_common && have_update && !busy()) ? 0 : 2);
+    int b = footer({"Back", "Check keys and install"}, 1, (have_disc && have_common && !busy()) ? 0 : 2);
     if (b == 0) go(Screen::Source);
     if (b == 1) check_keys();
 }
@@ -1420,7 +1599,7 @@ static void screen_installing() {
         }
     }
     heading("Overall", 20);
-    float bar_h = ImGui::GetFrameHeight() * 2.4f;
+    float bar_h = ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y;
     ImGui::ProgressBar(tw > 0 ? (float)(dw / tw) : 0.0f, ImVec2(-1, bar_h));
     if (current) {
         std::string t = current->title;
@@ -1429,9 +1608,16 @@ static void screen_installing() {
         muted(t);
     }
     ImGui::Spacing();
-    float split = std::max(0.0f, space_above_footer() - ImGui::GetFrameHeightWithSpacing() - ImGui::GetStyle().ItemSpacing.y * 2);
-    float step_avail = std::max(120.0f, split * 0.75f);
-    float log_slot = std::max(ImGui::GetTextLineHeightWithSpacing() * 6, split * 0.25f);
+    float gap = ImGui::GetStyle().ItemSpacing.y;
+    float line = ImGui::GetTextLineHeightWithSpacing();
+    float details_reserve = ImGui::GetFrameHeightWithSpacing() + gap;
+    float log_h = 0;
+    if (details_open) {
+        float avail = std::max(0.0f, space_above_footer() - details_reserve);
+        log_h = std::clamp(avail * 0.4f, line * 6, std::max(line * 6, avail * 0.55f));
+        details_reserve += log_h + gap;
+    }
+    float step_avail = std::max(80.0f, space_above_footer() - details_reserve);
     ImGui::BeginChild("steps", ImVec2(0, step_avail), ImGuiChildFlags_Borders);
     float icon_pad = ImGui::GetFontSize() * 1.1f + ImGui::GetStyle().ItemSpacing.x;
     for (auto& s : A.steps) {
@@ -1452,7 +1638,10 @@ static void screen_installing() {
     }
     ImGui::EndChild();
     ImGui::Spacing();
-    if (details_header()) log_pane(std::max(log_slot, space_above_footer()));
+    if (details_header()) {
+        if (log_h <= 0) log_h = std::max(line * 6, space_above_footer());
+        log_pane(log_h);
+    }
 }
 
 static void screen_error() {
@@ -1474,13 +1663,13 @@ static void screen_error() {
         ImGui::EndChild();
     }
     ImGui::Spacing();
-    muted("Nothing that was finished is lost. \"Copy log\" puts the details on the clipboard for a bug report; the log "
-          "contains no keys.");
+    muted("Nothing that was finished is lost. Copy log, then Report issue. The log contains no keys.");
     if (details_header()) log_pane(log_pane_height(0.5f));
-    int b = footer({"Quit", "Copy log", "Retry"}, 2);
+    int b = footer({"Quit", "Copy log", "Report issue...", "Retry"}, 3);
     if (b == 0) A.exit_code = 1;
     if (b == 1) copy_log();
-    if (b == 2) {
+    if (b == 2) report_issue();
+    if (b == 3) {
         A.keys_msg.clear();
         if (A.error_back == "menu") go(Screen::Menu);
         else {
@@ -1526,9 +1715,12 @@ static void screen_save() {
         ImGui::OpenPopup("Replace save?");
         A.confirm_replace = false;
     }
-    if (ImGui::BeginPopupModal("Replace save?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (begin_confirm("Replace save?")) {
         ImGui::TextUnformatted("A save is already installed.");
         ImGui::TextUnformatted("Replace it? The current save is moved to a backup folder first.");
+        ImGui::Spacing();
+        float gap = ImGui::GetStyle().ItemSpacing.x;
+        centered_button_row(160 + gap + 160);
         if (button("Replace", ImVec2(160, 0), true)) {
             send_import(true);
             ImGui::CloseCurrentPopup();
@@ -1619,10 +1811,12 @@ static void screen_fatal() {
 #else
     const char* show = "Open the folder";
 #endif
-    int b = A.fatal_folder.empty() ? footer({"Quit", "Copy log"}) : footer({"Quit", "Copy log", show});
+    int b = A.fatal_folder.empty() ? footer({"Quit", "Copy log", "Report issue..."})
+                                   : footer({"Quit", "Copy log", "Report issue...", show});
     if (b == 0) A.exit_code = 1;
     if (b == 1) copy_log();
-    if (b == 2) open_folder(A.fatal_folder);
+    if (b == 2) report_issue();
+    if (b == 3) open_folder(A.fatal_folder);
 }
 
 struct PackageSearch {
@@ -1964,7 +2158,7 @@ static void automation_frame() {
             else if (k == "save_kind")
                 set_save_kind(v == "hd" ? 1 : v == "legacy" ? 2 : v == "other" ? 3 : 0);
             else if (k == "save_path") set_save_path(v);
-            else if (k == "open_details") details_open = true;
+            else if (k == "open_details") details_open = details_force_open = true;
         }
     }
     A.stable_frames++;
@@ -2171,9 +2365,12 @@ int main(int argc, char** argv) {
             else A.exit_code = 0;
             quit_requested = false;
         }
-        if (ImGui::BeginPopupModal("Stop setup?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (begin_confirm("Stop setup?")) {
             ImGui::TextUnformatted("Setup is still working. Stop it now?");
             muted("You can run Setup again later; finished steps are kept.");
+            ImGui::Spacing();
+            float gap = ImGui::GetStyle().ItemSpacing.x;
+            centered_button_row(180 + gap + 180);
             if (button("Stop setup", ImVec2(180, 0), true)) {
                 A.child.stop(true);
                 A.exit_code = 1;

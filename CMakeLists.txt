@@ -190,11 +190,11 @@ if(WIN32)
   target_compile_definitions(nsmbu PRIVATE _USE_MATH_DEFINES)
   nsmbu_windows_resources(nsmbu "New Super Mario Bros. U, native PC port" "nsmbu.exe" gui)
 
-  target_link_libraries(nsmbu PRIVATE winmm ws2_32 advapi32)
+  target_link_libraries(nsmbu PRIVATE winmm ws2_32 advapi32 shell32 comctl32)
 endif()
 if(NSMBU_HAS_METAL)
   target_compile_definitions(nsmbu PRIVATE NSMBU_HAS_METAL=1)
-  target_link_libraries(nsmbu PRIVATE "-framework Metal" "-framework QuartzCore" "-framework AppKit" "-framework Foundation" "-framework ImageIO" "-framework UniformTypeIdentifiers" "-framework GameController" "-framework Carbon" "-framework AudioToolbox" "-framework CoreAudio" compression)
+  target_link_libraries(nsmbu PRIVATE "-framework Metal" "-framework QuartzCore" "-framework AppKit" "-framework Foundation" "-framework ImageIO" "-framework UniformTypeIdentifiers" "-framework GameController" "-framework Carbon" "-framework AudioToolbox" "-framework CoreAudio" "-framework CoreFoundation" compression)
 endif()
 if(NSMBU_HAS_VULKAN)
 

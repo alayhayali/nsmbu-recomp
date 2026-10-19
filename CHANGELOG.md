@@ -5,7 +5,21 @@ At release, move those notes to a version heading and leave Unreleased empty.
 
 ## Unreleased
 
--   **Add**: [docs/logs.md](docs/logs.md) lists where run, crash, and setup logs live for bug reports (portable release, AppImage, and builds from source).
+-   **Change**: The installer progress screen uses a shorter overall bar.
+    Details expands the log below the header and shrinks the step list to fit.
+-   **Change**: The installer's 1.3.0 update folder is optional and labeled as such.
+    You can install from the base disc alone.
+    Mods still need the update.
+-   **Add**: Fatal and crash dialogs stay compact and offer Report crash.
+    That opens a GitHub issue form with version, platform, hardware, and Logs filled in
+    (error text and a log excerpt).
+    It also opens the logs folder so you can attach the full file.
+    What happens and Steps stay blank for you to fill in.
+    Setup error screens also offer Report issue.
+-   **Fix**: Setup and the game refuse an update-only dump (`0005000e…` / missing base courses)
+    with a clear message instead of crashing on startup.
+-   **Add**: [docs/logs.md](docs/logs.md) lists where run, crash, and setup logs live for bug reports
+    (portable release, AppImage, and builds from source).
 -   **Add**: Intro-skip modding docs now cover the save and file-loading internals: the `SaveData` block layout with CRC trailers, the `SaveMgr` load and save state machine (`rp_savedata.dat`, `rp_personal_savedata.dat`, challenge replays), and the boot popup decide chain. Decompiled sources are in `decomp/src/system/SaveMgr.cpp`.
 -   **Add**: The USA base disc (title version 0) works without the 1.3.0 update.
     Mods are not supported on that build; the Mods tab says so.

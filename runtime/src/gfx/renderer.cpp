@@ -24,6 +24,7 @@
 #endif
 
 #include "core/runtime.h"
+#include "core/user_error.h"
 #ifdef NSMBU_SDL_HOST
 #include <SDL3/SDL_messagebox.h>
 #ifdef __ANDROID__
@@ -190,8 +191,7 @@ void init() {
             _Exit(1);
         }
 #endif
-        if (!hidden || !*hidden || !strcmp(hidden, "0"))
-            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, app_title::kName, text.c_str(), nullptr);
+        if (!hidden || !*hidden || !strcmp(hidden, "0")) user_error::show_fatal(text);
         fflush(stderr);
         _Exit(1);
 #else

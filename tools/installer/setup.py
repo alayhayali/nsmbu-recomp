@@ -662,10 +662,18 @@ def image_identity(image, disc_key_path=None, common_key=None, update_dir=None):
             pass
     return out
 
+INCOMPLETE_GAME_FIX = (
+    "Use the full game (base disc or Cemu dump) with the matching 1.3.0 update merged into one folder. "
+    "Do not point the game at an Update / 0005000e… folder alone."
+)
+
 def check_title(title_id):
     """Raises SetupError unless this is a version of the game the port can be built from."""
     if title_id in SUPPORTED_BUILDS:
         return
+    tid = (title_id or "").lower()
+    if tid.startswith("0005000e") and ("00050000" + tid[8:]) in TITLE_IDS:
+        raise SetupError("this folder is only %s, not the full game. %s" % (title_desc(tid), INCOMPLETE_GAME_FIX))
     region = TITLE_IDS.get(title_id)
     if region:
         raise SetupError("this is the %s version of New Super Mario Bros. U (title %s). The port can be built from %s."
@@ -839,6 +847,34 @@ def valid_game_folder(path):
     return (os.path.isfile(os.path.join(path, "code", "red-pro2.rpx")) and os.path.isdir(os.path.join(path, "content"))
             and os.path.isfile(os.path.join(path, "meta", "meta.xml")))
 
+def path_ci(root, *parts):
+    """Join path parts under root with a case-insensitive match for each name; None if missing."""
+    at = root
+    for part in parts:
+        try:
+            names = os.listdir(at)
+        except OSError:
+            return None
+        want = part.lower()
+        hit = next((n for n in names if n.lower() == want), None)
+        if hit is None:
+            return None
+        at = os.path.join(at, hit)
+    return at
+
+def require_playable_game_folder(path):
+    """Full playable game tree (base content + code), not an update-only dump. Raises SetupError."""
+    if not valid_game_folder(path):
+        raise SetupError("%s is not an extracted game folder (needs code/red-pro2.rpx, content/, meta/meta.xml)" % path)
+    tid = game_folder_title(path)
+    if tid and tid.startswith("0005000e"):
+        raise SetupError("%s is only %s, not the full game. %s" % (path, title_desc(tid), INCOMPLETE_GAME_FIX))
+    course = path_ci(path, "content", "Common", "course_res_pack", "1-1.szs")
+    if not course or not os.path.isfile(course):
+        raise SetupError(
+            "%s is missing the base course file content/Common/course_res_pack/1-1.szs. "
+            "That usually means only the update was installed. %s" % (path, INCOMPLETE_GAME_FIX))
+
 def find_sidecar_update(image):
     cand = os.path.join(os.path.dirname(os.path.abspath(image)), UPDATE_DIRNAME)
     return cand if valid_game_folder(cand) else None
@@ -870,8 +906,8 @@ def apply_update_to(dst, update_dir):
         shutil.copytree(src, os.path.join(dst, name), dirs_exist_ok=True)
 
 def get_update_dir(image, ui, args):
-    """Matching 1.3.0 update next to the disc image, --update-dir, chosen interactively, or None
-    to install the base disc alone (mods unsupported when that RPX is USA_V0)."""
+    """Optional matching 1.3.0 update next to the disc image, --update-dir, chosen interactively,
+    or None to install the base disc alone (mods unsupported when that RPX is USA_V0)."""
     path = getattr(args, "update_dir", None) or find_sidecar_update(image)
     if path:
         path = os.path.abspath(path)
@@ -879,13 +915,16 @@ def get_update_dir(image, ui, args):
         say("  OK: %s 1.3.0 update in %s" % (build.name, path))
         return path
     if not ui.interactive:
-        say("  No 1.3.0 update folder; will use the base disc if its RPX is known (mods unsupported on USA_V0).")
+        say("  No 1.3.0 update folder (optional); will use the base disc if its RPX is known "
+            "(mods need the update).")
         return None
-    if not ui.yesno("Use a 1.3.0 update folder? (No = base disc alone; mods need the update)", default=True):
+    if not ui.yesno("Use an optional 1.3.0 update folder? (No = base disc alone; mods need the update)",
+                    default=True):
         say("  Continuing without an update folder.")
         return None
     while True:
-        p = ui.pick_path("Choose the 1.3.0 update folder (it contains code, content and meta)", folder=True)
+        p = ui.pick_path("Choose the optional 1.3.0 update folder (it contains code, content and meta)",
+                         folder=True)
         if not p:
             say("  Continuing without an update folder.")
             return None
@@ -975,6 +1014,7 @@ def extract_game(image, keys, info, data_dir, title=None, update_dir=None):
         if not build.mods:
             say("  Note: mods are not supported on %s (title version %d). Install the 1.3.0 update for mods."
                 % (build.name, build.title_version))
+        require_playable_game_folder(tmp)
     except SetupError:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
@@ -1671,8 +1711,7 @@ def install(ctx, source, keys=None, info=None, ui=None, check_keys=None):
             say("  " + n)
     elif kind == "folder":
         begin("folder")
-        if not valid_game_folder(source[1]):
-            raise SetupError("%s is not an extracted game folder (needs code/red-pro2.rpx, content/, meta/meta.xml)" % source[1])
+        require_playable_game_folder(source[1])
         tid = game_folder_title(source[1])
         if tid:
             check_title(tid)
@@ -1683,6 +1722,7 @@ def install(ctx, source, keys=None, info=None, ui=None, check_keys=None):
     elif kind == "installed":
         if not valid_game_folder(ctx.game_dir):
             raise SetupError("no installed game files in %s; run setup with your disc image" % ctx.game_dir)
+        require_playable_game_folder(ctx.game_dir)
         tid = game_folder_title(ctx.game_dir)
         if tid:
             check_title(tid)
@@ -1794,7 +1834,8 @@ def main():
     ap.add_argument("--archive", help="Cemu Wii U archive (.wua): no keys needed")
     ap.add_argument("--disc-key", help="disc key file (default: IMAGE.key)")
     ap.add_argument("--common-key", help="Wii U common key file (or WIIU_COMMON_KEY)")
-    ap.add_argument("--update-dir", help="1.3.0 update folder for that disc (code/, content/, meta/); default: update/ next to the disc image")
+    ap.add_argument("--update-dir", help="optional 1.3.0 update folder for that disc (code/, content/, meta/); "
+                    "default: update/ next to the disc image if present")
     ap.add_argument("--game-dir", help="an already extracted game folder (code/, content/, meta/) instead of an image")
     ap.add_argument("--gen-dir", help="use this generated code instead of recompiling (build checks)")
     ap.add_argument("--data-dir", help="where the game is installed (default: %s)" % default_data_dir())
@@ -1893,9 +1934,9 @@ def run(args, ui):
         else:
             say("")
             i = ui.choose("What do you have?", [
-                "a disc image (.wux or .wud) with its keys and the matching 1.3.0 update folder",
+                "a disc image (.wux or .wud) with its keys (1.3.0 update folder optional)",
                 "a Cemu Wii U archive (.wua; no keys needed; USA title version 64 or Europe 80)",
-                "an already extracted game folder with the 1.3.0 update applied (code, content, meta)",
+                "an already extracted game folder (code, content, meta; 1.3.0 update optional)",
             ])
             if i in (0, 1):
                 p = ui.pick_path("Choose your NSMBU disc image (.wux or .wud)" if i == 0 else
@@ -1994,12 +2035,16 @@ def gui_main(args):
             folder = p if valid_game_folder(p) else (os.path.dirname(p) if valid_game_folder(os.path.dirname(p)) else None)
             if not folder:
                 return fail(req, "invalid", "This folder does not contain an extracted game (code, content and meta).")
+            try:
+                require_playable_game_folder(folder)
+            except SetupError as e:
+                return fail(req, "incomplete", str(e)[0].upper() + str(e)[1:])
             tid = game_folder_title(folder)
             if tid and tid not in SUPPORTED_BUILDS:
                 try:
                     check_title(tid)
                 except SetupError as e:
-                    return fail(req, "wrong_title", str(e))
+                    return fail(req, "wrong_title", str(e)[0].upper() + str(e)[1:])
             try:
                 build = check_game_version(folder)
             except SetupError as e:
@@ -2048,11 +2093,11 @@ def gui_main(args):
         elif ident.get("update_sha256"):
             msg_bits.append("1.3.0 update RPX SHA-256 %s…" % ident["update_sha256"][:16])
         if msg_bits:
-            message = ("Wii U disc image: %s. Setup extracts it and applies a 1.3.0 update folder when present "
-                       "(base disc alone is allowed; mods need the update)." % "; ".join(msg_bits))
+            message = ("Wii U disc image: %s. Setup extracts it. A 1.3.0 update folder is optional "
+                       "(recommended for mods; the USA base disc alone also works)." % "; ".join(msg_bits))
         else:
-            message = ("Wii U disc image. Setup extracts it and applies a 1.3.0 update folder when present "
-                       "(base disc alone is allowed; mods need the update).")
+            message = ("Wii U disc image. Setup extracts it. A 1.3.0 update folder is optional "
+                       "(recommended for mods; the USA base disc alone also works).")
         reply(req, kind="image", path=p, disc_key=disc_key, common_key=src, update_dir=upd or "",
               message=message, **ident)
 
@@ -2095,7 +2140,10 @@ def gui_main(args):
             check_title(info.get("title_id", ""))
         except SetupError as e:
             return fail(req, "wrong_title", str(e))
-        update_dir = req.get("update_dir") or find_sidecar_update(image)
+        if "update_dir" in req:
+            update_dir = req.get("update_dir") or None
+        else:
+            update_dir = find_sidecar_update(image)
         if update_dir:
             try:
                 check_update_folder(update_dir)
@@ -2118,7 +2166,8 @@ def gui_main(args):
             pass
         if not update_dir:
             ident["message"] = (ident.get("message") or "") + (
-                " No update folder: the base disc will be used if its RPX is known. Mods are not supported on USA_V0.")
+                " No update folder (optional): the base disc will be used if its RPX is known. "
+                "Mods need the 1.3.0 update.")
         reply(req, update_dir=session["update_dir"] or "", **ident)
 
     def do_install(req):

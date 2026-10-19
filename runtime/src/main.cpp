@@ -32,6 +32,8 @@
 #include "crash/report_header.h"
 #include "crash/crash_addr.h"
 #include "core/build_info.h"
+#include "core/game_folder.h"
+#include "core/user_error.h"
 #include "crash/crashrec.h"
 #include "crash/crash_context.h"
 #include "agent/agent_ctl.h"
@@ -147,6 +149,15 @@ static void crash_handler(int sig, siginfo_t* si, void* uctx) {
         if (f) { trace_dump(f, 3000); fclose(f); if (write(2, "[trace] wrote trace_dump.txt\n", 29) < 0) {} }
     }
     input::stop_rumble_now();
+#ifndef __ANDROID__
+    if (fork() == 0) {
+        std::string msg = "The game crashed.\n\nA crash log was written to:\n";
+        msg += path;
+        msg += "\n\nReport crash opens GitHub and the logs folder; describe what happened yourself.";
+        user_error::show_fatal(msg, user_error::IssueKind::InGame);
+        _exit(0);
+    }
+#endif
     _exit(128 + sig);
 }
 
@@ -218,6 +229,12 @@ static LONG WINAPI crash_handler(EXCEPTION_POINTERS* ex) {
     if(fd>=0){win_crash_log_only(fd,"\n--- last log lines ---\n",24); log_ring_write(fd,win_crash_log_only); _close(fd); fprintf(stderr,"[crash] wrote %s\n",path);}
     if(g_ppc_trace) { FILE* f=fopen("trace_dump.txt","w"); if(f){trace_dump(f,3000);fclose(f);} }
     input::stop_rumble_now();
+    {
+        std::string msg = "The game crashed.\n\nA crash log was written to:\n";
+        msg += path;
+        msg += "\n\nReport crash opens GitHub and the logs folder; describe what happened yourself.";
+        user_error::show_fatal(msg, user_error::IssueKind::InGame);
+    }
     return EXCEPTION_EXECUTE_HANDLER;
 }
 static void install_crash_handler() {
@@ -401,6 +418,7 @@ int main(int argc, char** argv) {
     mods::cemu::set_vulkan(render::requested()==render::Api::Vulkan);
     mods::content::set_game_root(config::game_dir);
     mods::packages::initialize();
+    if (const std::string why = game_folder::unusable_reason(config::game_dir); !why.empty()) game_folder::fail(why);
     mem::init();
 
     LoadedModule m{};

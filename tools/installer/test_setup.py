@@ -268,7 +268,7 @@ class GameVersion(unittest.TestCase):
         self.assertIn(build.title_id, setup.SUPPORTED_BUILDS)
 
 class UpdateFolder(unittest.TestCase):
-    """Disc images need a matching 1.3.0 update/ folder (checked then applied after extract)."""
+    """Disc images may use an optional matching 1.3.0 update/ folder (checked then applied after extract)."""
 
     def make_folder(self, d, rpx=b"made-up rpx", app_tid="0005000e10101d00", app_ver="0040"):
         os.makedirs(os.path.join(d, "code"), exist_ok=True)
@@ -333,6 +333,50 @@ class UpdateFolder(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaisesRegex(setup.SetupError, "not an update folder"):
                 setup.check_update_folder(d)
+
+class PlayableGameFolder(unittest.TestCase):
+    """The run/install game root must be the full game, not an update-only dump."""
+
+    def make(self, d, tid="0005000010101d00", with_course=True):
+        os.makedirs(os.path.join(d, "code"), exist_ok=True)
+        os.makedirs(os.path.join(d, "content"), exist_ok=True)
+        os.makedirs(os.path.join(d, "meta"), exist_ok=True)
+        open(os.path.join(d, "code", "red-pro2.rpx"), "wb").close()
+        with open(os.path.join(d, "meta", "meta.xml"), "w") as f:
+            f.write('<menu><title_id type="hexBinary" length="8">%s</title_id></menu>' % tid)
+        if with_course:
+            course = os.path.join(d, "content", "Common", "course_res_pack")
+            os.makedirs(course, exist_ok=True)
+            open(os.path.join(course, "1-1.szs"), "wb").close()
+
+    def test_update_title_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.make(d, tid="0005000e10101d00", with_course=False)
+            with self.assertRaisesRegex(setup.SetupError, "only the update for New Super Mario Bros. U \\(USA\\)"):
+                setup.require_playable_game_folder(d)
+
+    def test_missing_course_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.make(d, with_course=False)
+            with self.assertRaisesRegex(setup.SetupError, "1-1\\.szs"):
+                setup.require_playable_game_folder(d)
+
+    def test_full_folder_ok(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.make(d)
+            setup.require_playable_game_folder(d)
+
+    def test_course_path_case_insensitive(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.make(d, with_course=False)
+            course = os.path.join(d, "content", "common", "COURSE_RES_PACK")
+            os.makedirs(course, exist_ok=True)
+            open(os.path.join(course, "1-1.SZS"), "wb").close()
+            setup.require_playable_game_folder(d)
+
+    def test_check_title_update_message(self):
+        with self.assertRaisesRegex(setup.SetupError, "only the update for.*not the full game"):
+            setup.check_title("0005000e10101d00")
 
 class Recipe(unittest.TestCase):
     def test_substitution(self):

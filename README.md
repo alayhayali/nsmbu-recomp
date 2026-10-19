@@ -5,7 +5,7 @@
 > It has no game code, no game assets, and no keys from Nintendo.
 
 > [!NOTE]
-> This project is made with the use of AI agents.
+> This project is made with the help of AI agents.
 
 This is a native port of the Wii U game.
 The installer translates the PowerPC code to C on your computer.
