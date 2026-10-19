@@ -33,6 +33,38 @@ bool g_loaded = false;
 std::atomic<bool> g_run_in_background{true};
 std::atomic<bool> g_app_focused{true};
 
+bool display_usable(SDL_DisplayID id, SDL_Rect& bounds) {
+    if (SDL_GetDisplayUsableBounds(id, &bounds)) return true;
+    return SDL_GetDisplayBounds(id, &bounds);
+}
+
+void clamp_windowed_size(const SDL_Rect& usable, int& wdt, int& hgt) {
+    if (wdt > 0 && hgt > 0 && wdt < usable.w - 64 && hgt < usable.h - 64) return;
+    wdt = std::min(1920, std::max(1280, usable.w * 2 / 3));
+    hgt = std::min(1080, std::max(720, usable.h * 2 / 3));
+    if (wdt > usable.w - 64) wdt = std::max(640, usable.w - 64);
+    if (hgt > usable.h - 64) hgt = std::max(360, usable.h - 64);
+}
+
+void ensure_windowed_frame(SDL_Window* w) {
+    SDL_Rect usable{};
+    if (!display_usable(SDL_GetDisplayForWindow(w), usable)) return;
+    int wdt = 0, hgt = 0;
+    if (!SDL_GetWindowSize(w, &wdt, &hgt)) return;
+    const int prev_w = wdt, prev_h = hgt;
+    clamp_windowed_size(usable, wdt, hgt);
+    if (wdt == prev_w && hgt == prev_h) return;
+    const int x = usable.x + (usable.w - wdt) / 2;
+    const int y = usable.y + (usable.h - hgt) / 2;
+    SDL_SetWindowSize(w, wdt, hgt);
+    SDL_SetWindowPosition(w, x, y);
+    char bw[16], bh[16];
+    snprintf(bw, sizeof bw, "%d", wdt);
+    snprintf(bh, sizeof bh, "%d", hgt);
+    set("windowWidth", bw);
+    set("windowHeight", bh);
+}
+
 void apply_background_hint(bool on) {
 #ifndef __ANDROID__
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, on ? "1" : "0");
@@ -230,10 +262,17 @@ void set_scale_filter(int f) {
 }
 bool scale_filter_available() { return gfxvk::graphics_feature_available(gfxvk::GraphicsFeature::ScaleFilter); }
 
-bool fullscreen() { return gfxvk::R.tv.window && (SDL_GetWindowFlags(gfxvk::R.tv.window) & SDL_WINDOW_FULLSCREEN); }
+bool fullscreen() {
+    return gfxvk::R.tv.window && (SDL_GetWindowFlags(gfxvk::R.tv.window) & SDL_WINDOW_FULLSCREEN) != 0;
+}
 void set_fullscreen(bool on) {
     if (!gfxvk::R.tv.window) return;
-    if (!SDL_SetWindowFullscreen(gfxvk::R.tv.window, on)) LOG("[display] TV window: full screen %s failed: %s", on ? "on" : "off", SDL_GetError());
+    if (fullscreen() == on) return;
+    if (!SDL_SetWindowFullscreen(gfxvk::R.tv.window, on)) {
+        LOG("[display] TV window: full screen %s failed: %s", on ? "on" : "off", SDL_GetError());
+    } else if (!on) {
+        ensure_windowed_frame(gfxvk::R.tv.window);
+    }
     tv_fullscreen_changed();
 }
 
@@ -251,8 +290,12 @@ bool window_size(int& width, int& height) {
 #ifndef __ANDROID__
     std::string sw, sh;
     if (!get("windowWidth", sw) || !get("windowHeight", sh)) return false;
-    const int w = atoi(sw.c_str()), h = atoi(sh.c_str());
+    int w = atoi(sw.c_str()), h = atoi(sh.c_str());
     if (w < 320 || h < 240 || w > 7680 || h > 4320) return false;
+    if (SDL_WasInit(SDL_INIT_VIDEO)) {
+        SDL_Rect bounds{};
+        if (display_usable(SDL_GetPrimaryDisplay(), bounds)) clamp_windowed_size(bounds, w, h);
+    }
     width = w;
     height = h;
     return true;
@@ -269,6 +312,10 @@ void window_resized() {
     if (!tv || fullscreen() || (SDL_GetWindowFlags(tv) & SDL_WINDOW_HIDDEN)) return;
     int w = 0, h = 0;
     if (!SDL_GetWindowSize(tv, &w, &h) || w < 320 || h < 240) return;
+    SDL_Rect bounds{};
+    if (display_usable(SDL_GetDisplayForWindow(tv), bounds) &&
+        (w >= bounds.w - 64 || h >= bounds.h - 64))
+        return;
     char bw[16], bh[16];
     snprintf(bw, sizeof bw, "%d", w);
     snprintf(bh, sizeof bh, "%d", h);

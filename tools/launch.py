@@ -32,19 +32,58 @@ def nsmbu_exe(prefer_release=False):
                 return path
     return os.path.join(preferred, "nsmbu")
 
+def nsmbu_windows_exe(prefer_release=False):
+    windows = os.path.join(ROOT, "build", "windows")
+    rel = os.path.join(ROOT, "build", "rel")
+    release = os.path.join(ROOT, "build", "release")
+    debug = os.path.join(ROOT, "build", "debug")
+    flat = os.path.join(ROOT, "build")
+    if prefer_release:
+        bases = (windows, rel, release, debug, flat)
+    else:
+        bases = (windows, debug, release, rel, flat)
+    for base in bases:
+        path = os.path.join(base, "nsmbu.exe")
+        if os.path.isfile(path):
+            return path
+    return os.path.join(windows, "nsmbu.exe")
+
+def wine_win_path(wine, path):
+    r = subprocess.run(
+        [wine, "winepath", "-w", path],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if r.returncode != 0:
+        err = (r.stderr or r.stdout or "").strip()
+        sys.exit(f"winepath failed for {path}" + (f": {err}" if err else ""))
+    out = (r.stdout or "").strip()
+    if not out:
+        sys.exit(f"winepath returned empty for {path}")
+    return out
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-debug", action="store_true")
     parser.add_argument("--gdb", action="store_true")
     parser.add_argument("--lldb", action="store_true")
+    parser.add_argument("--wine", action="store_true", help="run the Windows build under Wine")
     parser.add_argument("--trace", action="store_true", help="pass --trace to the game (HLE trace)")
     parser.add_argument("run_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.wine and (args.gdb or args.lldb):
+        sys.exit("--wine cannot be combined with --gdb or --lldb")
     slot_num, course_pack, args.run_args = slot.take_args(args.run_args)
     use_debug_env = not args.no_debug
-    exe = nsmbu_exe(prefer_release=args.no_debug)
-    if not os.path.isfile(exe):
-        sys.exit(f"missing {exe}; run: nsmbu build")
+    if args.wine:
+        exe = nsmbu_windows_exe(prefer_release=args.no_debug)
+        if not os.path.isfile(exe):
+            sys.exit(f"missing {exe}; run: nsmbu wine")
+    else:
+        exe = nsmbu_exe(prefer_release=args.no_debug)
+        if not os.path.isfile(exe):
+            sys.exit(f"missing {exe}; run: nsmbu build")
     game = os.path.join(ROOT, "game")
     if not os.path.isdir(game):
         sys.exit("missing game/; run: nsmbu extract")
@@ -58,10 +97,21 @@ def main():
         for key, value in LAUNCH_DEBUG_ENV.items():
             if key not in env:
                 env[key] = value
-    cmd = [exe, "--game", game]
+    wine = None
+    game_arg = game
+    save_arg = save
+    if args.wine:
+        wine = shutil.which("wine")
+        if not wine:
+            sys.exit("wine not found on PATH")
+        game_arg = wine_win_path(wine, game)
+        save_arg = wine_win_path(wine, save)
+        if "NSMBU_USER_DIR" in env:
+            env["NSMBU_USER_DIR"] = wine_win_path(wine, env["NSMBU_USER_DIR"])
+    cmd = [exe, "--game", game_arg]
     if args.trace:
         cmd.append("--trace")
-    cmd.extend(devdata.with_save_arg(args.run_args, save))
+    cmd.extend(devdata.with_save_arg(args.run_args, save_arg))
     os.chdir(ROOT)
     if args.gdb:
         gdb = shutil.which("gdb")
@@ -73,6 +123,8 @@ def main():
         if not lldb:
             sys.exit("lldb not found on PATH")
         raise SystemExit(subprocess.run([lldb, "--", *cmd], env=env).returncode)
+    if wine is not None:
+        os.execve(wine, [wine, *cmd], env)
     os.execve(exe, cmd, env)
 
 if __name__ == "__main__":

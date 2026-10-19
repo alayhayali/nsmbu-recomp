@@ -2474,14 +2474,23 @@ static void test_drc_key() {
 }
 
 static void toggle_fullscreen(SDL_Window* window) {
+  static auto last = std::chrono::steady_clock::time_point{};
+  const auto now = std::chrono::steady_clock::now();
+  if (last != std::chrono::steady_clock::time_point{} &&
+      now - last < std::chrono::milliseconds(500))
+    return;
+  last = now;
+  if (!window || window == R.tv.window) {
+    const bool on = !::hostui::fullscreen();
+    ::hostui::set_fullscreen(on);
+    LOG("[display] TV window %s", on ? "full screen" : "windowed");
+    return;
+  }
   const bool full = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
-  const char* which = window == R.drc.window ? "GamePad window" : "TV window";
   if (!SDL_SetWindowFullscreen(window, !full))
-    LOG("[display] %s: switching to %s failed: %s", which, full ? "windowed" : "full screen", SDL_GetError());
+    LOG("[display] GamePad window: switching to %s failed: %s", full ? "windowed" : "full screen", SDL_GetError());
   else
-    LOG("[display] %s %s", which, full ? "windowed" : "full screen");
-  if (window == R.tv.window)
-    ::hostui::tv_fullscreen_changed();
+    LOG("[display] GamePad window %s", full ? "windowed" : "full screen");
 }
 
 static bool fullscreen_key(const SDL_Event& event) {

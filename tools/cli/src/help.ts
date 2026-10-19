@@ -3,6 +3,7 @@ export const HELP = `nsmbu — NSMBU developer and agent CLI
 Usage:
   nsmbu build [--release] [--sanitizer] [cmake args…]
   nsmbu launch [--no-debug] [--trace] [--gdb] [--lldb] [slot|course] […]
+  nsmbu wine [--no-debug] [--trace] [slot|course] […]
   nsmbu run [--release] [slot|course] […]
   nsmbu extract […]
   nsmbu record <course> […]

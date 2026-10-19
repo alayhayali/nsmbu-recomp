@@ -35,7 +35,7 @@ If `nsmbu open` refuses because a game is already running, run `nsmbu status` or
 
 | Goal | Command |
 | --- | --- |
-| Compile or start a checkout | `build`, `launch`, `run` |
+| Compile or start a checkout | `build`, `launch`, `run`, `wine` |
 | Full course input log | `record <course>` / `replay <course>` |
 | Measured Release course | `replay --release <course>` |
 | Uncapped course, stop at a frame | `replay --release --uncapped --exit-at N <course>` |

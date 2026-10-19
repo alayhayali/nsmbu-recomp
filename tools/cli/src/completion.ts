@@ -34,6 +34,14 @@ const COMMANDS: CommandSpec[] = [
         description: "Build then launch",
         flags: [{ name: "release", description: "Release build" }],
     },
+    {
+        name: "wine",
+        description: "Build Windows nsmbu.exe then launch under Wine",
+        flags: [
+            { name: "no-debug", description: "Release build without debug env" },
+            { name: "trace", description: "Trace launch" },
+        ],
+    },
     { name: "extract", description: "Extract game files" },
     { name: "record", description: "Record a course input log", noFiles: true },
     {
@@ -138,6 +146,7 @@ function fishCompletionScript(): string {
         "complete -c nsmbu -n '__nsmbu_seen replay' -a '(__nsmbu_replay_courses)' -d 'Course'",
         "complete -c nsmbu -n '__nsmbu_seen launch' -a '(__nsmbu_replay_courses)' -d 'Course'",
         "complete -c nsmbu -n '__nsmbu_seen run' -a '(__nsmbu_replay_courses)' -d 'Course'",
+        "complete -c nsmbu -n '__nsmbu_seen wine' -a '(__nsmbu_replay_courses)' -d 'Course'",
         "complete -c nsmbu -n '__nsmbu_seen open' -a '(__nsmbu_replay_courses)' -d 'Course'",
         "complete -c nsmbu -n '__nsmbu_seen open' -a '(for f in game/content/Common/course_res_pack/*.szs; test -e $f; and echo $f; end)' -d 'Course file'",
         "complete -c nsmbu -n '__nsmbu_seen open' -r -F",

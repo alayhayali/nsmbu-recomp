@@ -5,6 +5,8 @@ At release, move those notes to a version heading and leave Unreleased empty.
 
 ## Unreleased
 
+-   **Fix**: Leaving full screen no longer keeps a monitor-sized window.
+    If the restored size fills the display, the TV window is centred at a normal windowed size.
 -   **Change**: The installer progress screen uses a shorter overall bar.
     Details expands the log below the header.
 -   **Change**: The installer's 1.3.0 update folder is optional and labeled as such.

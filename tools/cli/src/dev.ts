@@ -52,7 +52,7 @@ export function cmdBuild(repo: string, release: boolean, sanitizer: boolean, res
 
 export function cmdLaunch(
     repo: string,
-    opts: { noDebug: boolean; trace: boolean; gdb: boolean; lldb: boolean },
+    opts: { noDebug: boolean; trace: boolean; gdb: boolean; lldb: boolean; wine?: boolean },
     rest: string[],
     extraEnv: Record<string, string> = {},
 ): void {
@@ -69,8 +69,22 @@ export function cmdLaunch(
     if (opts.lldb) {
         args.push("--lldb");
     }
+    if (opts.wine) {
+        args.push("--wine");
+    }
     args.push(...rest);
     runPython(repo, "tools/launch.py", args, extraEnv);
+}
+
+export function cmdWine(
+    repo: string,
+    opts: { noDebug: boolean; trace: boolean },
+    rest: string[],
+): void {
+    const buildArgs: string[] = opts.noDebug ? ["--release"] : [];
+    buildArgs.push(...rest);
+    runPythonInherit(repo, "tools/build_windows.py", buildArgs);
+    cmdLaunch(repo, { noDebug: opts.noDebug, trace: opts.trace, gdb: false, lldb: false, wine: true }, rest);
 }
 
 export function cmdRun(repo: string, release: boolean, rest: string[]): void {

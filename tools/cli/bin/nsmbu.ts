@@ -15,6 +15,7 @@ import {
     cmdReplay,
     cmdRun,
     cmdScripted,
+    cmdWine,
 } from "../src/dev.ts";
 import {
     cmdOpen,
@@ -70,6 +71,18 @@ async function main(): Promise<void> {
             case "run": {
                 const { flags, positional } = parseArgv(rest, ["release"], []);
                 cmdRun(repo, hasFlag(flags, "release"), positional);
+                break;
+            }
+            case "wine": {
+                const { flags, positional } = parseArgv(rest, ["no-debug", "trace"], []);
+                cmdWine(
+                    repo,
+                    {
+                        noDebug: hasFlag(flags, "no-debug"),
+                        trace: hasFlag(flags, "trace"),
+                    },
+                    positional,
+                );
                 break;
             }
             case "extract":

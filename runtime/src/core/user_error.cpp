@@ -24,7 +24,8 @@
 #include <commctrl.h>
 #include <shellapi.h>
 #include <windows.h>
-#elif defined(NSMBU_SDL_HOST)
+#endif
+#if defined(NSMBU_SDL_HOST)
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_messagebox.h>
 #include <SDL3/SDL_misc.h>
