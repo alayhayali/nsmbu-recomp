@@ -6,8 +6,6 @@ body:
     attributes:
       value: |
         Thanks for reporting! For problems **while playing**, please use the "In-game bug" form instead (it asks for your save file).
-
-        If a maintainer closed your issue and the problem comes back, comment `/reopen` on it (as the person who opened it) and it reopens automatically.
   - type: textarea
     id: what
     attributes:
@@ -32,16 +30,12 @@ body:
       description: The release (e.g. v0.2.1), or the commit if you built it yourself (`git rev-parse --short HEAD`).
     validations:
       required: true
-  - type: dropdown
+  - type: input
     id: platform
     attributes:
       label: Platform
-      options:
-        - Windows
-        - macOS
-        - Linux (x86-64)
-        - Linux (arm64)
-        - Android
+      description: Windows, macOS, Linux (x86-64), Linux (arm64), or Android. Report issue fills this for you.
+      placeholder: e.g. Windows
     validations:
       required: true
   - type: input
@@ -57,3 +51,5 @@ body:
       label: Logs
       description: |
         Setup failed: `data/setup.log` (portable) or use Copy log in the setup window. Crash: newest `crash-<date>-<time>.log` under `data/nsmbu/logs/` (or `~/.config/nsmbu/logs/` on AppImage). Full paths: https://github.com/nsmbu-recomp/nsmbu-recomp/blob/main/docs/logs.md — drag the file in here.
+    validations:
+      required: true

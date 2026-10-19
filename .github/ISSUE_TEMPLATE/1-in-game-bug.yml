@@ -8,8 +8,6 @@ body:
         Thanks for reporting. Say which world and course you were in.
 
         **Never share full save states** (`slotN.bin`). They contain the game's own code and data.
-
-        If a maintainer closed your issue and the problem comes back, comment `/reopen` on it (as the person who opened it) and it reopens automatically.
   - type: textarea
     id: what
     attributes:
@@ -45,16 +43,12 @@ body:
       description: The release (e.g. v0.2.1), or the commit if you built it yourself (`git rev-parse --short HEAD`).
     validations:
       required: true
-  - type: dropdown
+  - type: input
     id: platform
     attributes:
       label: Platform
-      options:
-        - Windows
-        - macOS
-        - Linux (x86-64)
-        - Linux (arm64)
-        - Android
+      description: Windows, macOS, Linux (x86-64), Linux (arm64), or Android. Report crash fills this for you.
+      placeholder: e.g. Windows
     validations:
       required: true
   - type: input
@@ -70,3 +64,5 @@ body:
       label: Logs
       description: |
         Crash: newest `crash-<date>-<time>.log`. Playing without a crash: `nsmbu.log`. Usual folder: `data/nsmbu/logs/` (portable release) or `nsmbu/logs/` (from source). AppImage: `~/.config/nsmbu/logs/`. Full paths: https://github.com/nsmbu-recomp/nsmbu-recomp/blob/main/docs/logs.md — drag the file in here.
+    validations:
+      required: true

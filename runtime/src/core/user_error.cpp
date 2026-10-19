@@ -354,6 +354,7 @@ std::string collect_logs_text(size_t max_bytes) {
 }
 
 std::string report_issue_url(const std::string& message, IssueKind kind) {
+    (void)message;
     const char* template_file =
         kind == IssueKind::InGame ? "1-in-game-bug.yml" : "2-setup-or-other-bug.yml";
     std::string version = build::version();
@@ -364,13 +365,6 @@ std::string report_issue_url(const std::string& message, IssueKind kind) {
         version += commit;
         version += ")";
     }
-    std::string logs;
-    logs += "=== error dialog ===\n";
-    logs += message;
-    logs += "\n\n=== log files ===\n";
-    logs += collect_logs_text(1200);
-    logs += "\n(Full logs: attach the newest file from the logs folder that opened with this report.)\n";
-    if (logs.size() > 3500) logs = logs.substr(0, 3500) + "\n…\n";
 
     std::string url = "https://github.com/nsmbu-recomp/nsmbu-recomp/issues/new?template=";
     url += template_file;
@@ -380,8 +374,6 @@ std::string report_issue_url(const std::string& message, IssueKind kind) {
     url += url_encode(platform_label());
     url += "&hardware=";
     url += url_encode(hardware_label());
-    url += "&logs=";
-    url += url_encode(logs);
     return url;
 }
 
@@ -429,15 +421,11 @@ void open_logs_folder() {
 void show_fatal(const std::string& message, IssueKind kind) {
     if (hidden()) return;
     const std::string body = wrap_message(message);
-    for (;;) {
-        const Choice c = ask(body);
-        if (c == kReport) {
-            const std::string url = report_issue_url(message, kind);
-            open_url(url.c_str());
-            open_logs_folder();
-            continue;
-        }
-        break;
+    const Choice c = ask(body);
+    if (c == kReport) {
+        const std::string url = report_issue_url(message, kind);
+        open_url(url.c_str());
+        open_logs_folder();
     }
 }
 

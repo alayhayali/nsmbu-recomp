@@ -8,6 +8,14 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
+### Changed
+
+- Report crash and Report issue leave Logs empty for you to attach, and fill Platform from this machine.
+
+### Fixed
+
+- Report crash closes the error dialog after opening GitHub and the logs folder.
+
 ## [0.5.0] - 2026-10-19
 
 ### Added
