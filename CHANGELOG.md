@@ -6,7 +6,7 @@ At release, move those notes to a version heading and leave Unreleased empty.
 ## Unreleased
 
 -   **Change**: The installer progress screen uses a shorter overall bar.
-    Details expands the log below the header and shrinks the step list to fit.
+    Details expands the log below the header.
 -   **Change**: The installer's 1.3.0 update folder is optional and labeled as such.
     You can install from the base disc alone.
     Mods still need the update.

@@ -1193,10 +1193,19 @@ static bool begin_confirm(const char* title) {
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSizeConstraints(ImVec2(420, 0), ImVec2(FLT_MAX, FLT_MAX));
-    if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) return false;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, ImGui::GetStyle().PopupRounding);
+    if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+        ImGui::PopStyleVar();
+        return false;
+    }
     heading(title, 20);
     ImGui::Spacing();
     return true;
+}
+
+static void end_confirm() {
+    ImGui::EndPopup();
+    ImGui::PopStyleVar();
 }
 
 static bool details_header() {
@@ -1610,14 +1619,13 @@ static void screen_installing() {
     ImGui::Spacing();
     float gap = ImGui::GetStyle().ItemSpacing.y;
     float line = ImGui::GetTextLineHeightWithSpacing();
-    float details_reserve = ImGui::GetFrameHeightWithSpacing() + gap;
+    float header_h = ImGui::GetFrameHeightWithSpacing() + gap;
     float log_h = 0;
     if (details_open) {
-        float avail = std::max(0.0f, space_above_footer() - details_reserve);
-        log_h = std::clamp(avail * 0.4f, line * 6, std::max(line * 6, avail * 0.55f));
-        details_reserve += log_h + gap;
+        float avail = std::max(0.0f, space_above_footer() - header_h);
+        log_h = std::clamp(avail * 0.4f, line * 6, std::max(line * 6, avail * 0.5f));
     }
-    float step_avail = std::max(80.0f, space_above_footer() - details_reserve);
+    float step_avail = std::max(80.0f, space_above_footer() - header_h - (log_h > 0 ? log_h + gap : 0));
     ImGui::BeginChild("steps", ImVec2(0, step_avail), ImGuiChildFlags_Borders);
     float icon_pad = ImGui::GetFontSize() * 1.1f + ImGui::GetStyle().ItemSpacing.x;
     for (auto& s : A.steps) {
@@ -1727,7 +1735,7 @@ static void screen_save() {
         }
         ImGui::SameLine();
         if (button("Keep my save", ImVec2(160, 0))) ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
+        end_confirm();
     }
     bool can = A.save_kind == 0 || A.save_kind == 2 || !A.save_path.empty();
     int b = footer({A.save_kind == 0 ? "Continue" : "Import"}, 0, (can && !busy()) ? 0 : 1);
@@ -2377,7 +2385,7 @@ int main(int argc, char** argv) {
             }
             ImGui::SameLine();
             if (button("Continue", ImVec2(180, 0))) ImGui::CloseCurrentPopup();
-            ImGui::EndPopup();
+            end_confirm();
         }
         ImGui::End();
         ImGui::Render();
