@@ -10,7 +10,7 @@ Use the `changelog` skill when editing.
 
 ### Changed
 
-- Report crash and Report issue leave Logs empty for you to attach, and fill Platform from this machine.
+- Report crash and Report issue leave Logs empty for you to attach, fill Platform from this machine, and put the error dialog text in From the app.
 
 ### Fixed
 

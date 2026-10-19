@@ -354,7 +354,6 @@ std::string collect_logs_text(size_t max_bytes) {
 }
 
 std::string report_issue_url(const std::string& message, IssueKind kind) {
-    (void)message;
     const char* template_file =
         kind == IssueKind::InGame ? "1-in-game-bug.yml" : "2-setup-or-other-bug.yml";
     std::string version = build::version();
@@ -365,6 +364,8 @@ std::string report_issue_url(const std::string& message, IssueKind kind) {
         version += commit;
         version += ")";
     }
+    std::string app_info = message;
+    if (app_info.size() > 2000) app_info = app_info.substr(0, 2000) + "\n…\n";
 
     std::string url = "https://github.com/nsmbu-recomp/nsmbu-recomp/issues/new?template=";
     url += template_file;
@@ -374,6 +375,8 @@ std::string report_issue_url(const std::string& message, IssueKind kind) {
     url += url_encode(platform_label());
     url += "&hardware=";
     url += url_encode(hardware_label());
+    url += "&app_info=";
+    url += url_encode(app_info);
     return url;
 }
 

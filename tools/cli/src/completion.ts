@@ -30,6 +30,11 @@ const COMMANDS: CommandSpec[] = [
         ],
     },
     {
+        name: "crash",
+        description: "Crash on purpose to test the Report crash dialog",
+        noFiles: true,
+    },
+    {
         name: "run",
         description: "Build then launch",
         flags: [{ name: "release", description: "Release build" }],

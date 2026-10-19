@@ -832,10 +832,15 @@ static std::string setup_hardware_label() {
 static void open_folder(const std::string& path);
 
 static void report_issue() {
+    std::string err = !A.error_msg.empty() ? A.error_msg : A.fatal;
+    if (!A.fatal_hint.empty()) err += (err.empty() ? "" : "\n\n") + A.fatal_hint;
+    if (err.empty()) err = "Setup failed (see logs).";
+    if (err.size() > 2000) err = err.substr(0, 2000) + "\n…\n";
     std::string url = "https://github.com/nsmbu-recomp/nsmbu-recomp/issues/new?template=2-setup-or-other-bug.yml";
     url += "&version=" + url_encode(A.version);
     url += "&platform=" + url_encode(setup_platform_label());
     url += "&hardware=" + url_encode(setup_hardware_label());
+    url += "&app_info=" + url_encode(err);
     if (!SDL_OpenURL(url.c_str())) show_toast(std::string("Could not open the browser: ") + SDL_GetError());
     std::string folder = A.data_dir;
     if (folder.empty() && !A.log_path.empty()) {

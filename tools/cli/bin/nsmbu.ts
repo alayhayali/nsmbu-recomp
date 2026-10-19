@@ -4,6 +4,7 @@ import { HELP } from "../src/help.ts";
 import { flagString, hasFlag, parseArgv } from "../src/parse.ts";
 import {
     cmdBuild,
+    cmdCrash,
     cmdExtract,
     cmdInstaller,
     cmdLaunch,
@@ -68,6 +69,9 @@ async function main(): Promise<void> {
                 );
                 break;
             }
+            case "crash":
+                cmdCrash(repo);
+                break;
             case "run": {
                 const { flags, positional } = parseArgv(rest, ["release"], []);
                 cmdRun(repo, hasFlag(flags, "release"), positional);

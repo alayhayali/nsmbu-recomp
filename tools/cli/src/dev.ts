@@ -76,6 +76,12 @@ export function cmdLaunch(
     runPython(repo, "tools/launch.py", args, extraEnv);
 }
 
+export function cmdCrash(repo: string): void {
+    cmdLaunch(repo, { noDebug: false, trace: false, gdb: false, lldb: false }, [], {
+        NSMBU_TEST_HOST_CRASH: "1",
+    });
+}
+
 export function cmdWine(
     repo: string,
     opts: { noDebug: boolean; trace: boolean },

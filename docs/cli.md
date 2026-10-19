@@ -77,6 +77,7 @@ The CLI exports `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout 
 | --- | --- |
 | `nsmbu build` / `build --release` / `build --sanitizer` | `tools/build.py` |
 | `nsmbu launch` (+ `--no-debug`, `--trace`, `--gdb`, `--lldb`) | `tools/launch.py` |
+| `nsmbu crash` | launch with `NSMBU_TEST_HOST_CRASH=1` to exercise the Report crash dialog |
 | `nsmbu wine` (+ `--no-debug`, `--trace`) | cross-build `build/windows/nsmbu.exe` then `tools/launch.py --wine` |
 | `nsmbu run` / `run --release` | build then launch |
 | `nsmbu extract` | `tools/extract.py` |

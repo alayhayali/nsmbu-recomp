@@ -63,6 +63,21 @@ body:
     attributes:
       label: Logs
       description: |
-        Crash: newest `crash-<date>-<time>.log`. Playing without a crash: `nsmbu.log`. Usual folder: `data/nsmbu/logs/` (portable release) or `nsmbu/logs/` (from source). AppImage: `~/.config/nsmbu/logs/`. Full paths: https://github.com/nsmbu-recomp/nsmbu-recomp/blob/main/docs/logs.md — drag the file in here.
+        Drag the log file in below.
+
+        - Crash: newest `crash-<date>-<time>.log`
+        - No crash: `nsmbu.log`
+        - Portable: `data/nsmbu/logs/`
+        - From source: `nsmbu/logs/`
+        - AppImage: `~/.config/nsmbu/logs/`
+
+        Full paths: https://github.com/nsmbu-recomp/nsmbu-recomp/blob/main/docs/logs.md
     validations:
       required: true
+  - type: textarea
+    id: app_info
+    attributes:
+      label: From the app
+      description: Filled by Report crash with the error dialog text. Leave blank if you opened this form yourself.
+    validations:
+      required: false

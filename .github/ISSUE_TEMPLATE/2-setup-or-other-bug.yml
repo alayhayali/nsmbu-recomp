@@ -50,6 +50,19 @@ body:
     attributes:
       label: Logs
       description: |
-        Setup failed: `data/setup.log` (portable) or use Copy log in the setup window. Crash: newest `crash-<date>-<time>.log` under `data/nsmbu/logs/` (or `~/.config/nsmbu/logs/` on AppImage). Full paths: https://github.com/nsmbu-recomp/nsmbu-recomp/blob/main/docs/logs.md — drag the file in here.
+        Drag the log file in below.
+
+        - Setup failed: `data/setup.log` (portable), or Copy log in the setup window
+        - Crash: newest `crash-<date>-<time>.log` under `data/nsmbu/logs/`
+        - AppImage: `~/.config/nsmbu/logs/`
+
+        Full paths: https://github.com/nsmbu-recomp/nsmbu-recomp/blob/main/docs/logs.md
     validations:
       required: true
+  - type: textarea
+    id: app_info
+    attributes:
+      label: From the app
+      description: Filled by Report issue with the error dialog text. Leave blank if you opened this form yourself.
+    validations:
+      required: false
