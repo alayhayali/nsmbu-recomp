@@ -49,7 +49,7 @@ python3 tools/installer/test_setup.py
 python3 tools/recomp/test_builds.py
 ```
 
-`tools/git/pre-push` runs a full local `ctest` before a push.
+`.git-hooks/pre-push` runs a full local `ctest` before a push.
 
 Profiling follows `.agents/skills/perf/SKILL.md`.
 

@@ -20,7 +20,6 @@ trace_dump.txt
 /nsmbu/
 /save/
 compile_commands.json
-.cache/
 frame_*.png
 failed_shader_*.metal
 shaders/

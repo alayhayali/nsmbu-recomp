@@ -11,7 +11,7 @@ description: >-
 
 Ship a versioned GitHub Release from `main` by pushing a `v*` tag.
 The workflow is `.github/workflows/release.yml`.
-Local pushes run `tools/git/pre-push`, which builds and runs the full `ctest` suite (path-alias tests such as `mod_content_startup` first).
+Local pushes run `.git-hooks/pre-push`, which builds and runs the full `ctest` suite (path-alias tests such as `mod_content_startup` first).
 
 ## Steps
 

@@ -8,5 +8,7 @@
     "editor.defaultFormatter": "JohnnyMorganz.stylua",
     "editor.formatOnSave": true
   },
-  "stylua.searchParentConfig": true
+  "stylua.searchParentConfig": true,
+  "clangd.arguments": ["--compile-commands-dir=${workspaceFolder}/.tmp"],
+  "git.repositoryScanMaxDepth": 2
 }

@@ -74,6 +74,17 @@ def gen_is_stub(gen):
     with open(report, encoding="utf-8", errors="replace") as handle:
         return handle.readline().startswith("placeholder from stubgen.py")
 
+def link_compile_commands(build_dir):
+    src = os.path.join(build_dir, "compile_commands.json")
+    if not os.path.isfile(src):
+        return
+    tmp = os.path.join(ROOT, ".tmp")
+    os.makedirs(tmp, exist_ok=True)
+    dst = os.path.join(tmp, "compile_commands.json")
+    if os.path.lexists(dst):
+        os.remove(dst)
+    os.symlink(os.path.relpath(src, tmp), dst)
+
 def ensure_gen_dir():
     gen = os.path.join(ROOT, "build", "gen")
     rpx = os.path.join(ROOT, "game", "code", "red-pro2.rpx")
@@ -162,6 +173,7 @@ def main():
         cmake.append("-DNSMBU_SETUP_GUI=ON")
     cmake.extend(extra)
     subprocess.run(cmake, check=True, cwd=ROOT)
+    link_compile_commands(build_dir)
     subprocess.run(
         ["cmake", "--build", build_dir, "--target", args.target, "-j", str(args.jobs)],
         check=True,

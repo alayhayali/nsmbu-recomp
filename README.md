@@ -29,9 +29,9 @@ Combo packs are title version 0 (no separate update folder) and support mods.
 |--------|----------|---------------|--------|
 | USA | `00050000-10101d00` | 64 (1.3.0) | Supported and playtested |
 | USA base disc | `00050000-10101d00` | 0 | Supported; mods not supported |
-| Europe | `00050000-10101e00` | 80 (1.3.0) | Supported; map derived, recomp and installer checked |
-| USA combo (NSMBU + NSLU) | `00050000-1014b700` | 0 | Supported; map derived, recomp and headless boot checked |
-| Europe combo (NSMBU + NSLU) | `00050000-1014b800` | 0 | Supported; map derived, recomp and headless boot checked |
+| Europe | `00050000-10101e00` | 80 (1.3.0) | Supported |
+| USA combo (NSMBU + NSLU) | `00050000-1014b700` | 0 | Supported |
+| Europe combo (NSMBU + NSLU) | `00050000-1014b800` | 0 | Supported |
 | Japan | `00050000-10101c00` | — | Not supported yet |
 
 ## Install
@@ -46,8 +46,8 @@ Start **NSMBU**:
 |--------|----------------|
 | macOS, Apple Silicon, macOS 14 or newer | `NSMBU.app` |
 | Windows, x86-64, Windows 10 or 11, Vulkan | `NSMBU.exe` |
-| Linux, x86-64, glibc 2.35 or newer, Vulkan | `nsmbu-launcher` in the `linux-x86_64` zip |
-| Linux, arm64, glibc 2.35 or newer, Vulkan | `nsmbu-launcher` in the `linux-aarch64` zip |
+| Linux, x86-64, glibc 2.35 or newer, Vulkan | `nsmbu-launcher`  |
+| Linux, arm64, glibc 2.35 or newer, Vulkan | `nsmbu-launcher`   |
 
 The first start opens the installer.
 Each later start launches the game.
