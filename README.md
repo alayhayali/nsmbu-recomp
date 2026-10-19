@@ -121,6 +121,9 @@ The built game, game files, saves, and settings stay in `data/` inside that fold
 Keep `NSMBU.app` inside the unzipped folder on macOS.
 Move the whole folder when you want the game in another place.
 
+Run, crash, and setup logs for bug reports are listed in [docs/logs.md](docs/logs.md).
+A portable release keeps them under `data/nsmbu/logs/` and `data/setup.log`.
+
 ### If the system blocks the app
 
 **macOS** — the app is unsigned.

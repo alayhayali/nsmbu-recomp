@@ -77,4 +77,4 @@ body:
     attributes:
       label: Logs
       description: |
-        If the game crashed: the newest `crash-<date>-<time>.log` from `data/nsmbu/logs/` (release) or `nsmbu/logs/` (built from source). If the setup failed: `data/setup.log`. Drag the file in here.
+        Crash: newest `crash-<date>-<time>.log`. Playing without a crash: `nsmbu.log`. Usual folder: `data/nsmbu/logs/` (portable release) or `nsmbu/logs/` (from source). AppImage: `~/.config/nsmbu/logs/`. Full paths: https://github.com/nsmbu-recomp/nsmbu-recomp/blob/main/docs/logs.md — drag the file in here.

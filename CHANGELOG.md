@@ -5,6 +5,7 @@ At release, move those notes to a version heading and leave Unreleased empty.
 
 ## Unreleased
 
+-   **Add**: [docs/logs.md](docs/logs.md) lists where run, crash, and setup logs live for bug reports (portable release, AppImage, and builds from source).
 -   **Add**: Intro-skip modding docs now cover the save and file-loading internals: the `SaveData` block layout with CRC trailers, the `SaveMgr` load and save state machine (`rp_savedata.dat`, `rp_personal_savedata.dat`, challenge replays), and the boot popup decide chain. Decompiled sources are in `decomp/src/system/SaveMgr.cpp`.
 -   **Add**: The USA base disc (title version 0) works without the 1.3.0 update.
     Mods are not supported on that build; the Mods tab says so.

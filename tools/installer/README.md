@@ -16,7 +16,7 @@ A release folder contains `portable.txt`. Then everything stays in `<release>/da
 | `data/game/` | game files extracted from a disc image or Cemu archive (an extracted folder chosen by the player is used where it is) |
 | `data/nsmbu/save/` | saves |
 | `data/nsmbu/` | settings, controls, graphics options, save states, shader caches (`host::portable_user_dir()`) |
-| `data/nsmbu/logs/` | crash logs and run logs (the game runs in `data/`) |
+| `data/nsmbu/logs/` | crash logs and run logs (the game runs in `data/`); player paths for bug reports are in [docs/logs.md](../../docs/logs.md) |
 | `data/install.json`, `data/setup.log` | what was prepared (paths inside `data/` relative, so the folder can move), and the setup log |
 | `data/toolchain/`, `data/python/` | the downloaded compiler (Windows, Linux; kept by default for repair) and Python (Linux without Python 3; the Windows release ships its Python in `tools/python`) |
 
