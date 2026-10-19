@@ -8,6 +8,10 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
+### Added
+
+- Collision Viewer in the settings debug tab draws solid tiles and actor solids in blue and actor hitboxes in red.
+
 ### Changed
 
 - Mods run on LuaJIT and load `.lua` scripts.

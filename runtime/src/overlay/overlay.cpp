@@ -47,6 +47,7 @@ namespace gfxvk { bool buffer_cache_enabled(); }
 #include "audio/audio_out.h"
 #include "input/rumble.h"
 #include "hooks/interp.h"
+#include "hooks/collision_wireframe.h"
 #include "core/runtime.h"
 #include "save/savestate.h"
 #include "gfx/screenshot.h"
@@ -1345,6 +1346,15 @@ void choose_language(int language) {
 }
 
 void tab_debug() {
+    heading("Course debug");
+    bool v;
+    const bool env_locked = env::COLLISION_VIEWER.present();
+    if (check("Collision Viewer", collision_wireframe::enabled(), &v, !env_locked)) {
+        collision_wireframe::set_enabled(v);
+        hostui::post([v] { hostui::set("collisionViewer", v ? "1" : "0"); });
+    }
+    if (env_locked) help("NSMBU_COLLISION_VIEWER is set for this start and takes precedence.");
+    else help("Draw solid tiles in blue and actor hitboxes in red over the course.");
 }
 
 void tab_about() {
@@ -1614,6 +1624,8 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         std::string v;
         if (hostui::get("perfOverlay", v)) g_perf = v == "1";
         if (hostui::get("perfDetail", v)) g_perf_detail = v == "1";
+        if (!env::COLLISION_VIEWER.present() && hostui::get("collisionViewer", v))
+            collision_wireframe::set_enabled(v == "1");
 
         if (!env::PRO_CONTROLLER() && hostui::get("proController", v))
             hostui::post([pro = v == "1"] { hostui::set_pro_controller(pro); });
@@ -1680,10 +1692,11 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
     read_controller();
 
     const bool open = is_open(), perf = perf_shown(), text = !open && text_entry::active();
+    const bool coll = collision_wireframe::enabled();
 
     const std::string toast = open ? std::string() : ss::last_message();
     U.linearized = false;
-    if (!open && !perf && !text && toast.empty()) {
+    if (!open && !perf && !text && toast.empty() && !coll) {
         if (U.init) {
             std::lock_guard<std::mutex> lk(g_mu);
             g_events.clear();
@@ -1737,6 +1750,10 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         }
     }
     if (perf) perf_window(open);
+    if (coll) {
+        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(1, 1), IM_COL32(0, 0, 0, 1));
+        collision_wireframe::draw(ImGui::GetForegroundDrawList(), io.DisplaySize.x, io.DisplaySize.y);
+    }
     if (!toast.empty()) {
         ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y - 24), ImGuiCond_Always, ImVec2(0.5f, 1.0f));
         ImGui::SetNextWindowBgAlpha(0.7f);
