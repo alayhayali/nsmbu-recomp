@@ -141,6 +141,33 @@ grep -rn "setNextScene" references/headers
 | `0x0297EC3C` | `MenuScene::confirmFile` | `kAppConfirmFile`, story vs challenge |
 | `0x029872BC` | save continue into `CourseSelectTask` | `kOpenFirstSave`, intro skip |
 | `0x029D7648` | apply a save file onto `MainGame` | `kApplySaveFile`, intro skip |
+| `0x029D714C` | `SaveMgr` write `header.last_file` | pairs with the apply in native callers |
+| `0x029D727C` | sanitize a save record (clamp fields) | called by the apply |
+| `0x029D7200` | write default player character/color tables | called by the apply |
+| `0x024C2230` | map-entry setup from `FieldGameData` | called by the apply |
+| `0x024C203C` | `FieldGameData` write coin count (`+0x134`) | called by the apply |
+| `0x024C1FC4` | apply record `+0x10..0x13` flags to player entry 0 | called by the apply |
+| `0x029CF2D0` | reset `MainGame` run state (new game) | called by the apply |
+| `0x029CF590` | copy record player/Mii setup into `MainGame` | called by the apply |
+| `0x029D6E8C` | `SaveMgr` init savedata to defaults | load error epilogue |
+| `0x029D914C` | `SaveMgr` load `save://rp_savedata.dat` | state 1 |
+| `0x029D94C4` | `SaveMgr` add elapsed play time | after load |
+| `0x029D9560` | `SaveMgr` save `save://rp_savedata.dat` | state 2 |
+| `0x029D97BC` | `SaveMgr` load `save://rp_challenge_replay%02d.dat` | state 3 |
+| `0x029D994C` | `SaveMgr` save `save://rp_challenge_replay%02d.dat` | state 4 |
+| `0x029D9AD8` | `SaveMgr` load `save_act://rp_personal_savedata.dat` | state 5 |
+| `0x029D9CBC` | `SaveMgr` save `save_act://rp_personal_savedata.dat` | state 6 |
+| `0x029D9E30` | `SaveMgr` state dispatch | states 1..6 |
+| `0x029E2924` | verify a `SaveData` block CRC trailer | all loads |
+| `0x029E2994` | recompute and store a `SaveData` block CRC trailer | all saves |
+| `0x029F19C4` | CRC32 over a block (poly `0xEDB88320`) | CRC helpers |
+| `0x0298A300` | file-select task state enter, page 1 (pane `0x29`) | boot popup |
+| `0x0298A33C` | file-select task state execute, page 1 | boot popup decide |
+| `0x0298A3F8` | file-select task state: kick `SaveMgr` write | boot popup |
+| `0x0298A404` | file-select task state: wait `SaveMgr` write done | boot popup |
+| `0x0298A428` | file-select task state enter, page 2 (pane `0x2A`) | boot popup |
+| `0x0298A464` | file-select task state execute, page 2 | boot popup decide |
+| `0x0298A524` | task state: request the file-select task factory | flow side |
 | `0x0297F3CC` | `ChallengeSelectScene::ChallengeSelectScene` (ctor) | time-attack scene body |
 | `0x024CD904` | `SubjectMgr::clearSubject` | clears `mMode` |
 | `0x024CE594` | `SubjectMgr::selectSaveFile` | sets `mSelectedFile` and `mMode` |
