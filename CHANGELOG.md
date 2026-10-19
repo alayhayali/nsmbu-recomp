@@ -20,32 +20,29 @@ At release, move those notes to a version heading and leave Unreleased empty.
     Setup error screens also offer Report issue.
 -   **Fix**: Setup and the game refuse an update-only dump (`0005000e…` / missing base courses)
     with a clear message instead of crashing on startup.
--   **Add**: [docs/logs.md](docs/logs.md) lists where run, crash, and setup logs live for bug reports
-    (portable release, AppImage, and builds from source).
--   **Add**: Intro-skip modding docs now cover the save and file-loading internals: the `SaveData` block layout with CRC trailers, the `SaveMgr` load and save state machine (`rp_savedata.dat`, `rp_personal_savedata.dat`, challenge replays), and the boot popup decide chain. Decompiled sources are in `decomp/src/system/SaveMgr.cpp`.
+-   **Add**: The Europe game (title `00050000-10101e00`, title version 80 / **1.3.0**) works.
+-   **Add**: The USA NSMBU + NSLU pack (title `00050000-1014b700`, title version 0) works.
+-   **Add**: The Europe NSMBU + NSLU pack (title `00050000-1014b800`, title version 0) works.
 -   **Add**: The USA base disc (title version 0) works without the 1.3.0 update.
     Mods are not supported on that build; the Mods tab says so.
     Prefer the 1.3.0 update (title version 64) for mods and the usual install path.
+-   **Add**: The installer Keys screen lets you paste the disc key as 32 hex digits, like the common key.
+-   **Add**: Mods can use a radio option (one button per choice) with its own label.
 -   **Change**: Save state files carry neutral names: portable states are `slotN.nsstate` (was `slotN.wwstate`) and full states are written with a new file magic, so full states saved by older versions no longer load.
--   **Remove**: The experimental language source: the installer option, `NSMBU_LANGUAGE_REGION`, `NSMBU_LANG_DIR`, and the "From your European or Japanese game" settings entries are gone.
 -   **Change**: The installer's save import looks for NSMBU save files (`rp_personal_savedata.dat` and `rp_savedata.dat`).
--   **Fix**: The bug report copy names the real NSMBU save files.
--   **Add**: The Europe game (title `00050000-10101e00`, title version 80 / **1.3.0**) works through a USA address map.
--   **Add**: The USA NSMBU + NSLU pack (title `00050000-1014b700`, title version 0) works through a USA address map that allows the pack's inserted functions.
--   **Add**: The Europe NSMBU + NSLU pack (title `00050000-1014b800`, title version 0) works the same way.
+-   **Change**: The installer Keys screen fits the default window: denser disc summary and side-by-side key panels.
+-   **Change**: Mod enable flags and settings live in one `mods.json` file.
+    Older profile-based files still load; the next save writes the flat file.
+-   **Remove**: The experimental language source: the installer option and the "From your European or Japanese game" settings entries are gone.
 -   **Fix**: After a hitch, the game no longer sticks at 30 fps.
     Frame pacing follows the display refresh so courses can hold 60 fps.
 -   **Fix**: World-map paths stay above the hill instead of sinking into the ground.
 -   **Fix**: Closing the in-game error viewer no longer pauses the world map or leaves it slow.
 -   **Fix**: Large course textures no longer re-upload every frame when only a small part changes.
 -   **Fix**: The installer Keys and update screen shows the disc name, title id, size, and update checksum when those files are present.
--   **Add**: The installer Keys screen lets you paste the disc key as 32 hex digits, like the common key.
--   **Change**: The installer Keys screen fits the default window: denser disc summary and side-by-side key panels.
+-   **Fix**: The bug report copy names the real NSMBU save files.
 -   **Fix**: Dropping a Cemu content or graphics pack no longer writes a `manifest.json` into that pack folder.
 -   **Fix**: Number options in the Mods tab follow their step size.
--   **Add**: Mods can use a radio option (one button per choice) with its own label.
--   **Change**: Mod enable flags and settings live in one `mods.json` file.
-    Older profile-based files still load; the next save writes the flat file.
 
 ## 0.4.2
 
