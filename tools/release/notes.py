@@ -4,7 +4,7 @@
 usage: notes.py README.md VERSION SHA256SUMS.txt > notes.md
 
 VERSION is the tag (v0.1) or the changelog heading (0.1).
-The notes take the matching "## 0.1" block from CHANGELOG.md next to the README.
+The notes take the matching "## [0.1]" / "## 0.1" block from CHANGELOG.md next to the README.
 """
 import os
 import re
@@ -15,7 +15,12 @@ def changelog_version(readme, version):
     with open(path, encoding="utf-8") as f:
         text = f.read()
     ver = version[1:] if version.startswith("v") else version
-    m = re.search(r"^## %s\s*$\n(.*?)(?=^## |\Z)" % re.escape(ver), text, re.S | re.M)
+    m = re.search(
+        r"^## (?:\[%s\]|%s)(?:\s+-\s+\d{4}-\d{2}-\d{2})?\s*$\n(.*?)(?=^## |\Z)"
+        % (re.escape(ver), re.escape(ver)),
+        text,
+        re.S | re.M,
+    )
     return m.group(1).strip() if m else ""
 
 def main():

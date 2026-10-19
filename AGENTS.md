@@ -13,9 +13,7 @@ The `nsmbu` cli is installed and can be used to interact with the game.
 
 ## Changelog
 
-- Should only contain user facing update.
-- Exclude cli and tools changes for example.
-- Always update unreleased with changes use it as a raw log for cleanup later when releasing.
+When editing `CHANGELOG.md`, use the `changelog` skill.
 
 ## Code style
 

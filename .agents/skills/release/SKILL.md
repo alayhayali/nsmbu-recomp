@@ -1,11 +1,6 @@
 ---
 name: release
-description: >-
-  Cut an NSMBU GitHub release: move CHANGELOG Unreleased to a version, local
-  verify (ctest, installer test_setup, test_builds, nsmbu installer smoke),
-  commit, push tag v*, and watch the release workflow. Use when the user asks to
-  release, prepare a release, cut a version, push a release tag, watch release
-  CI, or rerun a release until it is published and green.
+description: "Cut an NSMBU GitHub release: move CHANGELOG Unreleased to a version, local verify (ctest, installer test_setup, test_builds, nsmbu installer smoke), commit, push tag v*, and watch the release workflow. Use when the user asks to release, prepare a release, cut a version, push a release tag, watch release CI, or rerun a release until it is published and green."
 ---
 
 # Release
@@ -18,11 +13,11 @@ Local pushes run `.git-hooks/pre-push`, which builds and runs the full `ctest` s
 
 1. Confirm the version string with the user if they did not name one (example `0.4.0`).
    The git tag is `v` plus that string (`v0.4.0`).
-   The CHANGELOG heading is the string without `v` (`## 0.4.0`).
+   The CHANGELOG heading is Keep a Changelog form without `v` (`## [0.4.0] - YYYY-MM-DD`).
 2. On a clean intent to release from current work:
-   - Move every note under `## Unreleased` in `CHANGELOG.md` under a new `## X.Y.Z` heading.
-   - Leave `## Unreleased` empty above it.
-   - Keep only player-facing notes (drop tools, CI, `docs/…` internals, developer env vars).
+   - Follow the `changelog` skill to clean and order Unreleased, then move that block under a new `## [X.Y.Z] - YYYY-MM-DD` heading (ISO date).
+   - Leave `## [Unreleased]` empty above it.
+   - Update the compare links at the bottom of `CHANGELOG.md`.
    - Commit that change with any other release-ready files the user asked to include.
 3. Local verify (required before push or tag).
    Prefer a configure with `-DNSMBU_SETUP_GUI=ON` (`build/linux` from pre-push shape, or `build/release` after `nsmbu installer`).
@@ -63,7 +58,7 @@ Done when local verify passed, the tag is on `origin`, the release workflow conc
 ## Rules
 
 - Tag pattern must be `v*` or the workflow does not publish.
-- `tools/release/notes.py` copies the matching `## X.Y.Z` block from `CHANGELOG.md` into the GitHub Release body.
+- `tools/release/notes.py` copies the matching `## [X.Y.Z]` block from `CHANGELOG.md` into the GitHub Release body.
   That heading must exist before the tag build publishes.
 - Do not create an empty version heading.
 - Do not push a tag that already exists on `origin` without an explicit retag request (or an until-green / rerun request that implies retag).
