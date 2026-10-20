@@ -7,6 +7,7 @@ Usage:
   nsmbu wine [--no-debug] [--trace] [slot|course] […]
   nsmbu run [--release] [slot|course] […]
   nsmbu extract […]
+  nsmbu save <save.dat|save.json> [output] [--output PATH]
   nsmbu record <course> […]
   nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course> […]
   nsmbu profile […]

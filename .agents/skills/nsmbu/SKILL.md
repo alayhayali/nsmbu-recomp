@@ -41,6 +41,7 @@ If `nsmbu open` refuses because a game is already running, run `nsmbu status` or
 | Measured Release course | `replay --release <course>` |
 | Uncapped course, stop at a frame | `replay --release --uncapped --exit-at N <course>` |
 | Scripted boot and frame PNGs | `scripted <name>` |
+| Convert save data to JSON or back | `save <save.dat\|save.json>` |
 | Look and tap | `open` -> `status` / `screenshot` -> `press` / `stick` -> `wait` -> `close` |
 | Open a course file | `open game/content/Common/course_res_pack/1-27.szs` |
 

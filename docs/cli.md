@@ -81,12 +81,28 @@ The CLI exports `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout 
 | `nsmbu wine` (+ `--no-debug`, `--trace`) | cross-build `build/windows/nsmbu.exe` then `tools/launch.py --wine` |
 | `nsmbu run` / `run --release` | build then launch |
 | `nsmbu extract` | `tools/extract.py` |
+| `nsmbu save <save.dat\|save.json> [output] [--output PATH]` | convert `rp_savedata.dat` to JSON and back |
 | `nsmbu record <course>` / `replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course>` | env + launch (see [automation.md](automation.md)) |
 | `nsmbu profile` / `perf` | profiling helpers |
 | `nsmbu installer` / `lint` / `recomp` | installer, TypeScript mod build, recomp only |
 | `nsmbu scripted <name>` | wraps `tools/scripted-run.sh` |
 
 Run `nsmbu` with no arguments (or `--help`) for the full list.
+
+### Save data
+
+`nsmbu save` converts `rp_savedata.dat` to JSON and back.
+Pass the save file to produce JSON next to it; pass the JSON to produce a `.dat` file.
+
+```
+nsmbu save .tmp/menutr2/save/common/rp_savedata.dat
+nsmbu save .tmp/menutr2/save/common/rp_savedata.json
+nsmbu save in.dat out.json
+```
+
+The JSON keeps every unknown and padding byte, so a JSON to `.dat` to JSON round trip is lossless.
+No CRC32 fields appear in the JSON; the structural checksums are recomputed when writing the `.dat` file so the game still accepts it.
+Non-finite `f32` values (star coin coordinates) are written as `0x`-prefixed 32-bit hex.
 
 ## Agent control
 

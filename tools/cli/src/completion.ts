@@ -48,6 +48,11 @@ const COMMANDS: CommandSpec[] = [
         ],
     },
     { name: "extract", description: "Extract game files" },
+    {
+        name: "save",
+        description: "Convert save data to JSON and back",
+        flags: [{ name: "output", description: "Write to PATH", takesFile: true }],
+    },
     { name: "record", description: "Record a course input log", noFiles: true },
     {
         name: "replay",
@@ -164,6 +169,8 @@ function fishCompletionScript(): string {
         "complete -c nsmbu -n '__nsmbu_seen wait' -l frame -r -f -d 'Wait until frame N'",
         "complete -c nsmbu -n '__nsmbu_seen wait' -l step -r -f -d 'Wait until logic step N'",
         "complete -c nsmbu -n '__nsmbu_seen wait' -l timeout -r -f -d 'Timeout seconds'",
+        "",
+        "complete -c nsmbu -n '__nsmbu_seen save' -r -F",
         "",
         "complete -c nsmbu -n '__nsmbu_seen screenshot' -r -F",
         "",

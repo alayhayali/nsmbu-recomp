@@ -28,6 +28,7 @@ import {
     cmdWait,
 } from "../src/agent/commands.ts";
 import { cmdCompletion } from "../src/completion.ts";
+import { cmdSave } from "../src/save.ts";
 
 async function main(): Promise<void> {
     const argv = process.argv.slice(2);
@@ -92,6 +93,18 @@ async function main(): Promise<void> {
             case "extract":
                 cmdExtract(repo, rest);
                 break;
+            case "save": {
+                const { flags, positional } = parseArgv(rest, ["output"], ["output"]);
+                const [input, output] = positional;
+                if (!input) {
+                    throw new Error("usage: nsmbu save <save.dat|save.json> [output] [--output PATH]");
+                }
+                if (positional.length > 2) {
+                    throw new Error("usage: nsmbu save <save.dat|save.json> [output] [--output PATH]");
+                }
+                cmdSave(input, flagString(flags, "output") ?? output);
+                break;
+            }
             case "record": {
                 const [course, ...launchRest] = rest;
                 if (!course) {
