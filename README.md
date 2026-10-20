@@ -7,15 +7,47 @@
 > [!NOTE]
 > This project is made with the help of AI agents.
 
-This is a native port of the Wii U game.
-The installer translates the PowerPC code to C on your computer.
-Cafe OS and GX2 run as native code.
-Linux and Windows use Vulkan.
-macOS uses Metal.
+This project compiles Wii U game assets into a standalone, native executable.  
+The release package includes the necessary runtime, build tools, and installer script.  
+You must supply your own copy of the game files, disc image, and encryption keys.  
 
-You supply your own copy of the game.
-A release contains the runtime, the tools, and the installer.
-You supply the disc image, the keys, and the game files.
+## Controls
+
+Press `` ` `` or `F12` to open the settings overlay.
+**F1**–**F5** load save states; **Shift+F1**–**F5** save.
+Open **Audio** for mute, volume, and TV / GamePad output.
+Open **Controls** to change keys and controller buttons.
+
+A release stores the mapping in `data/nsmbu/controls.json`.
+A build from source stores it in the port config directory.
+That directory is `~/.config/nsmbu` on Linux, `%APPDATA%\NSMBU` on Windows, and `~/Library/Application Support/NSMBU` on macOS.
+Set `NSMBU_CONTROLS` to use another file.
+
+Host gamepads use the same layout as the Wii U GamePad by default (face buttons by position).
+The bottom face button (Xbox **A**) is Wii U **B**.
+The right face button (Xbox **B**) is Wii U **A**.
+Controller labels below use Xbox names.
+
+Default layout:
+
+| Keyboard | Controller | Wii U | In game |
+|----------|------------|-------|---------|
+| W A S D | left stick | left stick | walk / move |
+| arrow keys | right stick | right stick | camera |
+| K or Space | B (right) | A | jump |
+| J | A (bottom) | B | jump |
+| L | Y (top) | X | run / hold item |
+| Left Shift | X (left) | Y | run / hold item |
+| Q | LB | L | map view |
+| E | RB | R | map zoom |
+|  | LT | ZL | spin jump |
+| Left Control | RT | ZR | spin jump |
+| Enter | Menu | + | pause |
+| Tab | View | − | inventory |
+| H | Home | Home | Home menu |
+| 1 2 3 4 | D-pad | D-pad | move / crouch / pipes |
+| X / V | L3 / R3 | stick click | stick click |
+
 
 ## Compatibility
 
@@ -145,46 +177,6 @@ Use the terminal installer when the window cannot run:
 
 It asks the same questions.
 It opens the same file window when the system provides one.
-
-## Controls
-
-Press `` ` `` or `F12` to open the settings overlay.
-**F1**–**F5** load save states; **Shift+F1**–**F5** save.
-Open **Audio** for mute, volume, and TV / GamePad output.
-Open **Controls** to change keys and controller buttons.
-
-A release stores the mapping in `data/nsmbu/controls.json`.
-A build from source stores it in the port config directory.
-That directory is `~/.config/nsmbu` on Linux, `%APPDATA%\NSMBU` on Windows, and `~/Library/Application Support/NSMBU` on macOS.
-Set `NSMBU_CONTROLS` to use another file.
-
-Host gamepads use the same layout as the Wii U GamePad by default (face buttons by position).
-The bottom face button (Xbox **A**) is Wii U **B**.
-The right face button (Xbox **B**) is Wii U **A**.
-Controller labels below use Xbox names.
-
-Default layout:
-
-| Keyboard | Controller | Wii U | In game |
-|----------|------------|-------|---------|
-| W A S D | left stick | left stick | walk / move |
-| arrow keys | right stick | right stick | camera |
-| K or Space | B (right) | A | jump |
-| J | A (bottom) | B | jump |
-| L | Y (top) | X | run / hold item |
-| Left Shift | X (left) | Y | run / hold item |
-| Q | LB | L | map view |
-| E | RB | R | map zoom |
-|  | LT | ZL | spin jump |
-| Left Control | RT | ZR | spin jump |
-| Enter | Menu | + | pause |
-| Tab | View | − | inventory |
-| H | Home | Home | Home menu |
-| 1 2 3 4 | D-pad | D-pad | move / crouch / pipes |
-| X / V | L3 / R3 | stick click | stick click |
-
-Gyro aiming and other motion options are in **Controls → Gyro…**.
-See [docs/gyro.md](docs/gyro.md).
 
 ## Contributing
 
