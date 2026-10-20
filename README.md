@@ -13,10 +13,10 @@ You must supply your own copy of the game files, disc image, and encryption keys
 
 ## Controls
 
-Press `` ` `` or `F12` to open the settings overlay.
-**F1**–**F5** load save states; **Shift+F1**–**F5** save.
-Open **Audio** for mute, volume, and TV / GamePad output.
-Open **Controls** to change keys and controller buttons.
+Press `F12` to open the settings overlay.  
+**F1**–**F5** load save states; **Shift+F1**–**F5** save.  
+Open **Audio** for mute, volume, and TV / GamePad output.  
+Open **Controls** to change keys and controller buttons.  
 
 A release stores the mapping in `data/nsmbu/controls.json`.
 A build from source stores it in the port config directory.
