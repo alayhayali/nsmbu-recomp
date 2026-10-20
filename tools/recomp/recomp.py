@@ -11,14 +11,17 @@ Code-quality passes (each on by default; the variable set to 0 when generating t
   NSMBU_RECOMP_CRLIVE       condition-register liveness: compares store only the CR bits read later (crlive.py)
   NSMBU_RECOMP_LEAF         leaf functions keep guest registers and CR bits in C locals (leaflocal.py)
   NSMBU_RECOMP_NONLEAF      functions with calls keep guest registers in C locals between calls (leaflocal.py)
+  NSMBU_RECOMP_NONLEAF_LIVE after each call, reload only registers a later read still needs (leaflocal.py)
+  NSMBU_RECOMP_NONLEAF_ABI  at a call, leave r0, r11 and r12 in their locals (leaflocal.py)
   NSMBU_RECOMP_SINGLE       round25 left out for multiplier operands known to be single precision (ppc2c.py)
   NSMBU_RECOMP_SINGLE_IP    ... with entry states and return summaries across functions (singleflow.py)
   NSMBU_RECOMP_GQR          paired-single loads/stores through GQRs the game never writes skip the GQR check
 NSMBU_RECOMP_PLAIN=1 turns them all off: the output is then the same as without these passes (the
 plain c->r[N] form).
 Checking builds (set to 1): NSMBU_RECOMP_CR_CHECK (a dropped CR bit that is read aborts),
-NSMBU_RECOMP_LEAF_POISON (scratch registers get garbage at returns), NSMBU_RECOMP_SINGLE_CHECK (an
-operand left unrounded that round25 would change is logged).
+NSMBU_RECOMP_LEAF_POISON (scratch registers get garbage at returns, and locals that were not
+reloaded after a call), NSMBU_RECOMP_SINGLE_CHECK (an operand left unrounded that round25 would
+change is logged).
 
 Output:
   OUTDIR/funcs.h         prototypes of every recompiled function and import
@@ -480,6 +483,7 @@ class Recompiler:
         self.cr_stats = [0, 0]
         self.leaf_count = 0
         self.nonleaf_count = 0
+        leaflocal.reset_stats()
         self.used_imports = set()
         self.imm_override = self.imm_override
         self.saved_clobbers = self.find_saved_clobbers() if ppc2c.SINGLE else set()
@@ -609,6 +613,11 @@ class Recompiler:
                 self.cr_stats[0], self.cr_stats[1], "on" if CRLIVE else "off", ", check build" if CR_CHECK else ""))
             f.write("leaf functions with registers in locals: %d\n" % self.leaf_count)
             f.write("functions with calls with registers in locals: %d\n" % self.nonleaf_count)
+            f.write("nonleaf call reloads: %d written, %d left out, %d calls (live-only %s)\n" % (
+                leaflocal.reloads_written, leaflocal.reloads_left_out, leaflocal.reload_calls,
+                "on" if ppc2c.pass_on("NSMBU_RECOMP_NONLEAF_LIVE") else "off"))
+            f.write("nonleaf call write-backs of r0/r11/r12 left out: %d (abi %s)\n" % (
+                leaflocal.abi_wb_left_out, "on" if ppc2c.pass_on("NSMBU_RECOMP_NONLEAF_ABI") else "off"))
             f.write("functions that change callee-saved registers (save/restore helpers): %d\n" % len(self.saved_clobbers))
             f.write("single-precision multiplier operands: %d rounded (round25), %d known single\n" % tuple(ppc2c.single_stats))
             f.write("unhandled instruction kinds:\n")
