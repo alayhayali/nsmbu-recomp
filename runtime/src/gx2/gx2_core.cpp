@@ -97,17 +97,16 @@ static void apply_small_regs(uint32 first, const uint32* v, uint32 n) {
         return e && !strcmp(e, "1");
     }();
     static const bool collectStats = env::VK_STATS() != nullptr;
-    if (!memcmp(&g_regs[first], v, n * 4)) {
-        if (g_shadow && memcmp(&g_shadow[first], v, n * 4))
-            memcpy(&g_shadow[first], v, n * 4);
-        return;
-    }
+    bool changed = false, shadowDiff = false;
     const bool classify = rprof::enabled();
     bool baselineBump = false, actualBump = false;
     uint64_t maskedWords = 0;
     for (uint32 i = 0; i < n; ++i) {
         const uint32 reg = first + i, value = v[i], old = g_regs[reg];
+        if (g_shadow && g_shadow[reg] != value) shadowDiff = true;
         if (old == value) continue;
+        changed = true;
+        g_regs[reg] = value;
         if (classify) {
             if (rprof::fast_class_reg(reg)) rprof::g_reg_dirty |= 1;
             else rprof::note_other_reg(reg);
@@ -120,8 +119,10 @@ static void apply_small_regs(uint32 first, const uint32* v, uint32 n) {
             } else actualBump = true;
         }
     }
-    memcpy(&g_regs[first], v, n * 4);
-    if (g_shadow) memcpy(&g_shadow[first], v, n * 4);
+    if (shadowDiff) {
+        for (uint32 i = 0; i < n; ++i) g_shadow[first + i] = v[i];
+    }
+    if (!changed) return;
     if (actualBump) ++g_shader_state_gen;
     if (collectStats) {
         ++shaderKeyDirtyStats.changedBatches;
@@ -234,7 +235,11 @@ static void enqueue(Op op, const uint32* payload, uint32 n) {
     std::call_once(once, [] { std::thread(render_thread_main).detach(); });
     std::lock_guard<std::mutex> lk(g_q_mutex);
     g_q_pending.push_back(op | (n << 8));
-    g_q_pending.insert(g_q_pending.end(), payload, payload + n);
+    if (n <= 16) {
+        for (uint32 i = 0; i < n; ++i) g_q_pending.push_back(payload[i]);
+    } else {
+        g_q_pending.insert(g_q_pending.end(), payload, payload + n);
+    }
     if (g_q_waiting) g_q_cv.notify_one();
 }
 
@@ -333,7 +338,11 @@ void set_regs(uint32 first, const uint32* values, uint32 count) {
     static thread_local std::vector<uint32> buf;
     buf.resize(count + 1);
     buf[0] = first;
-    memcpy(&buf[1], values, count * 4);
+    if (count <= 16) {
+        for (uint32 i = 0; i < count; ++i) buf[i + 1] = values[i];
+    } else {
+        memcpy(&buf[1], values, count * 4);
+    }
     emit(OP_SET_REGS, buf.data(), count + 1);
 }
 void set_reg(uint32 reg, uint32 value) { emit(OP_SET_REGS, {reg, value}); }
