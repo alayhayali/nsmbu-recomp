@@ -23,13 +23,17 @@ namespace mods { double game_time(){return 0;} }
 namespace agent_ctl { void apply_pad(input::PadState&) {} }
 static uint64_t g_logic_steps=0;
 static bool g_course=true;
+static bool g_input_enabled=true;
+static interp::PlayerSnapshot g_snapshot{0,5,0,0,2,600,-848,3000};
+static int g_mode_sets=0;
 namespace interp {
 void set_mode(int){}
 uint64_t logic_steps(){return g_logic_steps;}
 bool course_play_active(){return g_course;}
+bool input_enabled(){return g_input_enabled;}
 bool player_witness(float&, float&, float&){return false;}
-bool player_snapshot(interp::PlayerSnapshot&, int){return false;}
-bool set_player_mode(int,int){return true;}
+bool player_snapshot(interp::PlayerSnapshot& out, int player){if(player!=0)return false;out=g_snapshot;return true;}
+bool set_player_mode(int player, int mode){if(player!=0)return false;++g_mode_sets;g_snapshot.mode=mode;return true;}
 }
 namespace timebase { uint64_t now(){return 0;} }
 void log_msg(const char*,...){}
@@ -165,24 +169,37 @@ int main(){
   char buf[512]={};
   assert(fread(buf,1,sizeof buf-1,rf)>0);
   fclose(rf);
-  assert(strstr(buf,"! nsmbu-replay"));
-  assert(strstr(buf,"! course 2-1"));
+  assert(strstr(buf,"version=1"));
+  assert(strstr(buf,"course=2-1"));
+  assert(strstr(buf,"origin=control"));
+  assert(strstr(buf,"mode=fire"));
   assert(strstr(buf,"\n0 "));
   remove(rec);
   const char* rep="input_replay_test.txt";
   FILE* wf=fopen(rep,"w");
   assert(wf);
-  fputs("# nsmbu-input 2\n0 00000000 0 0 0 0 0 0 0\n10 00008000 0.5 -1 0 0 1 0.25 0.5\n20 00000000 0 0 0 0 0 0 0\n",wf);
+  fputs("version=1\ncourse=1-1\nclock=course\norigin=control\nplayer=0\nmode=fire\npos=600 -848 3000\n"
+        "# step buttons lx ly rx ry touch tx ty x y z\n"
+        "0 - 0 0 0 0 0 0 0 600 -848 3000\n"
+        "10 A+Y 0.5 -1 0 0 1 0.25 0.5 600 -848 3000\n"
+        "12 00008000 0 0 0 0 0 0 0 600 -848 3000\n"
+        "20 - 0 0 0 0 0 0 0 600 -848 3000\n",wf);
   fclose(wf);
   set_env(env::REPLAY_INPUT,rep);
+  g_input_enabled=false;
+  g_snapshot.mode=0;
   g_logic_steps=0;
+  auto gated=input::read();
+  assert(gated.buttons==0&&!gated.touch&&g_mode_sets==0);
+  g_input_enabled=true;
   auto early=input::read();
   assert(early.buttons==0&&early.lx==0&&!early.touch);
+  assert(g_mode_sets==1&&g_snapshot.mode==2);
   g_logic_steps=10;
   auto played=input::read();
-  assert(played.buttons==input::kA&&played.lx==0.5f&&played.ly==-1.f&&played.touch&&played.tx==0.25f&&played.ty==0.5f);
+  assert(played.buttons==(input::kA|input::kY)&&played.lx==0.5f&&played.ly==-1.f&&played.touch&&played.tx==0.25f&&played.ty==0.5f);
   g_logic_steps=11;
-  assert(input::read().buttons==input::kA);
+  assert(input::read().buttons==(input::kA|input::kY));
   g_logic_steps=12;
   assert(input::read().buttons==input::kA);
   g_logic_steps=20;

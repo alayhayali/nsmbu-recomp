@@ -43,6 +43,9 @@ If `nsmbu open` refuses because a game is already running, run `nsmbu status` or
 | Scripted boot and frame PNGs | `scripted <name>` |
 | Convert save data to JSON or back | `save <save.dat\|save.json>` |
 | Look and tap | `open` -> `status` / `screenshot` -> `press` / `stick` -> `wait` -> `close` |
+
+`open`, `press`, `stick`, `screenshot`, and `wait` block until their work is done.
+Do not sleep between control commands; use `wait --step N` when the next action needs guest progress.
 | Open a course file | `open game/content/Common/course_res_pack/1-27.szs` |
 
 The loading card for `open 1-5` is in `docs/nsmbu/course-open.md`.
@@ -59,6 +62,7 @@ The command prints `[replay] log <path>` before the game starts.
 The default path is `nsmbu/logs/nsmbu.log`.
 `--log PATH` writes that file instead.
 `--uncapped` sets `NSMBU_UNCAPPED=1`.
+`--no-exit-on-input` sets `NSMBU_REPLAY_EXIT=none` so the game keeps running on live input after the recording ends.
 `--exit-at N` sets `NSMBU_EXIT_AT_FRAME`.
 `launch --no-debug` leaves the profile variables unset.
 Use `replay --release` for a measured course.

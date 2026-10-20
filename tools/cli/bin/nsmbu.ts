@@ -116,11 +116,15 @@ async function main(): Promise<void> {
                 break;
             }
             case "replay": {
-                const { flags, positional } = parseArgv(rest, ["release", "uncapped", "exit-at", "log"], ["exit-at", "log"]);
+                const { flags, positional } = parseArgv(
+                    rest,
+                    ["release", "uncapped", "exit-at", "log", "no-exit-on-input"],
+                    ["exit-at", "log"],
+                );
                 const [name, ...launchRest] = positional;
                 if (!name) {
                     throw new Error(
-                        "usage: nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <name> […]",
+                        "usage: nsmbu replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name> […]",
                     );
                 }
                 const exitAt = flagString(flags, "exit-at");
@@ -137,6 +141,7 @@ async function main(): Promise<void> {
                     {
                         release: hasFlag(flags, "release"),
                         uncapped: hasFlag(flags, "uncapped"),
+                        noExitOnInput: hasFlag(flags, "no-exit-on-input"),
                         exitAt,
                         log,
                     },

@@ -9,7 +9,7 @@ Usage:
   nsmbu extract […]
   nsmbu save <save.dat|save.json> [output] [--output PATH]
   nsmbu record <course> [name] […]
-  nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <name> […]
+  nsmbu replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name> […]
   nsmbu profile […]
   nsmbu perf […]
   nsmbu installer [cmake args…]

@@ -7,6 +7,7 @@ namespace interp {
 void record_executed_step();
 uint64_t executed_steps();
 bool course_play_active();
+bool input_enabled();
 bool player_witness(float& x, float& y, float& z);
 
 struct PlayerSnapshot {

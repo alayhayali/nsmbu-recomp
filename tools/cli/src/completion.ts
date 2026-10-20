@@ -61,6 +61,7 @@ const COMMANDS: CommandSpec[] = [
         flags: [
             { name: "release", description: "Release binary" },
             { name: "uncapped", description: "Uncapped frame rate" },
+            { name: "no-exit-on-input", description: "Keep running after the recorded input ends" },
             { name: "exit-at", description: "Exit at frame N" },
             { name: "log", description: "Write log to PATH", takesFile: true },
         ],

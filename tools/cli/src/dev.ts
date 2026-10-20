@@ -147,6 +147,7 @@ const REPLAY_PROFILE_ENV: Record<string, string> = {
 export type ReplayOpts = {
     release: boolean;
     uncapped: boolean;
+    noExitOnInput: boolean;
     exitAt?: string;
     log?: string;
 };
@@ -154,7 +155,7 @@ export type ReplayOpts = {
 function replayCourse(path: string, name: string): string {
     const text = readFileSync(path, "utf8");
     for (const line of text.split("\n")) {
-        const match = /^[!#]\s*course\s+(\S+)/.exec(line);
+        const match = /^course=(\S+)/.exec(line) ?? /^[!#]\s*course\s+(\S+)/.exec(line);
         if (match) {
             return match[1];
         }
@@ -163,7 +164,7 @@ function replayCourse(path: string, name: string): string {
     if (token) {
         return token;
     }
-    throw new Error(`${path} has no "! course" line; add one or name the replay after its course`);
+    throw new Error(`${path} has no "course=" line; add one or name the replay after its course`);
 }
 
 export function cmdReplay(repo: string, name: string, opts: ReplayOpts, rest: string[]): void {
@@ -183,6 +184,9 @@ export function cmdReplay(repo: string, name: string, opts: ReplayOpts, rest: st
     }
     if (opts.uncapped) {
         extra.NSMBU_UNCAPPED = "1";
+    }
+    if (opts.noExitOnInput) {
+        extra.NSMBU_REPLAY_EXIT = "none";
     }
     if (opts.exitAt !== undefined) {
         extra.NSMBU_EXIT_AT_FRAME = opts.exitAt;

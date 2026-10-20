@@ -82,7 +82,7 @@ The CLI exports `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout 
 | `nsmbu run` / `run --release` | build then launch |
 | `nsmbu extract` | `tools/extract.py` |
 | `nsmbu save <save.dat\|save.json> [output] [--output PATH]` | convert `rp_savedata.dat` to JSON and back |
-| `nsmbu record <course> [name]` / `replay [--release] [--uncapped] [--exit-at N] [--log PATH] <name>` | env + launch (see [automation.md](automation.md)) |
+| `nsmbu record <course> [name]` / `replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name>` | env + launch (see [automation.md](automation.md)) |
 | `nsmbu profile` / `perf` | profiling helpers |
 | `nsmbu installer` / `lint` / `recomp` | installer, TypeScript mod build, recomp only |
 | `nsmbu scripted <name>` | wraps `tools/scripted-run.sh` |
@@ -117,6 +117,10 @@ Commands talk to the single running game over the fixed control socket.
 - `nsmbu screenshot [path]` — wait until PNG written; print path.
 - `nsmbu wait --frame N` / `wait --step N` — poll `status` until bound.
 - `nsmbu quit` / `close` — graceful quit and tear down control files under `.tmp/agent/`.
+
+These commands block until their work is done: `open` waits for the socket, `press` / `stick` hold for their frames, `screenshot` waits for the PNG, and `wait` polls until the frame or step bound.
+Do not add shell sleeps between control commands.
+Use `wait --step N` when the next action needs guest progress.
 
 Headless boots that use `tools/scripted-run.sh` stay available as `nsmbu scripted <name>` so agents can still do exit-at-frame dumps without a second path.
 Live `open` / `press` / `screenshot` is the interactive loop.

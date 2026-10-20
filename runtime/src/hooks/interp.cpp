@@ -903,6 +903,12 @@ bool course_play_active() {
     return ld32(GD(0x101D1598)) != 0;
 }
 
+bool input_enabled() {
+    const uint32_t mgr = ld32(GD(0x101D2DF8));
+    if (!mgr) return false;
+    return (ld8(mgr + 0x56Cu) & 0x80u) == 0 && ld8(mgr + 0x56Du) == 0;
+}
+
 bool player_witness(float& x, float& y, float& z) {
     PlayerSnapshot snap;
     if (!player_snapshot(snap, 0)) return false;

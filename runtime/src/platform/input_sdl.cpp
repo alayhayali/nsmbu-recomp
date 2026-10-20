@@ -20,6 +20,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <map>
@@ -600,6 +601,8 @@ namespace interp {
 void set_mode(int m);
 uint64_t logic_steps();
 bool course_play_active();
+bool input_enabled();
+bool player_witness(float& x, float& y, float& z);
 }
 namespace input {
 static bool pad_same(const PadState& a, const PadState& b) {
@@ -611,6 +614,8 @@ static bool g_course_clock_armed = false;
 static uint64_t g_course_clock_origin = 0;
 static bool g_replay_start_wait = false;
 static uint64_t g_replay_start_wait_from = 0;
+static uint64_t g_replay_wait_ticks = 0;
+static bool g_clock_from_control = false;
 static bool g_replay_mode_applied = false;
 
 static bool replay_course_clock_ready();
@@ -623,6 +628,22 @@ static void reset_course_input_clock() {
     g_replay_mode_applied = false;
 }
 
+static void trace_clock(uint64_t now, bool armed) {
+    static const bool on = env::REPLAY_TRACE() != nullptr;
+    if (!on) return;
+    static int budget = 1500;
+    if (budget <= 0) return;
+    budget--;
+    float x = 0, y = 0, z = 0;
+    const bool have = interp::player_witness(x, y, z);
+    if (have)
+        LOG("[replay] step %llu armed %d input %d pos %.3f %.3f %.3f", (unsigned long long)now, armed ? 1 : 0,
+            interp::input_enabled() ? 1 : 0, x, y, z);
+    else
+        LOG("[replay] step %llu armed %d input %d pos none", (unsigned long long)now, armed ? 1 : 0,
+            interp::input_enabled() ? 1 : 0);
+}
+
 static bool course_relative_step(uint64_t& step) {
     const bool active = interp::course_play_active();
     if (!active) {
@@ -632,9 +653,12 @@ static bool course_relative_step(uint64_t& step) {
     }
     const uint64_t now = interp::logic_steps();
     if (!g_course_clock_armed) {
+        trace_clock(now, false);
         if (!replay_course_clock_ready()) return false;
         g_course_clock_armed = true;
         g_course_clock_origin = now;
+    } else if (now - g_course_clock_origin < 90) {
+        trace_clock(now, true);
     }
     step = now - g_course_clock_origin;
     return true;
@@ -666,15 +690,111 @@ struct ReplaySample {
     bool witness = false;
 };
 
+static const char* const kPlayerModes[] = {
+    "small", "normal", "fire", "mini", "propeller", "penguin", "ice", "squirrel", "psquirrel",
+};
+
+static bool same_text(const char* a, const char* b) {
+    while (*a && *b) {
+        const char ca = *a >= 'A' && *a <= 'Z' ? (char)(*a + ('a' - 'A')) : *a;
+        const char cb = *b >= 'A' && *b <= 'Z' ? (char)(*b + ('a' - 'A')) : *b;
+        if (ca != cb) return false;
+        ++a;
+        ++b;
+    }
+    return *a == *b;
+}
+
+static int player_mode_from_text(const char* text) {
+    if (!text || !*text) return -1;
+    char* end = nullptr;
+    const long value = strtol(text, &end, 10);
+    if (end && end != text && !*end) return value >= 0 && value <= 8 ? (int)value : -1;
+    for (int i = 0; i < 9; i++)
+        if (same_text(text, kPlayerModes[i])) return i;
+    return -1;
+}
+
+static const char* player_mode_text(int mode) { return mode >= 0 && mode <= 8 ? kPlayerModes[mode] : nullptr; }
+
+static bool hex_text(const char* text) {
+    if (!text) return false;
+    const bool prefixed = text[0] == '0' && (text[1] == 'x' || text[1] == 'X');
+    if (prefixed) text += 2;
+    const size_t len = strlen(text);
+    if (len < (prefixed ? 1u : 2u))
+        return !prefixed && len == 1 && text[0] >= '0' && text[0] <= '9';
+    for (const char* p = text; *p; ++p) {
+        const char c = *p;
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
+    }
+    return true;
+}
+
+static uint32_t action_bit_for(const char* text) {
+    for (int a = 0; a < input_map::kActionCount; a++)
+        if (same_text(text, input_map::action_id(a))) return input_map::action_bit(a);
+    return 0;
+}
+
+static bool parse_buttons(const char* text, uint32_t& buttons) {
+    buttons = 0;
+    if (!text || !*text) return false;
+    if (strcmp(text, "-") == 0 || same_text(text, "none")) return true;
+    const char* p = text;
+    while (*p) {
+        const char* end = p;
+        while (*end && *end != '+') ++end;
+        const std::string token(p, (size_t)(end - p));
+        if (token.empty()) return false;
+        uint32_t bit = 0;
+        if (hex_text(token.c_str())) {
+            char* stop = nullptr;
+            bit = (uint32_t)strtoul(token.c_str(), &stop, 16);
+            if (!stop || *stop) return false;
+        } else {
+            bit = action_bit_for(token.c_str());
+            if (!bit) return false;
+        }
+        buttons |= bit;
+        p = *end ? end + 1 : end;
+    }
+    return true;
+}
+
+static std::string buttons_text(uint32_t buttons) {
+    if (!buttons) return "-";
+    std::string text;
+    uint32_t left = buttons;
+    for (int a = 0; a < input_map::kActionCount; a++) {
+        const uint32_t bit = input_map::action_bit(a);
+        if (!bit || !(left & bit)) continue;
+        if (!text.empty()) text += '+';
+        text += input_map::action_id(a);
+        left &= ~bit;
+    }
+    if (left) {
+        char hex[16];
+        snprintf(hex, sizeof hex, "%08X", buttons);
+        return hex;
+    }
+    return text;
+}
+
 static bool parse_start_line(const char* p, ReplayStart& start) {
     if (strncmp(p, "start", 5) != 0) return false;
     p += 5;
     int player = 0;
-    int32_t lives = 0, coins = 0, course_coins = 0, mode = 0;
+    int32_t lives = 0, coins = 0, course_coins = 0;
+    char mode_text[16] = {};
     float x = 0, y = 0, z = 0;
-    if (sscanf(p, " player %d lives %d coins %d course_coins %d mode %d pos %f %f %f", &player, &lives, &coins,
-            &course_coins, &mode, &x, &y, &z) != 8)
+    if (sscanf(p, " player=%d lives=%d coins=%d course_coins=%d mode=%15s pos=%f %f %f", &player, &lives, &coins,
+            &course_coins, mode_text, &x, &y, &z) != 8
+        && sscanf(p, " player %d lives %d coins %d course_coins %d mode %15s pos %f %f %f", &player, &lives, &coins,
+            &course_coins, mode_text, &x, &y, &z) != 8)
         return false;
+    const int mode = player_mode_from_text(mode_text);
+    if (mode < 0) return false;
     start.have = true;
     start.expect.player = player;
     start.expect.lives = lives;
@@ -687,19 +807,69 @@ static bool parse_start_line(const char* p, ReplayStart& start) {
     return true;
 }
 
+static void parse_start_fields(const char* p, ReplayStart& start) {
+    if (parse_start_line(p, start)) return;
+    if (strncmp(p, "start", 5) != 0) return;
+    const char* f = p + 5;
+    int value = 0;
+    char mode_text[16] = {};
+    float x = 0, y = 0, z = 0;
+    if (sscanf(f, " player=%d", &value) == 1)
+        start.expect.player = value;
+    else if (sscanf(f, " lives=%d", &value) == 1)
+        start.expect.lives = value;
+    else if (sscanf(f, " coins=%d", &value) == 1)
+        start.expect.coins = value;
+    else if (sscanf(f, " course_coins=%d", &value) == 1)
+        start.expect.course_coins = value;
+    else if (sscanf(f, " mode=%15s", mode_text) == 1 || sscanf(f, " mode %15s", mode_text) == 1) {
+        const int mode = player_mode_from_text(mode_text);
+        if (mode >= 0) start.expect.mode = mode;
+    } else if (sscanf(f, " pos=%f %f %f", &x, &y, &z) == 3) {
+        start.expect.x = x;
+        start.expect.y = y;
+        start.expect.z = z;
+        start.have = true;
+    }
+}
+
+static bool parse_start_field_line(const char* line, ReplayStart& start) {
+    int value = 0;
+    char mode_text[16] = {};
+    float x = 0, y = 0, z = 0;
+    if (sscanf(line, "player=%d", &value) == 1)
+        start.expect.player = value;
+    else if (sscanf(line, "lives=%d", &value) == 1)
+        start.expect.lives = value;
+    else if (sscanf(line, "coins=%d", &value) == 1)
+        start.expect.coins = value;
+    else if (sscanf(line, "course_coins=%d", &value) == 1)
+        start.expect.course_coins = value;
+    else if (sscanf(line, "mode=%15s", mode_text) == 1) {
+        const int mode = player_mode_from_text(mode_text);
+        if (mode >= 0) start.expect.mode = mode;
+    } else if (sscanf(line, "pos=%f %f %f", &x, &y, &z) == 3) {
+        start.expect.x = x;
+        start.expect.y = y;
+        start.expect.z = z;
+        start.have = true;
+    } else
+        return false;
+    return true;
+}
+
 static bool pos_near(float a, float b) { return std::fabs(a - b) <= 0.05f; }
 
 static FILE* open_record_file(const char* path) {
-    reset_course_input_clock();
     FILE* f = fopen(path, "w");
     if (!f) { LOG("[input] can't write %s", path); return nullptr; }
     setvbuf(f, nullptr, _IONBF, 0);
     const char* given = env::RECORD_COURSE();
     const std::string course = given && given[0] ? std::string(given) : replay_course_from_path(path);
-    fprintf(f, "! nsmbu-replay\n");
-    if (!course.empty()) fprintf(f, "! course %s\n", course.c_str());
-    fprintf(f, "! clock course\n");
-    fprintf(f, "# step buttons lx ly rx ry touch tx ty x y z\n");
+    fprintf(f, "version=1\n");
+    if (!course.empty()) fprintf(f, "course=%s\n", course.c_str());
+    fprintf(f, "clock=course\n");
+    fprintf(f, "origin=control\n");
     LOG("[input] recording %s from in-level play", path);
     return f;
 }
@@ -707,11 +877,13 @@ static FILE* open_record_file(const char* path) {
 static void record_pad(const PadState& s) {
     const char* path = env::path(env::RECORD_INPUT);
     if (!path || !path[0] || env::REPLAY_INPUT()) return;
+    g_clock_from_control = true;
     uint64_t step = 0;
     if (!course_relative_step(step)) return;
     static FILE* f = nullptr;
     static bool opened = false;
     static bool start_written = false;
+    static bool legend_written = false;
     static PadState prev{};
     static bool have = false;
     if (!opened) {
@@ -725,20 +897,34 @@ static void record_pad(const PadState& s) {
     interp::PlayerSnapshot snap;
     const bool have_snap = interp::player_snapshot(snap, 0);
     if (!start_written && have_snap) {
-        fprintf(f, "! start player %d lives %d coins %d course_coins %d mode %d pos %.9g %.9g %.9g\n", snap.player,
-            snap.lives, snap.coins, snap.course_coins, snap.mode, snap.x, snap.y, snap.z);
+        fprintf(f, "player=%d\n", snap.player);
+        fprintf(f, "lives=%d\n", snap.lives);
+        fprintf(f, "coins=%d\n", snap.coins);
+        fprintf(f, "course_coins=%d\n", snap.course_coins);
+        if (const char* mode = player_mode_text(snap.mode))
+            fprintf(f, "mode=%s\n", mode);
+        else
+            fprintf(f, "mode=%d\n", snap.mode);
+        fprintf(f, "pos=%.9g %.9g %.9g\n", snap.x, snap.y, snap.z);
         start_written = true;
     }
+    if (!legend_written) {
+        fprintf(f, "# step buttons lx ly rx ry touch tx ty x y z\n");
+        legend_written = true;
+    }
+    const std::string buttons = buttons_text(s.buttons);
     if (have_snap)
-        fprintf(f, "%llu %08X %.9g %.9g %.9g %.9g %d %.9g %.9g %.9g %.9g %.9g\n", (unsigned long long)step,
-            s.buttons, s.lx, s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty, snap.x, snap.y, snap.z);
+        fprintf(f, "%llu %s %.9g %.9g %.9g %.9g %d %.9g %.9g %.9g %.9g %.9g\n", (unsigned long long)step,
+            buttons.c_str(), s.lx, s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty, snap.x, snap.y, snap.z);
     else
-        fprintf(f, "%llu %08X %.9g %.9g %.9g %.9g %d %.9g %.9g\n", (unsigned long long)step, s.buttons, s.lx,
+        fprintf(f, "%llu %s %.9g %.9g %.9g %.9g %d %.9g %.9g\n", (unsigned long long)step, buttons.c_str(), s.lx,
             s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty);
 }
 
 static int g_replay_version = 2;
 static bool g_replay_modern = false;
+static bool g_replay_exit_on_input = true;
+static bool g_replay_live = false;
 static ReplayStart g_replay_start;
 static std::string g_replay_course;
 static size_t g_replay_index = 0;
@@ -757,6 +943,9 @@ static const std::vector<ReplaySample>& replay_samples() {
     g_replay_start = {};
     g_replay_course.clear();
     g_replay_modern = false;
+    g_clock_from_control = false;
+    g_replay_exit_on_input = true;
+    g_replay_live = false;
     FILE* f = fopen(path, "r");
     if (!f) { LOG("[input] can't read %s", path); return samples; }
     char line[512];
@@ -765,6 +954,32 @@ static const std::vector<ReplaySample>& replay_samples() {
     bool have_pending = false;
     size_t witness_count = 0;
     while (fgets(line, sizeof line, f)) {
+        if (strncmp(line, "version=", 8) == 0) {
+            g_replay_modern = true;
+            g_replay_version = 3;
+            continue;
+        }
+        if (strncmp(line, "clock=", 6) == 0) continue;
+        if (strncmp(line, "origin=", 7) == 0) {
+            char value[16];
+            if (sscanf(line, "origin=%15s", value) == 1) g_clock_from_control = same_text(value, "control");
+            continue;
+        }
+        if (strncmp(line, "exit=", 5) == 0) {
+            char value[16];
+            if (sscanf(line, "exit=%15s", value) == 1) g_replay_exit_on_input = strcmp(value, "none") != 0;
+            continue;
+        }
+        if (strncmp(line, "course=", 7) == 0) {
+            char course[128];
+            if (sscanf(line, "course=%127s", course) == 1) g_replay_course = course;
+            continue;
+        }
+        if (parse_start_field_line(line, g_replay_start)) continue;
+        if (strncmp(line, "start", 5) == 0) {
+            parse_start_fields(line, g_replay_start);
+            continue;
+        }
         if (line[0] == '#' || line[0] == '!') {
             const char* p = line + 1;
             while (*p == ' ') p++;
@@ -776,7 +991,9 @@ static const std::vector<ReplaySample>& replay_samples() {
             if (sscanf(p, "nsmbu-input %d", &ver) == 1) g_replay_version = ver;
             char course[128];
             if (sscanf(p, "course %127s", course) == 1) g_replay_course = course;
-            parse_start_line(p, g_replay_start);
+            char origin[16];
+            if (sscanf(p, "origin %15s", origin) == 1) g_clock_from_control = same_text(origin, "control");
+            parse_start_fields(p, g_replay_start);
             continue;
         }
         if (line[0] == '\n') continue;
@@ -793,13 +1010,17 @@ static const std::vector<ReplaySample>& replay_samples() {
             continue;
         }
         unsigned long long step;
-        unsigned buttons;
+        char buttons_field[128] = {};
+        int used = 0;
+        if (sscanf(line, "%llu %127s %n", &step, buttons_field, &used) != 2 || used <= 0) continue;
         float lx, ly, rx, ry, tx, ty;
         float wx = 0, wy = 0, wz = 0;
         int touch;
-        int n = sscanf(line, "%llu %x %f %f %f %f %d %f %f %f %f %f", &step, &buttons, &lx, &ly, &rx, &ry, &touch, &tx,
-            &ty, &wx, &wy, &wz);
-        if (n != 9 && n != 12) continue;
+        const int n = sscanf(line + used, "%f %f %f %f %d %f %f %f %f %f", &lx, &ly, &rx, &ry, &touch, &tx, &ty, &wx,
+            &wy, &wz);
+        if (n != 7 && n != 10) continue;
+        uint32_t buttons = 0;
+        if (!parse_buttons(buttons_field, buttons)) continue;
         PadState p;
         p.buttons = buttons;
         p.lx = lx;
@@ -810,7 +1031,7 @@ static const std::vector<ReplaySample>& replay_samples() {
         p.tx = tx;
         p.ty = ty;
         ReplaySample sample{step, p, 0, 0, 0, false};
-        if (n == 12) {
+        if (n == 10) {
             sample.wx = wx;
             sample.wy = wy;
             sample.wz = wz;
@@ -827,6 +1048,7 @@ static const std::vector<ReplaySample>& replay_samples() {
         samples.push_back(sample);
     }
     fclose(f);
+    if (const char* exit = env::REPLAY_EXIT(); exit && *exit) g_replay_exit_on_input = strcmp(exit, "none") != 0;
     g_replay_index = 0;
     g_witness_miss = 0;
     g_witness_first = 0;
@@ -842,6 +1064,12 @@ static const std::vector<ReplaySample>& replay_samples() {
 }
 
 static void replay_finished(uint64_t step) {
+    if (!g_replay_exit_on_input) {
+        if (g_replay_live) return;
+        g_replay_live = true;
+        LOG("[input] replay stopped at step %llu; live input from now on", (unsigned long long)step);
+        return;
+    }
     static std::atomic<bool> sent{false};
     if (sent.exchange(true)) return;
     const int misses = g_witness_miss + g_start_miss;
@@ -873,23 +1101,38 @@ static void apply_replay_start_mode() {
 }
 
 static bool replay_course_clock_ready() {
-    if (!g_replay_start.have) return true;
+    if (!g_replay_start.have && !g_clock_from_control) return true;
     interp::PlayerSnapshot snap;
-    const bool positioned = interp::player_snapshot(snap, g_replay_start.expect.player)
-        && pos_near(snap.x, g_replay_start.expect.x) && pos_near(snap.y, g_replay_start.expect.y)
-        && pos_near(snap.z, g_replay_start.expect.z);
-    if (positioned) {
-        g_replay_start_wait = false;
-        apply_replay_start_mode();
-        return true;
+    if (g_clock_from_control) {
+        if (interp::input_enabled()) {
+            g_replay_start_wait = false;
+            apply_replay_start_mode();
+            return true;
+        }
+        const uint64_t now = timebase::now();
+        if (!g_replay_start_wait) {
+            g_replay_start_wait = true;
+            g_replay_wait_ticks = now;
+            return false;
+        }
+        if (now - g_replay_wait_ticks < 20ull * timebase::kTicksPerSec) return false;
+    } else {
+        const bool positioned = interp::player_snapshot(snap, g_replay_start.expect.player)
+            && pos_near(snap.x, g_replay_start.expect.x) && pos_near(snap.y, g_replay_start.expect.y)
+            && pos_near(snap.z, g_replay_start.expect.z);
+        if (positioned) {
+            g_replay_start_wait = false;
+            apply_replay_start_mode();
+            return true;
+        }
+        const uint64_t now = interp::logic_steps();
+        if (!g_replay_start_wait) {
+            g_replay_start_wait = true;
+            g_replay_start_wait_from = now;
+            return false;
+        }
+        if (now - g_replay_start_wait_from < 180) return false;
     }
-    const uint64_t now = interp::logic_steps();
-    if (!g_replay_start_wait) {
-        g_replay_start_wait = true;
-        g_replay_start_wait_from = now;
-        return false;
-    }
-    if (now - g_replay_start_wait_from < 180) return false;
     if (!g_start_miss) {
         g_start_miss = 1;
         g_witness_first = 0;
@@ -930,13 +1173,14 @@ static void check_replay_start(uint64_t step) {
         g_replay_start.expect.z, now.player, now.lives, now.coins, now.course_coins, now.mode, now.x, now.y, now.z);
 }
 
-static void apply_replay(PadState& s) {
+static bool apply_replay(PadState& s) {
+    if (g_replay_live) return false;
     const std::vector<ReplaySample>& samples = replay_samples();
-    if (samples.empty()) return;
+    if (samples.empty()) return false;
     uint64_t step = 0;
     if (!replay_step(step)) {
         s = PadState{};
-        return;
+        return true;
     }
     check_replay_start(step);
     while (g_replay_index + 1 < samples.size() && samples[g_replay_index + 1].step <= step) g_replay_index++;
@@ -957,6 +1201,7 @@ static void apply_replay(PadState& s) {
         }
     }
     if (step > samples.back().step) replay_finished(step);
+    return !g_replay_live;
 }
 
 static void apply_scenario(PadState& s) {
@@ -996,8 +1241,7 @@ void set_pro_controller(bool on) { g_pro = on; LOG("[input] keyboard/controller 
 PadState read() {
     if (env::REPLAY_INPUT()) {
         PadState s{};
-        apply_replay(s);
-        return s;
+        if (apply_replay(s)) return s;
     }
     static const std::vector<Press> script = scripted();
     static const std::vector<Stick> sticks = scripted_stick();
