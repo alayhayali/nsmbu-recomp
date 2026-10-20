@@ -935,6 +935,20 @@ bool player_snapshot(PlayerSnapshot& out, int player) {
     return true;
 }
 
+bool set_player_mode(int player, int mode) {
+    if (player < 0 || player > 3 || mode < 0 || mode > 8) return false;
+    const uint32_t field = ld32(GD(0x101D1604));
+    if (!field) return false;
+    const uint32_t mgr = ld32(GD(0x101E6994));
+    if (!mgr) return false;
+    const uint32_t slot = field + 0x24u + (uint32_t)player * 0x48u;
+    const uint32_t actor = ld32(mgr + 0x20u + (uint32_t)player * 4u);
+    if (!actor) return false;
+    st32(slot + 0x8u, (uint32_t)mode);
+    st32(actor + 0x500u, (uint32_t)mode);
+    return true;
+}
+
 bool logic_pass() { return g_logic_pass; }
 
 bool blend_draw() { return g_blend_draw; }

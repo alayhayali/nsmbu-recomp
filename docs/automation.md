@@ -103,6 +103,7 @@ Interactive mute is in the settings overlay (` or F12) > Audio.
 These are separate from `scripted-run.sh` and appear in benches and device checks:
 
 - `NSMBU_RECORD_INPUT` — path of a text log of pad changes, keyed by guest logic step
+- `NSMBU_RECORD_COURSE` — course named in the log's `! course` header
 - `NSMBU_REPLAY_INPUT` — play that log back and ignore the live pad
 - `NSMBU_TEST_ORIGIN`, `NSMBU_TEST_PRESS`, `NSMBU_TEST_STICK`, `NSMBU_TEST_RSTICK`, `NSMBU_TEST_MODE`, `NSMBU_TEST_END` — timed scenarios after a logic-step origin
 - `NSMBU_DUMP_PRESENT`, `NSMBU_DUMP_LOAD_FRAMES`, `NSMBU_CAPTURE` — present / load-path captures (see `docs/vulkan.md`)
@@ -112,24 +113,31 @@ These are separate from `scripted-run.sh` and appear in benches and device check
 
 `NSMBU_RECORD_INPUT` writes one line each time the pad changes.
 The step count starts when in-level play begins (`AreaTask` is live), then follows guest logic steps (one per simulation tick, not per rendered frame).
-New files use the `# nsmbu-replay` header and `replays/<course>.replay` paths from `nsmbu record` / `nsmbu replay`.
+New files use the `! nsmbu-replay` header and `replays/<name>.replay` paths from `nsmbu record` / `nsmbu replay`.
+Directive lines start with `!`; `#` starts a comment.
+`! course` names the course; `nsmbu replay` launches it.
+`NSMBU_RECORD_COURSE` supplies that name when the runtime writes the file.
 Each pad line ends with the player position (`x y z`).
-A `# start` line records player index, lives, coins, course coins, power-up mode (0–8), and spawn position; replay checks that snapshot at step 0.
+A `! start` line records player index, lives, coins, course coins, power-up mode (0–8), and spawn position; replay checks that snapshot at step 0 and starts the player with the recorded power-up mode.
 Replay logs the first step where position differs by more than 5 cm, and a match or mismatch count when it finishes.
 A slow boot does not shift later lines.
-Legacy `# nsmbu-input` files (including version 1 boot logic steps and v3 `@` witness lines) still load when pointed at by `NSMBU_REPLAY_INPUT`.
+Legacy `# nsmbu-replay`, `# nsmbu-input` (including version 1 boot logic steps and v3 `@` witness lines) files still load when pointed at by `NSMBU_REPLAY_INPUT`.
 `NSMBU_REPLAY_INPUT` applies the latest line whose step is at or before the current step.
 Live keyboard, mouse, and gamepad input is replaced for that run.
 Intro-skip button pulses stay outside the file, so play the file back with the same course pack.
 
 ```
 nsmbu record 1-1
+nsmbu record 2-1 bug-1
 nsmbu replay 1-1
+nsmbu replay bug-1
 nsmbu replay --release 1-1
 ```
 
 `nsmbu record 1-1` writes `replays/1-1.replay` from the start of that course.
+`nsmbu record 2-1 bug-1` writes `replays/bug-1.replay` with `! course 2-1`.
 `nsmbu replay 1-1` plays `replays/1-1.replay` on `build/debug/nsmbu`.
+`nsmbu replay bug-1` plays that file on the course named in its header.
 `nsmbu replay --release 1-1` plays it on `build/release/nsmbu`.
 Both set `NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, and `NSMBU_CRASH_RECOVERY` when those variables are unset.
 The command prints `[replay] log <path>`.

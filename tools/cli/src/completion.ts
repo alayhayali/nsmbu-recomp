@@ -53,10 +53,10 @@ const COMMANDS: CommandSpec[] = [
         description: "Convert save data to JSON and back",
         flags: [{ name: "output", description: "Write to PATH", takesFile: true }],
     },
-    { name: "record", description: "Record a course input log", noFiles: true },
+    { name: "record", description: "Record a course replay", noFiles: true },
     {
         name: "replay",
-        description: "Replay a course input log",
+        description: "Replay a recorded course",
         noFiles: true,
         flags: [
             { name: "release", description: "Release binary" },
@@ -153,7 +153,7 @@ function fishCompletionScript(): string {
     lines.push(
         "",
         "complete -c nsmbu -n '__nsmbu_seen record' -a '(__nsmbu_replay_courses)' -d 'Course'",
-        "complete -c nsmbu -n '__nsmbu_seen replay' -a '(__nsmbu_replay_courses)' -d 'Course'",
+        "complete -c nsmbu -n '__nsmbu_seen replay' -a '(__nsmbu_replay_courses)' -d 'Replay'",
         "complete -c nsmbu -n '__nsmbu_seen launch' -a '(__nsmbu_replay_courses)' -d 'Course'",
         "complete -c nsmbu -n '__nsmbu_seen run' -a '(__nsmbu_replay_courses)' -d 'Course'",
         "complete -c nsmbu -n '__nsmbu_seen wine' -a '(__nsmbu_replay_courses)' -d 'Course'",

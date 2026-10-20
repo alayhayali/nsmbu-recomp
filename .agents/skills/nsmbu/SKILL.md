@@ -37,7 +37,7 @@ If `nsmbu open` refuses because a game is already running, run `nsmbu status` or
 | --- | --- |
 | Compile or start a checkout | `build`, `launch`, `run`, `wine` |
 | Test the Report crash dialog | `crash` |
-| Full course input log | `record <course>` / `replay <course>` |
+| Full course input log | `record <course> [name]` / `replay <name>` |
 | Measured Release course | `replay --release <course>` |
 | Uncapped course, stop at a frame | `replay --release --uncapped --exit-at N <course>` |
 | Scripted boot and frame PNGs | `scripted <name>` |

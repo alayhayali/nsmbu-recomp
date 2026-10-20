@@ -20,6 +20,7 @@ struct PlayerSnapshot {
     float z = 0;
 };
 bool player_snapshot(PlayerSnapshot& out, int player = 0);
+bool set_player_mode(int player, int mode);
 uint64_t logic_steps();
 int mode();
 void set_mode(int m);

@@ -29,6 +29,7 @@ uint64_t logic_steps(){return g_logic_steps;}
 bool course_play_active(){return g_course;}
 bool player_witness(float&, float&, float&){return false;}
 bool player_snapshot(interp::PlayerSnapshot&, int){return false;}
+bool set_player_mode(int,int){return true;}
 }
 namespace timebase { uint64_t now(){return 0;} }
 void log_msg(const char*,...){}
@@ -153,16 +154,19 @@ int main(){
   const char* rec="input_record_test.txt";
   remove(rec);
   set_env(env::RECORD_INPUT,rec);
+  set_env(env::RECORD_COURSE,"2-1");
   g_logic_steps=4;
   input::release_keys();
   input::read();
   set_env(env::RECORD_INPUT,nullptr);
+  set_env(env::RECORD_COURSE,nullptr);
   FILE* rf=fopen(rec,"r");
   assert(rf);
   char buf[512]={};
   assert(fread(buf,1,sizeof buf-1,rf)>0);
   fclose(rf);
-  assert(strstr(buf,"# nsmbu-replay"));
+  assert(strstr(buf,"! nsmbu-replay"));
+  assert(strstr(buf,"! course 2-1"));
   assert(strstr(buf,"\n0 "));
   remove(rec);
   const char* rep="input_replay_test.txt";

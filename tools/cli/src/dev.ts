@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { nsmbuUserDir } from "./repo.ts";
 import { baseEnv, runPython, runShell } from "./run.ts";
@@ -105,13 +105,36 @@ export function cmdExtract(repo: string, rest: string[]): void {
     runPython(repo, "tools/extract.py", rest);
 }
 
-export function cmdRecord(repo: string, course: string, rest: string[]): void {
+const REPLAY_NAME = /^[A-Za-z0-9._-]+$/;
+
+function replayName(name: string): string {
+    const trimmed = name.toLowerCase().endsWith(".replay") ? name.slice(0, -".replay".length) : name;
+    if (!trimmed || trimmed === "." || trimmed === ".." || !REPLAY_NAME.test(trimmed)) {
+        throw new Error(`bad replay name: ${name}`);
+    }
+    return trimmed;
+}
+
+function courseToken(arg: string): string | undefined {
+    const base = arg.replace(/\\/g, "/").split("/").pop() ?? arg;
+    if (base.toLowerCase().endsWith(".szs")) {
+        const match = /^([1-9])-([1-9]\d*)\.szs$/i.exec(base);
+        return match ? `${match[1]}-${match[2]}` : undefined;
+    }
+    return /^\d+-\d+$/.test(arg) ? arg : undefined;
+}
+
+export function cmdRecord(repo: string, course: string, name: string, rest: string[]): void {
     const replays = join(repo, "replays");
     mkdirSync(replays, { recursive: true });
-    const replayPath = join(replays, `${course}.replay`);
-    cmdLaunch(repo, { noDebug: false, trace: false, gdb: false, lldb: false }, [course, ...rest], {
-        NSMBU_RECORD_INPUT: replayPath,
-    });
+    const replayPath = join(replays, `${replayName(name)}.replay`);
+    const extra: Record<string, string> = { NSMBU_RECORD_INPUT: replayPath };
+    const token = courseToken(course);
+    if (token) {
+        extra.NSMBU_RECORD_COURSE = token;
+    }
+    console.log(`[record] ${replayPath}`);
+    cmdLaunch(repo, { noDebug: false, trace: false, gdb: false, lldb: false }, [course, ...rest], extra);
 }
 
 const REPLAY_PROFILE_ENV: Record<string, string> = {
@@ -128,12 +151,28 @@ export type ReplayOpts = {
     log?: string;
 };
 
-export function cmdReplay(repo: string, course: string, opts: ReplayOpts, rest: string[]): void {
-    const replayPath = join(repo, "replays", `${course}.replay`);
+function replayCourse(path: string, name: string): string {
+    const text = readFileSync(path, "utf8");
+    for (const line of text.split("\n")) {
+        const match = /^[!#]\s*course\s+(\S+)/.exec(line);
+        if (match) {
+            return match[1];
+        }
+    }
+    const token = courseToken(name);
+    if (token) {
+        return token;
+    }
+    throw new Error(`${path} has no "! course" line; add one or name the replay after its course`);
+}
+
+export function cmdReplay(repo: string, name: string, opts: ReplayOpts, rest: string[]): void {
+    const replayPath = join(repo, "replays", `${replayName(name)}.replay`);
     if (!existsSync(replayPath)) {
         console.error(`missing ${replayPath}`);
         process.exit(1);
     }
+    const course = replayCourse(replayPath, name);
     const extra: Record<string, string> = {
         NSMBU_REPLAY_INPUT: replayPath,
     };

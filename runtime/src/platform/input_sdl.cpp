@@ -611,6 +611,7 @@ static bool g_course_clock_armed = false;
 static uint64_t g_course_clock_origin = 0;
 static bool g_replay_start_wait = false;
 static uint64_t g_replay_start_wait_from = 0;
+static bool g_replay_mode_applied = false;
 
 static bool replay_course_clock_ready();
 
@@ -619,6 +620,7 @@ static void reset_course_input_clock() {
     g_course_clock_origin = 0;
     g_replay_start_wait = false;
     g_replay_start_wait_from = 0;
+    g_replay_mode_applied = false;
 }
 
 static bool course_relative_step(uint64_t& step) {
@@ -664,10 +666,9 @@ struct ReplaySample {
     bool witness = false;
 };
 
-static bool parse_start_comment(const char* line, ReplayStart& start) {
-    const char* p = line;
-    if (strncmp(p, "# start", 7) != 0) return false;
-    p += 7;
+static bool parse_start_line(const char* p, ReplayStart& start) {
+    if (strncmp(p, "start", 5) != 0) return false;
+    p += 5;
     int player = 0;
     int32_t lives = 0, coins = 0, course_coins = 0, mode = 0;
     float x = 0, y = 0, z = 0;
@@ -693,10 +694,11 @@ static FILE* open_record_file(const char* path) {
     FILE* f = fopen(path, "w");
     if (!f) { LOG("[input] can't write %s", path); return nullptr; }
     setvbuf(f, nullptr, _IONBF, 0);
-    const std::string course = replay_course_from_path(path);
-    fprintf(f, "# nsmbu-replay\n");
-    if (!course.empty()) fprintf(f, "# course %s\n", course.c_str());
-    fprintf(f, "# clock course\n");
+    const char* given = env::RECORD_COURSE();
+    const std::string course = given && given[0] ? std::string(given) : replay_course_from_path(path);
+    fprintf(f, "! nsmbu-replay\n");
+    if (!course.empty()) fprintf(f, "! course %s\n", course.c_str());
+    fprintf(f, "! clock course\n");
     fprintf(f, "# step buttons lx ly rx ry touch tx ty x y z\n");
     LOG("[input] recording %s from in-level play", path);
     return f;
@@ -723,7 +725,7 @@ static void record_pad(const PadState& s) {
     interp::PlayerSnapshot snap;
     const bool have_snap = interp::player_snapshot(snap, 0);
     if (!start_written && have_snap) {
-        fprintf(f, "# start player %d lives %d coins %d course_coins %d mode %d pos %.9g %.9g %.9g\n", snap.player,
+        fprintf(f, "! start player %d lives %d coins %d course_coins %d mode %d pos %.9g %.9g %.9g\n", snap.player,
             snap.lives, snap.coins, snap.course_coins, snap.mode, snap.x, snap.y, snap.z);
         start_written = true;
     }
@@ -763,16 +765,18 @@ static const std::vector<ReplaySample>& replay_samples() {
     bool have_pending = false;
     size_t witness_count = 0;
     while (fgets(line, sizeof line, f)) {
-        if (line[0] == '#') {
-            if (strstr(line, "nsmbu-replay")) {
+        if (line[0] == '#' || line[0] == '!') {
+            const char* p = line + 1;
+            while (*p == ' ') p++;
+            if (strncmp(p, "nsmbu-replay", 12) == 0) {
                 g_replay_modern = true;
                 g_replay_version = 3;
             }
             int ver = 0;
-            if (sscanf(line, "# nsmbu-input %d", &ver) == 1) g_replay_version = ver;
+            if (sscanf(p, "nsmbu-input %d", &ver) == 1) g_replay_version = ver;
             char course[128];
-            if (sscanf(line, "# course %127s", course) == 1) g_replay_course = course;
-            parse_start_comment(line, g_replay_start);
+            if (sscanf(p, "course %127s", course) == 1) g_replay_course = course;
+            parse_start_line(p, g_replay_start);
             continue;
         }
         if (line[0] == '\n') continue;
@@ -830,6 +834,10 @@ static const std::vector<ReplaySample>& replay_samples() {
     g_start_miss = 0;
     reset_course_input_clock();
     LOG("[input] replaying %zu samples from %s (%zu position checks)", samples.size(), path, witness_count);
+    if (!g_replay_course.empty()) LOG("[input] replay course %s", g_replay_course.c_str());
+    if (g_replay_start.have)
+        LOG("[input] replay start player %d mode %d pos %.3f %.3f %.3f", g_replay_start.expect.player,
+            g_replay_start.expect.mode, g_replay_start.expect.x, g_replay_start.expect.y, g_replay_start.expect.z);
     return samples;
 }
 
@@ -849,6 +857,21 @@ static void replay_finished(uint64_t step) {
     SDL_PushEvent(&quit);
 }
 
+static void apply_replay_start_mode() {
+    if (g_replay_mode_applied || !g_replay_start.have) return;
+    g_replay_mode_applied = true;
+    const int mode = g_replay_start.expect.mode;
+    if (mode < 0 || mode > 8) return;
+    interp::PlayerSnapshot now{};
+    const bool have = interp::player_snapshot(now, g_replay_start.expect.player);
+    if (have && now.mode == mode) return;
+    if (!interp::set_player_mode(g_replay_start.expect.player, mode)) return;
+    if (have)
+        LOG("[input] replay start mode %d -> %d", now.mode, mode);
+    else
+        LOG("[input] replay start mode %d", mode);
+}
+
 static bool replay_course_clock_ready() {
     if (!g_replay_start.have) return true;
     interp::PlayerSnapshot snap;
@@ -857,6 +880,7 @@ static bool replay_course_clock_ready() {
         && pos_near(snap.z, g_replay_start.expect.z);
     if (positioned) {
         g_replay_start_wait = false;
+        apply_replay_start_mode();
         return true;
     }
     const uint64_t now = interp::logic_steps();

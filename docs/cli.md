@@ -7,7 +7,7 @@ Expose it globally as `nsmbu` via `npm link` from `tools/cli/`.
 Agents and automation always invoke `nsmbu …` on `PATH`.
 Add an agent-browser-like control loop for a running game: wait/status, press/stick pulses, screenshot, quit.
 
-Keep `NSMBU_RECORD_INPUT` / `NSMBU_REPLAY_INPUT` and `replays/<course>.replay` for complex timelines (see [automation.md](automation.md)).
+Keep `NSMBU_RECORD_INPUT` / `NSMBU_REPLAY_INPUT` and `replays/<name>.replay` for complex timelines (see [automation.md](automation.md)).
 The live CLI is for short interactive pulses and observation, not a replacement for long pad logs.
 
 Only one game instance is supported.
@@ -82,7 +82,7 @@ The CLI exports `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout 
 | `nsmbu run` / `run --release` | build then launch |
 | `nsmbu extract` | `tools/extract.py` |
 | `nsmbu save <save.dat\|save.json> [output] [--output PATH]` | convert `rp_savedata.dat` to JSON and back |
-| `nsmbu record <course>` / `replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course>` | env + launch (see [automation.md](automation.md)) |
+| `nsmbu record <course> [name]` / `replay [--release] [--uncapped] [--exit-at N] [--log PATH] <name>` | env + launch (see [automation.md](automation.md)) |
 | `nsmbu profile` / `perf` | profiling helpers |
 | `nsmbu installer` / `lint` / `recomp` | installer, TypeScript mod build, recomp only |
 | `nsmbu scripted <name>` | wraps `tools/scripted-run.sh` |

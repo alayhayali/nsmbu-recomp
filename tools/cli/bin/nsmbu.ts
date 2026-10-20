@@ -106,19 +106,21 @@ async function main(): Promise<void> {
                 break;
             }
             case "record": {
-                const [course, ...launchRest] = rest;
+                const [course, ...tail] = rest;
                 if (!course) {
-                    throw new Error("usage: nsmbu record <course> […]");
+                    throw new Error("usage: nsmbu record <course> [name] […]");
                 }
-                cmdRecord(repo, course, launchRest);
+                const named = tail.length > 0 && !tail[0].startsWith("-");
+                const name = named ? tail[0] : course;
+                cmdRecord(repo, course, name, named ? tail.slice(1) : tail);
                 break;
             }
             case "replay": {
                 const { flags, positional } = parseArgv(rest, ["release", "uncapped", "exit-at", "log"], ["exit-at", "log"]);
-                const [course, ...launchRest] = positional;
-                if (!course) {
+                const [name, ...launchRest] = positional;
+                if (!name) {
                     throw new Error(
-                        "usage: nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course> […]",
+                        "usage: nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <name> […]",
                     );
                 }
                 const exitAt = flagString(flags, "exit-at");
@@ -131,7 +133,7 @@ async function main(): Promise<void> {
                 }
                 cmdReplay(
                     repo,
-                    course,
+                    name,
                     {
                         release: hasFlag(flags, "release"),
                         uncapped: hasFlag(flags, "uncapped"),
