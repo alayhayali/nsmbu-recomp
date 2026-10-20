@@ -13,8 +13,11 @@ struct Instance;
 namespace mods::lua_sdk {
 
 void install(lua_State* L, lua_mod::Instance* inst);
+void forget(lua_mod::Instance* inst);
 void set_cpu(Cpu* c);
 Cpu* cpu();
+bool pickup_locked(uint32_t actor, int32_t mode);
+void set_pickup_lock(int index, bool locked);
 void request_load_story(int world, int course);
 std::string load_story_status();
 bool story_leave_pending();

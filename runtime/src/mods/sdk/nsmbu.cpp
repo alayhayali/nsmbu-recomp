@@ -1,6 +1,7 @@
 #include "nsmbu.h"
 #include "mods/lua_runtime.h"
 #include "mods/lua_guest.h"
+#include "mods/lua_gui.h"
 #include "mods/lua_press.h"
 #include "mods/packages.h"
 #include "guest_addr.h"
@@ -10,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -26,6 +28,7 @@ extern "C" void nsmbu_banner_entry_arm(void);
 namespace mods::lua_sdk {
 std::atomic<bool> g_story_leave_queued{false};
 std::atomic<uint64_t> g_story_load_generation{0};
+std::atomic<uint32_t> g_pickup_lock_mask{0};
 namespace {
 using lua_mod::Instance;
 using json::Value;
@@ -396,6 +399,261 @@ int l_input_press(lua_State* L) {
     if (steps < 1) steps = 1;
     if (steps > 600) steps = 600;
     lua_press::press(inst, mask, (uint64_t)steps, inst->step);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+struct InputSample {
+    uint64_t step = UINT64_MAX;
+    input::PadState pad;
+    uint32_t previous = 0;
+};
+
+std::mutex g_input_mu;
+std::map<const Instance*, InputSample> g_input_samples;
+
+input::PadState sample_input(Instance* inst, uint32_t& previous) {
+    std::lock_guard guard(g_input_mu);
+    InputSample& sample = g_input_samples[inst];
+    input::PadState now = input::read();
+    now.buttons |= lua_press::active(inst->step);
+    if (sample.step != inst->step) {
+        sample.previous = sample.pad.buttons;
+        sample.pad = now;
+        sample.step = inst->step;
+    }
+    previous = sample.previous;
+    return sample.pad;
+}
+
+bool input_button(lua_State* L, uint32_t& bit) {
+    if (!lua_isstring(L, 1)) return false;
+    return button_bit(lua_tostring(L, 1), bit);
+}
+
+int l_input_call(lua_State* L) {
+    Instance* inst = self(L);
+    uint32_t previous = 0;
+    const input::PadState pad = sample_input(inst, previous);
+    lua_newtable(L);
+    lua_pushnumber(L, (lua_Number)pad.buttons);
+    lua_setfield(L, -2, "buttons");
+    lua_pushnumber(L, (lua_Number)pad.lx);
+    lua_setfield(L, -2, "lx");
+    lua_pushnumber(L, (lua_Number)pad.ly);
+    lua_setfield(L, -2, "ly");
+    lua_pushnumber(L, (lua_Number)pad.rx);
+    lua_setfield(L, -2, "rx");
+    lua_pushnumber(L, (lua_Number)pad.ry);
+    lua_setfield(L, -2, "ry");
+    lua_pushboolean(L, pad.touch);
+    lua_setfield(L, -2, "touch");
+    lua_pushnumber(L, (lua_Number)pad.tx);
+    lua_setfield(L, -2, "tx");
+    lua_pushnumber(L, (lua_Number)pad.ty);
+    lua_setfield(L, -2, "ty");
+    return 1;
+}
+
+int l_input_held(lua_State* L) {
+    Instance* inst = self(L);
+    uint32_t bit = 0;
+    if (!input_button(L, bit)) return fail(L, "bad type");
+    uint32_t previous = 0;
+    const input::PadState pad = sample_input(inst, previous);
+    lua_pushboolean(L, (pad.buttons & bit) != 0);
+    return 1;
+}
+
+int l_input_pressed(lua_State* L) {
+    Instance* inst = self(L);
+    uint32_t bit = 0;
+    if (!input_button(L, bit)) return fail(L, "bad type");
+    uint32_t previous = 0;
+    const input::PadState pad = sample_input(inst, previous);
+    lua_pushboolean(L, (pad.buttons & bit) != 0 && (previous & bit) == 0);
+    return 1;
+}
+
+int l_gui_clear(lua_State* L) {
+    Instance* inst = self(L);
+    lua_gui::clear(inst->id);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+bool gui_number(lua_State* L, int arg, float& out) {
+    if (!lua_isnumber(L, arg)) return false;
+    out = (float)lua_tonumber(L, arg);
+    return true;
+}
+
+bool gui_optional(lua_State* L, int arg, float& out, float fallback) {
+    if (lua_isnoneornil(L, arg)) {
+        out = fallback;
+        return true;
+    }
+    return gui_number(L, arg, out);
+}
+
+bool gui_color(lua_State* L, int arg, uint32_t& out) {
+    if (!lua_isnumber(L, arg)) return false;
+    out = (uint32_t)lua_tonumber(L, arg);
+    return true;
+}
+
+int l_gui_rect(lua_State* L) {
+    Instance* inst = self(L);
+    float x = 0, y = 0, w = 0, h = 0, thickness = 2, rounding = 0;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x) || !gui_number(L, 2, y) || !gui_number(L, 3, w) || !gui_number(L, 4, h) ||
+        !gui_color(L, 5, color))
+        return fail(L, "bad type");
+    if (!gui_optional(L, 6, thickness, 2) || !gui_optional(L, 7, rounding, 0)) return fail(L, "bad type");
+    if (w < 0) {
+        x += w;
+        w = -w;
+    }
+    if (h < 0) {
+        y += h;
+        h = -h;
+    }
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::Rect;
+    c.x0 = x;
+    c.y0 = y;
+    c.x1 = x + w;
+    c.y1 = y + h;
+    c.color = color;
+    c.thickness = thickness;
+    c.rounding = rounding;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_rect_filled(lua_State* L) {
+    Instance* inst = self(L);
+    float x = 0, y = 0, w = 0, h = 0, rounding = 0;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x) || !gui_number(L, 2, y) || !gui_number(L, 3, w) || !gui_number(L, 4, h) ||
+        !gui_color(L, 5, color))
+        return fail(L, "bad type");
+    if (!gui_optional(L, 6, rounding, 0)) return fail(L, "bad type");
+    if (w < 0) {
+        x += w;
+        w = -w;
+    }
+    if (h < 0) {
+        y += h;
+        h = -h;
+    }
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::RectFilled;
+    c.x0 = x;
+    c.y0 = y;
+    c.x1 = x + w;
+    c.y1 = y + h;
+    c.color = color;
+    c.rounding = rounding;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_line(lua_State* L) {
+    Instance* inst = self(L);
+    float x0 = 0, y0 = 0, x1 = 0, y1 = 0, thickness = 2;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x0) || !gui_number(L, 2, y0) || !gui_number(L, 3, x1) || !gui_number(L, 4, y1) ||
+        !gui_color(L, 5, color))
+        return fail(L, "bad type");
+    if (!gui_optional(L, 6, thickness, 2)) return fail(L, "bad type");
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::Line;
+    c.x0 = x0;
+    c.y0 = y0;
+    c.x1 = x1;
+    c.y1 = y1;
+    c.color = color;
+    c.thickness = thickness;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_circle(lua_State* L) {
+    Instance* inst = self(L);
+    float x = 0, y = 0, r = 0, thickness = 2;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x) || !gui_number(L, 2, y) || !gui_number(L, 3, r) || !gui_color(L, 4, color))
+        return fail(L, "bad type");
+    if (!gui_optional(L, 5, thickness, 2)) return fail(L, "bad type");
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::Circle;
+    c.x0 = x;
+    c.y0 = y;
+    c.x1 = r;
+    c.color = color;
+    c.thickness = thickness;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_circle_filled(lua_State* L) {
+    Instance* inst = self(L);
+    float x = 0, y = 0, r = 0;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x) || !gui_number(L, 2, y) || !gui_number(L, 3, r) || !gui_color(L, 4, color))
+        return fail(L, "bad type");
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::CircleFilled;
+    c.x0 = x;
+    c.y0 = y;
+    c.x1 = r;
+    c.color = color;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_triangle_filled(lua_State* L) {
+    Instance* inst = self(L);
+    float x0 = 0, y0 = 0, x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x0) || !gui_number(L, 2, y0) || !gui_number(L, 3, x1) || !gui_number(L, 4, y1) ||
+        !gui_number(L, 5, x2) || !gui_number(L, 6, y2) || !gui_color(L, 7, color))
+        return fail(L, "bad type");
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::TriangleFilled;
+    c.x0 = x0;
+    c.y0 = y0;
+    c.x1 = x1;
+    c.y1 = y1;
+    c.x2 = x2;
+    c.y2 = y2;
+    c.color = color;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_text(lua_State* L) {
+    Instance* inst = self(L);
+    float x = 0, y = 0, scale = 1;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x) || !gui_number(L, 2, y) || !lua_isstring(L, 3) || !gui_color(L, 4, color))
+        return fail(L, "bad type");
+    if (!gui_optional(L, 5, scale, 1)) return fail(L, "bad type");
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::Text;
+    c.x0 = x;
+    c.y0 = y;
+    c.color = color;
+    c.scale = scale;
+    c.text = lua_tostring(L, 3);
+    lua_gui::push(inst->id, c);
     lua_pushboolean(L, 1);
     return 1;
 }
@@ -774,6 +1032,15 @@ int l_players(lua_State* L) {
     return 1;
 }
 
+int l_player_pickup_lock(lua_State* L) {
+    if (!lua_isnumber(L, 1)) return fail(L, "bad type");
+    int index = (int)lua_tointeger(L, 1);
+    if (index < 0 || index >= kPlayerCount) return fail(L, "bad player index");
+    set_pickup_lock(index, lua_toboolean(L, 2) != 0);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 int l_player_entered(lua_State* L) {
     int index = player_index(L);
     bool entered = false;
@@ -850,6 +1117,13 @@ int l_player_set_mode(lua_State* L) {
     if (actor_addr(index, actor, err)) {
         if (!lua_guest::write_s32(actor + kActorMode, mode, err)) return fail(L, err.c_str());
     }
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_player_set_pickup_lock(lua_State* L) {
+    int index = player_index(L);
+    set_pickup_lock(index, lua_toboolean(L, 2) != 0);
     lua_pushboolean(L, 1);
     return 1;
 }
@@ -1351,6 +1625,7 @@ void install_player_meta(lua_State* L) {
         bind_guest(L, "set_lives", l_player_set_lives);
         bind_guest(L, "mode", l_player_mode);
         bind_guest(L, "set_mode", l_player_set_mode);
+        bind_guest(L, "set_pickup_lock", l_player_set_pickup_lock);
         bind_guest(L, "coins", l_player_coins);
         bind_guest(L, "set_coins", l_player_set_coins);
         bind_guest(L, "speed_y", l_player_speed_y);
@@ -2158,6 +2433,7 @@ void install_game(lua_State* L) {
     lua_newtable(L);
     bind_guest(L, "get_player", l_player);
     bind_guest(L, "get_players", l_players);
+    bind_guest(L, "set_pickup_lock", l_player_pickup_lock);
     set_loaded(L, "nsmbu.Player");
 
     lua_newtable(L);
@@ -2212,6 +2488,7 @@ void install_global(lua_State* L) {
     attach_loaded(L, "nsmbu.Fn", "Fn");
     attach_loaded(L, "nsmbu.Hooks", "Hooks");
     attach_loaded(L, "nsmbu.Input", "Input");
+    attach_loaded(L, "nsmbu.Gui", "Gui");
     attach_loaded(L, "nsmbu.Data", "Data");
     attach_loaded(L, "nsmbu.Enemy", "Enemy");
     attach_loaded(L, "nsmbu.Boss", "Boss");
@@ -2276,7 +2553,38 @@ void install_modules(lua_State* L, Instance* inst) {
     set_empty_module(L, "nsmbu.Hooks");
     lua_newtable(L);
     bind(L, inst, "press", l_input_press);
+    lua_newtable(L);
+    bind(L, inst, "held", l_input_held);
+    bind(L, inst, "pressed", l_input_pressed);
+    static const struct { const char* name; uint32_t bit; } kButtons[] = {
+        {"A", input::kA},       {"B", input::kB},       {"X", input::kX},
+        {"Y", input::kY},       {"L", input::kL},       {"R", input::kR},
+        {"ZL", input::kZL},     {"ZR", input::kZR},     {"Plus", input::kPlus},
+        {"Minus", input::kMinus}, {"Home", input::kHome},
+        {"Up", input::kUp},     {"Down", input::kDown},
+        {"Left", input::kLeft}, {"Right", input::kRight},
+        {"StickL", input::kStickL}, {"StickR", input::kStickR},
+    };
+    for (const auto& entry : kButtons) {
+        lua_pushnumber(L, (lua_Number)entry.bit);
+        lua_setfield(L, -2, entry.name);
+    }
+    lua_setfield(L, -2, "button");
+    lua_newtable(L);
+    bind(L, inst, "__call", l_input_call);
+    lua_setmetatable(L, -2);
     set_loaded(L, "nsmbu.Input");
+
+    lua_newtable(L);
+    bind(L, inst, "clear", l_gui_clear);
+    bind(L, inst, "rect", l_gui_rect);
+    bind(L, inst, "rect_filled", l_gui_rect_filled);
+    bind(L, inst, "line", l_gui_line);
+    bind(L, inst, "circle", l_gui_circle);
+    bind(L, inst, "circle_filled", l_gui_circle_filled);
+    bind(L, inst, "triangle_filled", l_gui_triangle_filled);
+    bind(L, inst, "text", l_gui_text);
+    set_loaded(L, "nsmbu.Gui");
     set_empty_module(L, "nsmbu.Data");
     set_empty_module(L, "nsmbu.Enemy");
     set_empty_module(L, "nsmbu.Boss");
@@ -2285,6 +2593,37 @@ void install_modules(lua_State* L, Instance* inst) {
 
     install_game(L);
 }
+}
+
+bool pickup_locked(uint32_t actor, int32_t mode) {
+    if (mode < 1 || mode > 8) return false;
+    uint32_t mask = g_pickup_lock_mask.load(std::memory_order_relaxed);
+    if (mask == 0) return false;
+    for (int i = 0; i < kPlayerCount; ++i) {
+        if ((mask & (1u << i)) == 0) continue;
+        uint32_t slot_actor = 0;
+        std::string err;
+        if (actor_addr(i, slot_actor, err) && slot_actor == actor) return true;
+    }
+    return false;
+}
+
+void set_pickup_lock(int index, bool locked) {
+    if (index < 0 || index >= kPlayerCount) return;
+    uint32_t mask = g_pickup_lock_mask.load(std::memory_order_relaxed);
+    if (locked) {
+        mask |= 1u << index;
+    } else {
+        mask &= ~(1u << index);
+    }
+    g_pickup_lock_mask.store(mask, std::memory_order_relaxed);
+}
+
+void forget(Instance* inst) {
+    if (!inst) return;
+    lua_gui::drop(inst->id);
+    std::lock_guard guard(g_input_mu);
+    g_input_samples.erase(inst);
 }
 
 void install(lua_State* L, Instance* inst) {

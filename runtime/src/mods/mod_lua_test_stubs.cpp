@@ -1,4 +1,5 @@
 #include "core/runtime.h"
+#include "input/input.h"
 
 void log_msg(const char*, ...) {}
 
@@ -23,4 +24,5 @@ __attribute__((weak)) uint32_t host_alloc(uint32_t size, uint32_t align) {
 
 namespace input {
 __attribute__((weak)) bool pro_controller() { return false; }
+__attribute__((weak)) PadState read() { return PadState{}; }
 }

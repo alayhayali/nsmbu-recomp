@@ -17,3 +17,4 @@
 0267CB3C  # WorldCourse digit tag: use the course being entered (CourseInfo next, else now)
 0252F900  # course HUD: AreaTask is null while a course change replaces the area
 025CF020  # course HUD helper: AreaTask is null during course teardown
+02931C1C  # PlayerObject::setItem: honor the mod pickup lock

@@ -1,8 +1,8 @@
 # Lua API (version 1)
 
 Status: **Phase 2 partial**.
-Lifecycle fields on `nsmbu.Hooks` (`onLoaded`, `onLogicStep`, `onSceneChange`, `onConfigChanged`, and `onUnload`), package metadata, log and status, time, config, guest memory, high-level `nsmbu.Level` / `nsmbu.Player` helpers, level actor reads / spawns, and `nsmbu.Scene` flow probes and transitions are implemented with embedded LuaJIT 2.1.
-Function hooks (`hook` / `replace` / `call` on `nsmbu.Hooks`), input pad reads, data files, guest heap alloc, and `nsmbu.Fn` stay proposal until later phases.
+Lifecycle fields on `nsmbu.Hooks` (`onLoaded`, `onLogicStep`, `onSceneChange`, `onConfigChanged`, and `onUnload`), package metadata, log and status, time, config, guest memory, high-level `nsmbu.Level` / `nsmbu.Player` helpers, level actor reads / spawns, `nsmbu.Scene` flow probes and transitions, `nsmbu.Input` reads, and `nsmbu.Gui` drawing are implemented with embedded LuaJIT 2.1.
+Function hooks (`hook` / `replace` / `call` on `nsmbu.Hooks`), data files, guest heap alloc, and `nsmbu.Fn` stay proposal until later phases.
 Package plan: [lua-mods.md](lua-mods.md).
 Cemu packs do not use this API.
 
@@ -13,10 +13,11 @@ It holds the lifecycle fields, the log and status helpers, and one field per mod
 nsmbu.Guest.read_u32(0x105E2C80)
 nsmbu.Level.set_time(999)
 nsmbu.Player.get_player(0)
+nsmbu.Gui.rect_filled(0, 0, 64, 64, 0x3d7fbfff, 8)
 ```
 
 Mods are authored in TypeScript and compiled to Lua with TypeScriptToLua.
-The definitions for the global live in [../../modding/sdk/nsmbu.d.ts](../../modding/sdk/nsmbu.d.ts).
+The definitions for the global live in [../../modding/sdk/](../../modding/sdk/), one file per module (`nsmbu.d.ts` declares the global, `nsmbu.Gui.d.ts` declares `nsmbu.Gui`, and so on).
 `modding/tsconfig.json` sets the Lua 5.1 target with inlined helpers, so the compiled `main.lua` loads in the runtime LuaJIT without extra files.
 See [../../modding/README.md](../../modding/README.md) for the build commands.
 The snippets below show the Lua surface that the compiled scripts call.
@@ -37,7 +38,8 @@ Each package has its own Lua state, so one package cannot replace another packag
 | `nsmbu.Scene` | Boot flow phase probes and scene transitions | Live |
 | `nsmbu.Fn` | Generated function addresses | Proposal (empty table) |
 | `nsmbu.Hooks` | Lifecycle callbacks (live); hook, replace, original, call (proposal) | Partial |
-| `nsmbu.Input` | Pad snapshot, button helpers | Proposal (`press` injection is live) |
+| `nsmbu.Input` | Pad snapshot, button helpers, button injection | Live |
+| `nsmbu.Gui` | 2D HUD drawing over the game picture | Live |
 | `nsmbu.Data` | Per-package data files | Proposal (empty table) |
 | `nsmbu.Enemy` / `nsmbu.Boss` / `nsmbu.Blocks` / `nsmbu.Env` | Future game domains | Stub empty tables |
 
@@ -285,6 +287,7 @@ The module is callable: `nsmbu.Player(index)` is the same as `nsmbu.Player.get(i
 | `entered()` | `true` when that slot has an entered player. |
 | `lives()` / `set_lives(n)` | Field lives. Fails with `"not entered"` when the slot is empty. |
 | `mode()` / `set_mode(n)` | Power-up mode `0` .. `8`. `mode` prefers the actor value when it is valid. `set_mode` writes field data and the actor when present. |
+| `set_pickup_lock(locked)` | While `true`, the player consumes power-up items without applying them. Use `nsmbu.Player.set_pickup_lock(index, locked)` when you do not hold a handle. This is what the reserve mod uses to keep the current power-up. |
 | `coins()` / `set_coins(n)` | Field coin count for that player. |
 | `pos()` | Actor position as `{ x, y, z }`. Fails with `"no player actor"` when the actor is missing. |
 | `set_pos(x, y, z)` | Writes actor position. You may also pass one table `{ x, y, z }`. |
@@ -513,7 +516,7 @@ Replace that function instead.
 
 ## Input
 
-`press` is live. The pad snapshot and button read helpers stay proposal.
+`press`, the pad snapshot, and the button helpers are live.
 
 ```lua
 nsmbu.Input.press("A", 3)
@@ -575,8 +578,51 @@ local down = nsmbu.Input.button.held("A")
 | `nsmbu.Input.button.held(name)` | `true` when that button is down. `name` is a key of `nsmbu.Input.button` such as `"A"`. A bad name returns `nil` and a message. |
 | `nsmbu.Input.button.pressed(name)` | `true` when the button is down now and was up on the previous `nsmbu.Input()` or `nsmbu.Input.button.pressed` sample in this package. |
 
-This API does not inject buttons.
-It does not rumble the pad.
+The pad snapshot and the `held` and `pressed` helpers only read the pad.
+Only `press` injects buttons.
+The module does not rumble the pad.
+
+## Gui
+
+Live.
+
+`nsmbu.Gui` draws 2D shapes and text over the game picture, inside the 16:9 content area.
+It does not draw into the letterbox bars.
+Coordinates are in a 1280 by 720 design space and scale with the window and aspect ratio.
+
+```lua
+nsmbu.Gui.clear()
+nsmbu.Gui.rect_filled(540, 14, 58, 58, 0x3d7fbfff, 12)
+nsmbu.Gui.rect_filled(546, 20, 46, 46, 0xfaf2d8ff, 8)
+nsmbu.Gui.circle_filled(569, 43, 16, 0xe23b3bff)
+nsmbu.Gui.text(560, 30, "1", 0xffffffff, 2)
+```
+
+Commands stay on screen until the package calls `clear()` or unloads.
+Call `clear()` at the start of each `onLogicStep` when the HUD changes each step.
+Commands belong to the package that issued them, so packages do not clear each other.
+
+| Function | Result |
+| --- | --- |
+| `clear()` | Removes this package's commands. Returns `true`. |
+| `rect(x, y, w, h, color, thickness?, rounding?)` | Draws an outline. `thickness` defaults to `2`, `rounding` to `0`. |
+| `rect_filled(x, y, w, h, color, rounding?)` | Draws a filled rectangle. |
+| `line(x0, y0, x1, y1, color, thickness?)` | Draws a line. `thickness` defaults to `2`. |
+| `circle(x, y, radius, color, thickness?)` | Draws a circle outline. |
+| `circle_filled(x, y, radius, color)` | Draws a filled circle. |
+| `triangle_filled(x0, y0, x1, y1, x2, y2, color)` | Draws a filled triangle. |
+| `text(x, y, text, color, scale?)` | Draws one line with the host font. `scale` defaults to `1`. |
+
+`color` is one integer in `0xRRGGBBAA` order.
+`0xff0000ff` is opaque red.
+A color is copied as given; alpha `0` hides the shape.
+
+Drawing runs on the game thread with the logic step.
+The host copies the command list for the frame.
+Do not pass guest pointers or keep a command across steps.
+
+`nsmbu.Gui` does not load images, textures, or fonts.
+Use shapes and text for icons.
 
 ## Data files
 
@@ -681,8 +727,9 @@ end
 
 ## Not in version 1
 
-- Drawing text or images (the HUD service from SDK v2).
-- Button injection, rumble, or touch injection.
+- Drawing images, textures, or custom fonts.
+  `nsmbu.Gui` draws shapes and text only.
+- Rumble or touch injection.
 - Audio playback.
 - Changing the content file map without a restart.
 - A guest function pointer that enters Lua.

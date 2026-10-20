@@ -176,7 +176,7 @@ Phase 4 proposal (hooks and calls).
 
 Guest v2 also planned a HUD service.
 That service was not in phase 1.
-Lua can add `nsmbu.hud` later.
+Lua now provides `nsmbu.Gui` for shapes and text.
 It is not required to retire v2.
 
 Game calls use guest addresses from the public headers (`references/headers`, see [names.md](../names.md)).

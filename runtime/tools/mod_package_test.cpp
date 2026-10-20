@@ -18,6 +18,7 @@ void env(const char* key, const char* value) {
 }
 #include "mods/cemu_pack.h"
 #include "mods/lua_eval.h"
+#include "mods/lua_gui.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -191,6 +192,24 @@ int main(int argc, char** argv) {
         assert(enable("lua.hostmiss",true,error));frame(24);
         {auto v=view("lua.hostmiss");assert(!v.active&&!v.enabled);}
         assert(remove("lua.hostmiss",error));
+
+        assert(install(lua_pack("lua.gui",
+            "function nsmbu.Hooks.onLogicStep(step)\n"
+            "  assert(nsmbu.Gui.clear()==true)\n"
+            "  assert(nsmbu.Gui.rect_filled(10,20,30,40,0xff00ffff)==true)\n"
+            "  assert(nsmbu.Gui.rect(1,2,3,4,0x11223344,2,5)==true)\n"
+            "  assert(nsmbu.Gui.text(5,6,\"ok\",0xffffffff,2)==true)\n"
+            "  nsmbu.status(\"gui-ok\")\n"
+            "end\n",""),error));
+        assert(enable("lua.gui",true,error));frame(25);
+        {auto v=view("lua.gui");assert(v.active&&v.enabled&&v.status=="gui-ok");}
+        {auto cmds=mods::lua_gui::commands();assert(cmds.size()==3);
+         assert(cmds[0].kind==mods::lua_gui::Kind::RectFilled&&cmds[0].color==0xff00ffffu);
+         assert(cmds[1].kind==mods::lua_gui::Kind::Rect&&cmds[1].thickness==2);
+         assert(cmds[2].kind==mods::lua_gui::Kind::Text&&cmds[2].text=="ok");}
+        assert(enable("lua.gui",false,error));frame(26);
+        assert(mods::lua_gui::commands().empty());
+        assert(remove("lua.gui",error));
 
         std::vector<uint8_t> slab(65536,0);
         mods::lua_guest::set_base(reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(slab.data())-0x10000000u));

@@ -73,7 +73,8 @@ class Hooks(unittest.TestCase):
              (False, 0x02994164), (False, 0x029CBBB4), (False, 0x024BAD4C),
              (False, 0x024BD86C), (True, 0x024BD96C), (True, 0x024BE280),
              (False, 0x025D8B28), (False, 0x02672C90), (False, 0x02681BFC),
-             (False, 0x0267CB3C), (False, 0x0252F900), (False, 0x025CF020)],
+             (False, 0x0267CB3C), (False, 0x0252F900), (False, 0x025CF020),
+             (False, 0x02931C1C)],
         )
         for site, canon, addr, where in entries:
             self.assertEqual(canon, addr, where)

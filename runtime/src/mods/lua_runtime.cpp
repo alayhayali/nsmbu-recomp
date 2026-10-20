@@ -253,7 +253,10 @@ void close_state(Instance& inst) {
 }
 
 Instance::Instance() = default;
-Instance::~Instance() { close_state(*this); }
+Instance::~Instance() {
+    lua_sdk::forget(this);
+    close_state(*this);
+}
 Instance::Instance(Instance&& o) noexcept
     : id(std::move(o.id)), version(std::move(o.version)), path(std::move(o.path)),
       entry(std::move(o.entry)), config(std::move(o.config)), status_line(std::move(o.status_line)),
@@ -263,6 +266,7 @@ Instance::Instance(Instance&& o) noexcept
 }
 Instance& Instance::operator=(Instance&& o) noexcept {
     if (this == &o) return *this;
+    lua_sdk::forget(this);
     close_state(*this);
     id = std::move(o.id);
     version = std::move(o.version);
@@ -323,6 +327,7 @@ void unload(Instance& inst) {
     if (!inst.state) return;
     fire_unload(inst);
     lua_press::drop(&inst);
+    lua_sdk::forget(&inst);
     close_state(inst);
 }
 
