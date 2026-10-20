@@ -88,10 +88,8 @@ def main():
     if not os.path.isdir(game):
         sys.exit("missing game/; run: nsmbu extract")
     env = os.environ.copy()
-    user, save = devdata.apply_env(env, ROOT)
-    if course_pack is not None:
-        slot.apply_course_pack(user, course_pack)
-    elif slot_num is not None:
+    _, save = devdata.apply_env(env, ROOT)
+    if slot_num is not None:
         slot.apply_slot(env, slot_num)
     if use_debug_env:
         for key, value in LAUNCH_DEBUG_ENV.items():
@@ -111,6 +109,8 @@ def main():
     cmd = [exe, "--game", game_arg]
     if args.trace:
         cmd.append("--trace")
+    if course_pack is not None:
+        cmd.extend(["--open", course_pack])
     cmd.extend(devdata.with_save_arg(args.run_args, save_arg))
     os.chdir(ROOT)
     if args.gdb:

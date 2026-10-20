@@ -1,6 +1,8 @@
 # Course data files
 
 [course-open.md](course-open.md) covers the pack name and `CourseInfo`.
+[level-runtime.md](level-runtime.md) covers the task graph, archive lifetimes,
+and course hot reload.
 This page covers the data the course itself is built from:
 which structs hold it, where they come from, and how a modified
 level file reaches the running game.

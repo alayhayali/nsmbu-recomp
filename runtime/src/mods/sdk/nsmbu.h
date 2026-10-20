@@ -18,5 +18,7 @@ Cpu* cpu();
 void request_load_story(int world, int course);
 std::string load_story_status();
 bool story_leave_pending();
+uint64_t story_load_generation();
+void native_intro_skip_tick(uint64_t step);
 
 }

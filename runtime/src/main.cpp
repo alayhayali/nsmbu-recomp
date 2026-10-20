@@ -350,7 +350,7 @@ static void print_help(const char* argv0) {
            "  --save DIR            Save data directory\n"
            "  --trace               Log HLE calls\n"
            "  --renderer API        metal or vulkan (also --renderer=API)\n"
-           "  --open W-C            Boot into a course pack with the intro skip (e.g. 1-1)\n"
+           "  --open W-C            Boot into a course pack with the native intro skip (e.g. 1-1)\n"
 #ifdef NSMBU_HAS_METAL
            "  --warm-shaders        Fill the Metal shader cache and exit\n"
 #endif

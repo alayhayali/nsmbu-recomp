@@ -4,9 +4,11 @@
 The file name and the course id are the pack name `1-5`.
 A bare `1-5.szs` is read from `game/content/Common/course_res_pack/`.
 
-The command enables `example.intro-skip` and sets its `course_pack` option.
-That mod applies a save, then calls `Scene.load_pack`.
+The command passes the pack to the native boot skip.
+The native skip applies save file 1, then runs the same story transition as
+`Scene.load_pack`.
 `load_pack("1-5")` is `load_story(0, 4)`.
+The `example.intro-skip` mod is not required.
 
 ## Pack name
 

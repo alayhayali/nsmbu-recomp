@@ -1,8 +1,20 @@
 # Intro skip
 
-Investigation for `modding/examples/example-intro-skip`.
+Investigation for the native boot skip and `modding/examples/example-intro-skip`.
 
 Addresses are USA v1.3.0.
+
+## Native boot skip
+
+The runtime has a native boot skip.
+`nsmbu run W-C`, `nsmbu launch W-C`, `nsmbu open W-C`, `nsmbu record`, and `nsmbu replay`
+pass `--open W-C`.
+The native skip uses save file 1.
+It presses A on the boot GamePad popup, forces the title if needed, applies the save,
+and enters the pack.
+The `example.intro-skip` mod is not required.
+When `--open` is set, the mod manager does not load `example.intro-skip`, even if the mod is enabled.
+The native skip writes `[open]` log lines.
 
 ## What ships today
 

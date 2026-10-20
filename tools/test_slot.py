@@ -72,21 +72,5 @@ class TakeArgs(unittest.TestCase):
                 slot.take_args([path])
 
 
-class ApplyCoursePack(unittest.TestCase):
-    def test_updates_mods_json(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "mods.json")
-            with open(path, "w", encoding="utf-8") as handle:
-                handle.write(
-                    '{"format_version":1,"enabled":{},"config":{"example.intro-skip":{"save_file":"2"}}}\n'
-                )
-            slot.apply_course_pack(tmp, "3-4")
-            with open(path, encoding="utf-8") as handle:
-                data = __import__("json").load(handle)
-            self.assertTrue(data["enabled"]["example.intro-skip"])
-            self.assertEqual(data["config"]["example.intro-skip"]["course_pack"], "3-4")
-            self.assertEqual(data["config"]["example.intro-skip"]["save_file"], "2")
-
-
 if __name__ == "__main__":
     unittest.main(verbosity=2)

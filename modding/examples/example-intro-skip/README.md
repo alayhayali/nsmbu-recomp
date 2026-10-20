@@ -1,5 +1,8 @@
 # Intro skip
 
+`nsmbu run 1-1` uses the native boot skip.
+This package is optional and remains for manual use.
+
 The skip reads the Save file option.
 That option is 1, 2, or 3.
 The default is 1.

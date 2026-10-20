@@ -48,6 +48,7 @@ namespace gfxvk { bool buffer_cache_enabled(); }
 #include "input/rumble.h"
 #include "hooks/interp.h"
 #include "hooks/collision_wireframe.h"
+#include "hooks/course_hot_reload.h"
 #include "core/runtime.h"
 #include "save/savestate.h"
 #include "gfx/screenshot.h"
@@ -1355,6 +1356,25 @@ void tab_debug() {
     }
     if (env_locked) help("NSMBU_COLLISION_VIEWER is set for this start and takes precedence.");
     else help("Draw solid tiles in blue and actor hitboxes in red over the course.");
+
+    heading("Course hot reload");
+    const bool reload_locked = course_hot_reload::env_locked();
+    if (check("Reload the active course when its .szs changes", course_hot_reload::enabled(), &v, !reload_locked)) {
+        course_hot_reload::set_enabled(v);
+        hostui::post([v] { hostui::set("hotReloadCourses", v ? "1" : "0"); });
+    }
+    if (reload_locked) help("NSMBU_HOT_RELOAD_COURSES is set for this start and takes precedence.");
+    else help("Leaves to the title screen and re-enters the course when the active pack changes on disk.");
+    const course_hot_reload::Info reload = course_hot_reload::info();
+    if (reload.pack.empty()) {
+        note("No course is active.");
+    } else {
+        note("Pack: %s", reload.pack.c_str());
+        note("File: %s", reload.path.c_str());
+        note("Status: %s", reload.status.c_str());
+        if (ImGui::Button("Reload now")) course_hot_reload::request_reload();
+        help("Rebuilds the active course from disk and restarts it at the course entrance.");
+    }
 }
 
 void tab_about() {
@@ -1626,6 +1646,8 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         if (hostui::get("perfDetail", v)) g_perf_detail = v == "1";
         if (!env::COLLISION_VIEWER.present() && hostui::get("collisionViewer", v))
             collision_wireframe::set_enabled(v == "1");
+        if (!env::HOT_RELOAD_COURSES.present() && hostui::get("hotReloadCourses", v))
+            course_hot_reload::set_enabled(v == "1");
 
         if (!env::PRO_CONTROLLER() && hostui::get("proController", v))
             hostui::post([pro = v == "1"] { hostui::set_pro_controller(pro); });

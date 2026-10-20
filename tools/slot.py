@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import sys
@@ -7,7 +6,6 @@ _SLOT = re.compile(r"^([1-5])$")
 _WORLD = re.compile(r"^\d+-\d+$")
 _FILE_PACK = re.compile(r"^([1-9])-([1-9]\d*)$")
 LOAD_FRAME = 200
-INTRO_SKIP_MOD = "example.intro-skip"
 _COURSE_RES_PACK = os.path.join("game", "content", "Common", "course_res_pack")
 
 
@@ -86,31 +84,3 @@ def apply_slot(env, slot):
     if not os.path.isfile(path):
         sys.exit(f"missing {path}. Save a state in slot {slot}.")
     env.setdefault("NSMBU_STATE_LOAD_AT", f"{LOAD_FRAME}:{slot}")
-
-
-def apply_course_pack(user_dir, pack):
-    path = os.path.join(user_dir, "mods.json")
-    data = {}
-    if os.path.isfile(path):
-        with open(path, encoding="utf-8") as handle:
-            data = json.load(handle)
-    if not isinstance(data, dict):
-        data = {}
-    data.setdefault("format_version", 1)
-    enabled = data.get("enabled")
-    if not isinstance(enabled, dict):
-        enabled = {}
-    config = data.get("config")
-    if not isinstance(config, dict):
-        config = {}
-    mod_cfg = config.get(INTRO_SKIP_MOD)
-    if not isinstance(mod_cfg, dict):
-        mod_cfg = {}
-    enabled[INTRO_SKIP_MOD] = True
-    mod_cfg["course_pack"] = pack
-    config[INTRO_SKIP_MOD] = mod_cfg
-    data["enabled"] = enabled
-    data["config"] = config
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(data, handle, indent=2)
-        handle.write("\n")

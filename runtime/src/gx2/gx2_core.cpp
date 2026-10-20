@@ -35,6 +35,7 @@
 #include "gfx/render_prof.h"
 #include "mods/packages.h"
 #include "hooks/collision_wireframe.h"
+#include "hooks/course_hot_reload.h"
 #include "hooks/interp.h"
 
 using namespace Latte;
@@ -861,8 +862,10 @@ HLE(gx2, GX2SwapScanBuffers) {
     if (!hold) {
         mods::lua_sdk::set_cpu(c);
         mods::packages::frame(steps);
+        mods::lua_sdk::native_intro_skip_tick(steps);
         agent_ctl::guest_service();
         collision_wireframe::capture(c);
+        course_hot_reload::tick();
     }
 
     static const char* captureCounter = env::TEST_CAPTURE_LOAD_COUNTER();

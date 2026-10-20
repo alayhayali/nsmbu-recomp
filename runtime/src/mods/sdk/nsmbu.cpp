@@ -2,6 +2,7 @@
 #include "mods/lua_runtime.h"
 #include "mods/lua_guest.h"
 #include "mods/lua_press.h"
+#include "mods/packages.h"
 #include "guest_addr.h"
 #include "input/input.h"
 #include "core/runtime.h"
@@ -24,6 +25,7 @@ extern "C" void nsmbu_banner_entry_arm(void);
 
 namespace mods::lua_sdk {
 std::atomic<bool> g_story_leave_queued{false};
+std::atomic<uint64_t> g_story_load_generation{0};
 namespace {
 using lua_mod::Instance;
 using json::Value;
@@ -1778,13 +1780,13 @@ bool apply_save_file(uint32_t file, int32_t world, int32_t course, bool entry, s
     }
     if (entry) {
         uint32_t info = 0;
-        if (!luau_guest::read_u32(kCourseInfo, info, err)) return false;
+        if (!lua_guest::read_u32(kCourseInfo, info, err)) return false;
         if (info == 0) {
             err = "file not ready";
             return false;
         }
-        if (!luau_guest::write_u8(info + kCourseInfoNextWorldOff, (uint8_t)world, err)) return false;
-        if (!luau_guest::write_u8(info + kCourseInfoNextCourseOff, (uint8_t)course, err)) return false;
+        if (!lua_guest::write_u8(info + kCourseInfoNextWorldOff, (uint8_t)world, err)) return false;
+        if (!lua_guest::write_u8(info + kCourseInfoNextCourseOff, (uint8_t)course, err)) return false;
         ::nsmbu_banner_entry_arm();
     }
     uint32_t gate = 0;
@@ -2001,9 +2003,113 @@ bool scene_load_story_transition(int32_t world, int32_t course, std::string& err
         err = "scene busy";
         return false;
     }
+    g_story_load_generation.fetch_add(1, std::memory_order_acq_rel);
     ::nsmbu_banner_entry_arm();
     ::nsmbu_fill_course_banner_digits();
     return true;
+}
+
+struct NativeSkip {
+    bool active = false;
+    bool done = false;
+    bool opened = false;
+    bool requested = false;
+    int file_select_steps = 0;
+    int popup_pulses = 0;
+    uint8_t world = 0;
+    uint8_t course = 0;
+    std::string last;
+};
+
+NativeSkip g_native_skip;
+char g_native_skip_owner;
+
+void native_note(uint64_t step, const std::string& message) {
+    if (message == g_native_skip.last) return;
+    g_native_skip.last = message;
+    LOG("[open] step %llu %s", (unsigned long long)step, message.c_str());
+}
+
+void native_intro_skip_tick_impl(uint64_t step) {
+    static const std::string pack = mods::packages::open_pack_value();
+    if (pack.empty()) return;
+    if (!g_native_skip.active) {
+        int world = 0;
+        int course = 0;
+        if (std::sscanf(pack.c_str(), "%d-%d", &world, &course) != 2) return;
+        if (world < 1 || world > 9 || course < 1 || course > 256) return;
+        g_native_skip.active = true;
+        g_native_skip.world = (uint8_t)(world - 1);
+        g_native_skip.course = (uint8_t)(course - 1);
+        native_note(step, "wait boot");
+    }
+    if (g_native_skip.done) return;
+
+    uint32_t creator = 0;
+    std::string err;
+    if (!scene_now_creator(creator, err)) {
+        native_note(step, "wait scene");
+        return;
+    }
+    if (creator == kCreatorSaveSelect) {
+        g_native_skip.done = true;
+        native_note(step, "unexpected challenge select");
+        return;
+    }
+    uint32_t task = 0;
+    std::string task_err;
+    const bool in_course = lua_guest::read_u32(kCourseTaskInstance, task, task_err) && task != 0;
+    if (g_native_skip.requested) {
+        if (creator == kCreatorCourseTask || in_course) {
+            g_native_skip.done = true;
+            native_note(step, "course up");
+        }
+        return;
+    }
+    if (creator == kCreatorBoot) {
+        native_note(step, "wait boot");
+        return;
+    }
+    if (creator == kCreatorFileSelect) {
+        g_native_skip.file_select_steps++;
+        if (g_native_skip.popup_pulses < 4) {
+            if (g_native_skip.file_select_steps % 30 == 0) {
+                lua_press::press(&g_native_skip_owner, input::kA, 3, step);
+                g_native_skip.popup_pulses++;
+                native_note(step, "press A file_select");
+            }
+        } else {
+            std::string title_err;
+            if (scene_transition(kCreatorTitle, 0, title_err)) native_note(step, "open_title");
+            else native_note(step, "open_title " + title_err);
+        }
+        return;
+    }
+    g_native_skip.file_select_steps = 0;
+    if (!g_native_skip.opened) {
+        std::string save_err;
+        if (!apply_save_file(0, g_native_skip.world, g_native_skip.course, true, save_err)) {
+            native_note(step, "apply_save " + save_err);
+            return;
+        }
+        g_native_skip.opened = true;
+        char message[64];
+        std::snprintf(message, sizeof message, "apply save 1 entry %d-%d",
+                      g_native_skip.world + 1, g_native_skip.course + 1);
+        native_note(step, message);
+    }
+    if (!g_native_skip.requested) {
+        std::string load_err;
+        if (!scene_load_story_transition(g_native_skip.world, g_native_skip.course, load_err)) {
+            native_note(step, "load_pack " + load_err);
+            return;
+        }
+        g_native_skip.requested = true;
+        char message[64];
+        std::snprintf(message, sizeof message, "load_pack %d-%d",
+                      g_native_skip.world + 1, g_native_skip.course + 1);
+        native_note(step, message);
+    }
 }
 
 int l_scene_load_story(lua_State* L) {
@@ -2192,6 +2298,14 @@ std::string g_load_story_status;
 
 bool story_leave_pending() {
     return g_story_leave_queued.load(std::memory_order_acquire);
+}
+
+uint64_t story_load_generation() {
+    return g_story_load_generation.load(std::memory_order_acquire);
+}
+
+void native_intro_skip_tick(uint64_t step) {
+    native_intro_skip_tick_impl(step);
 }
 
 void request_load_story(int world, int course) {
