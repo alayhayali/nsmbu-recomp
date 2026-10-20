@@ -8,7 +8,6 @@ The command passes the pack to the native boot skip.
 The native skip applies save file 1, then runs the same story transition as
 `Scene.load_pack`.
 `load_pack("1-5")` is `load_story(0, 4)`.
-The `example.intro-skip` mod is not required.
 
 ## Pack name
 

@@ -6,7 +6,6 @@
 namespace mods::packages {
 inline constexpr const char* kGameId="nsmbu-usa";
 inline constexpr const char* kManagerVersion="1.0.0";
-inline constexpr const char* kIntroSkipMod="example.intro-skip";
 struct Option {
     std::string id,name,description,type;
     json::Value value,default_value;

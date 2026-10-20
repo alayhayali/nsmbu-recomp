@@ -114,7 +114,6 @@ It passes `--open 1-1` to the native boot skip.
 The native skip applies save file 1 and enters the pack.
 Any `N-M` token with that shape works the same way.
 A `course_res_pack` file works the same way.
-The `example.intro-skip` mod is not required.
 `nsmbu open game/content/Common/course_res_pack/1-27.szs` starts course `1-27`.
 The loading card needs the pending course, not the save's current course.
 That state is in [course-open.md](course-open.md).

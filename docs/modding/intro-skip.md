@@ -1,10 +1,10 @@
-# Intro skip
+# Native boot skip
 
-Investigation for the native boot skip and `modding/examples/example-intro-skip`.
+This page covers the native boot skip.
 
 Addresses are USA v1.3.0.
 
-## Native boot skip
+## Usage
 
 The runtime has a native boot skip.
 `nsmbu run W-C`, `nsmbu launch W-C`, `nsmbu open W-C`, `nsmbu record`, and `nsmbu replay`
@@ -12,48 +12,29 @@ pass `--open W-C`.
 The native skip uses save file 1.
 It presses A on the boot GamePad popup, forces the title if needed, applies the save,
 and enters the pack.
-The `example.intro-skip` mod is not required.
-When `--open` is set, the mod manager does not load `example.intro-skip`, even if the mod is enabled.
 The native skip writes `[open]` log lines.
 
-## What ships today
+## Flow
 
-The example reads the Save file option.
-That option is 1, 2, or 3.
-The default is 1.
-It reads the Course pack option.
-The default is `1-1`.
-An empty Course pack also uses `1-1`.
-A non-empty pack calls `scene.load_pack` after the save opens.
-While the boot GamePad setup popup is current (`file_select()`, factory `0x0298AD3C`), it pulses confirm with `nsmbu.Input.press("A", 3)` about every 30 logic steps.
-After four pulses, if the popup is still current, it retries `scene.open_title()` until the title or map phase is current.
-It waits out the boot logo.
-`BootScene` does not leave until its own timer finishes.
-It calls `apply_save(file)` once that scene is gone.
-`file` is the option minus 1.
-That call writes the selected save and does not run guest `0x029872BC`.
-It then calls `scene.load_pack` once and stops when `course_task()` is true.
-`nsmbu.Level.active()` is already true while the title scene is coming up, so the skip does not use it as the stop.
+The native skip runs on each logic step:
 
-`Hooks.onSceneChange` only sets pending flags from factory transitions.
-Do not call `Scene` transition helpers from that callback.
-`Hooks.onLogicStep` runs `apply_save`, `load_pack`, and `open_title`, and pulses confirm while the file-select popup is pending.
-
-1. On factory `0x0298AD3C`, pulse `press("A", 3)` every 30 logic steps (up to four times).
-2. If the popup is still current after four pulses, retry `open_title()` until `title()` or `map_phase()` is true.
-3. After the boot logo (`0x0202930C` is gone), call `apply_save(file)` until it returns true.
-4. Call `scene.load_pack` once, then stop when factory `0x0202B4C8` is current or `course_task()` is true.
+1. Wait for the scene.
+2. On the boot GamePad popup (`kCreatorFileSelect`), press A for three steps every 30 steps.
+3. Press A up to four times.
+4. If the popup remains, force `kCreatorTitle`.
+5. Wait for `BootScene` (`kCreatorBoot`) to end.
+6. Apply save file 1 with `apply_save_file`.
+7. Call `scene_load_story_transition` for the requested pack.
+8. Stop when `CourseTask` is current.
 
 Do not call `open_file_select()` for this skip.
 Forcing menu factory `0x0202B61C` early shows the time-attack trial layout.
 
 A boot log with this skip shows:
 
-1. `press A file_select` (and optionally `open_title`) while factory `0x0298AD3C` is current
-2. Title or map phase
-3. `apply save` for the configured slot (`apply_save(file)`)
-4. `load_pack` for the configured pack (`1-1` by default)
-5. `course_task()` or factory `0x0202B4C8`
+1. `apply_save` after the boot logo
+2. `load_pack` for the requested pack
+3. `course_task()` or factory `0x0202B4C8`
 
 ## Why the menu path failed
 
@@ -85,19 +66,17 @@ Observed boot order from `Scene::setNextScene` logs:
 4. Title `0x0202B51C`
 5. After `apply_save`: `CourseSelectTask` `0x0202B86C` (story path may skip straight to `CourseTask`)
 
-## Recommendation (current skip)
+## Recommendation
 
-While `file_select()` is true, pulse `press("A", 3)` then fall back to `open_title()` if needed.
-Call `apply_save(file)` from the title or map phase after the boot logo.
-`file` is 0, 1, or 2.
-Then call `scene.load_pack`.
-The default pack is `1-1`.
+While `file_select()` is true, press A for three steps, then force the title if needed.
+Apply save file 1 from the title or map phase after the boot logo.
+Then call `scene_load_story_transition`.
 Stop on `course_task()`.
 Do not force `0x0202B61C`.
 
 ---
 
-## Open: skip the GamePad popup
+## GamePad popup
 
 ### What the popup is
 
@@ -113,18 +92,18 @@ Do not use `open_file_select()` or `confirm_file()` for this popup.
 `apply_save` already writes that field from the host Pro / GamePad setting.
 That write does not dismiss the boot popup.
 
-### What shipped vs what is still open
+### What the native skip does
 
-The example now uses approach **A** while `file_select()` is true: `nsmbu.Input.press("A", 3)` about every 30 logic steps, up to four pulses.
-If the popup is still current, it falls back to `scene.open_title()` (the existing SDK stand-in for approach **B**), with the same retry pattern as `apply_save`.
-It does not add a native `skip_setup()` helper (approach **C**).
+The native skip presses A while `file_select()` is true.
+It presses A for three steps every 30 logic steps, up to four pulses.
+If the popup is still current, it forces the title.
 
 Which button the layout actually consumes is still unknown.
 **A** is the first guess; Plus or a layout-specific decide path may be required.
-Log lines from real boots should confirm whether **A** alone clears the window or `open_title` is doing the work.
+Log lines from real boots should confirm whether **A** alone clears the window or the title transition is doing the work.
 
 Headless or `NSMBU_NO_HOST_INPUT` boots used to stall on `wait boot` at phase `0298AD3C` before this path existed.
-Some interactive boots still clear the popup without mod help in a few logic steps.
+Some interactive boots still clear the popup without the native skip in a few logic steps.
 That behaviour is not reliable enough for automation on its own.
 
 ### UI path (partial RE)
@@ -154,8 +133,9 @@ The decide chain, decoded:
    current until `SaveMgr.mStatus` (`0x101E7DA4` instance `+0x14`) is no longer `cStatus_Writing`.
    Confirming the popup kicks a full `save://rp_savedata.dat` write before the flow moves on.
 
-The mod's `nsmbu.Input.press("A", 3)` reaches the game through the padscore HLE sampling
-(`runtime/src/mods/lua_press.cpp`), which is what drives the layout animation that sets the `0x2000` bit.
+The native skip uses `lua_press::press` with the A button mask.
+That press reaches the game through the padscore HLE sampling
+(`runtime/src/mods/lua_press.cpp`), which drives the layout animation that sets the `0x2000` bit.
 The writer of that bit inside the layout stack is not traced yet.
 
 ### Boot save-file load
@@ -167,20 +147,11 @@ The task state `0x0298A054` runs the boot save chain:
 2. It waits while `SaveMgr.mStatus == cStatus_Reading`, with a duration config (x10) for the spinner, then
    closes the device and kicks the main load: `SaveMgr::startReadGame` (`0x029D8270` kicks state 1).
 
-### Options to implement
+### Open work
 
-| Approach | How | Pros | Cons |
-| --- | --- | --- | --- |
-| **A. Input inject** | While `scene.file_select()`, call `nsmbu.Input.press("A", n)` (or the confirm button the layout uses) until `title()` | No new SDK; matches real UI | Need the right button and a few steps; fragile if layout changes |
-| **B. Force title** | From `file_select()`, call `Scene::setNextScene` with `kCreatorTitle` when the fader is idle | Fast; no pad | No Lua wrapper for an arbitrary factory today; must respect `scene busy` / fader |
-| **C. Native helper** | Add e.g. `scene.skip_setup()` that sets the known gate / advances state, or wraps B | Clean API for the example | Needs a small runtime change and a short RE pass on the decide path |
-| **D. Leave as-is** | Keep waiting for title / map | Zero work when the popup auto-clears | Breaks scripted boots that need no host input |
-
-### Recommended next steps
-
-1. Confirm from logs whether **A** or `open_title` clears the popup on your boot path.
-2. If **A** does not advance the window, try other buttons (Plus, etc.) or add approach **C** only if `open_title` is insufficient.
-3. Keep writing `mIsSinglePlayerDRC` through `apply_save` so the map matches host GamePad vs Pro.
+1. Confirm from logs whether A or the title transition clears the popup.
+2. If A does not advance the window, try other buttons or a layout-specific decide path.
+3. Keep writing `mIsSinglePlayerDRC` through `apply_save_file` so the map matches host GamePad vs Pro.
 
 Do not use `open_file_select()`, `0x0202B61C`, or `0x0297D58C` for this screen.
 
@@ -269,7 +240,7 @@ and still reports the error, so a missing or corrupt file never leaves stale dat
 3. Empty record → default `FieldGameData` into `FieldGame + 0x10`, map-entry setup with mode 1
    (`0x024C2230`), and resets `MainGame`'s run state (`0x029CF2D0`, also clears the shadowkun quest flag).
 4. Existing record → sanitize, build the `FieldGameData` from the record, map-entry setup with the record's
-   `FieldGameMode`, then the player tables: with the apply-gate byte clear (what the mod's `apply_save`
+   `FieldGameMode`, then the player tables: with the apply-gate byte clear (what `apply_save_file`
    does) a single table writes character ids `0..4` (Mario, Luigi, YellowToad, BlueToad, ...) into the five
    `0x48`-stride entries; with the gate set a second table writes default characters and colors `1..4`.
 5. Copies the play seconds into `FieldGameData + 0x138` and pushes the player/Mii setup into `MainGame`
@@ -278,7 +249,7 @@ and still reports the error, so a missing or corrupt file never leaves stale dat
 The apply-gate byte (`0x101E7D9C` instance `+0x11`) only selects between those two player tables.
 The native callers pair `SaveMgr::setLastFile` (`0x029D714C`, writes `header.last_file`) with this apply,
 then call `0x029D7CC8`, which writes the default game data back into the records (the fresh-file write-back
-the mod path skips).
+the native skip path skips).
 
 ### Save continue (`0x029872BC`, `kOpenFirstSave`)
 
@@ -301,7 +272,7 @@ Called with the src task; the SDK's `open_first_save` runs `apply_save` first, t
 - `apply_save` "file not ready": `SaveMgr.mpSavedata` (`+0x24`) is null until the boot load state ran, and
   the apply needs `FieldGame::sInstance` too.
 - The popup stays up through a full `rp_savedata` write; `Hooks.onSceneChange` sees the file-select factory
-  the whole time, which is why the example pulses `A` on a step timer instead of once.
+  the whole time, which is why the native skip pulses `A` on a step timer instead of once.
 - `apply_save` does not load resources or scenes; entering a course still goes through
   `setCourse_Story` → `CourseTask` (see [course-open.md](../nsmbu/course-open.md)).
 
@@ -309,7 +280,7 @@ Called with the src task; the SDK's `open_first_save` runs `apply_save` first, t
 
 ## Course load (`load_pack`)
 
-Goal example: enter the stage that loads `game/content/Common/course_res_pack/1-23.szs` (pack name `1-23`) without stopping on the world map.
+Goal: enter the stage that loads `game/content/Common/course_res_pack/1-23.szs` (pack name `1-23`) without stopping on the world map.
 
 ### Pack name mapping (proven)
 
@@ -337,10 +308,10 @@ Both call `setCourse_Story` when the fader is idle.
 The second argument is the live flow task.
 A null source crashes inside `Scene::setNextScene` (`ld32` at `0x029947D0`).
 They return `"scene busy"` while a scene change is queued or the fader is busy.
-The example requests the pack once, then waits for `course_task()`.
+The native skip requests the pack once, then waits for `course_task()`.
 
-`load_pack` shipped in the runtime.
-The example uses it with the Course pack option.
+`load_pack` remains available to mods.
+The native skip uses the same transition with the `--open` pack.
 
 ### Course enter banner digits
 

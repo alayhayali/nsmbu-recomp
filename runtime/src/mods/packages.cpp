@@ -162,7 +162,6 @@ Manifest manifest(const fs::path& path,Value v){
 }
 Manifest manifest(const fs::path& path){return manifest(path,json::parse(read_text(path/"manifest.json")));}
 bool wanted(const std::string& id){const auto& v=database.get("enabled").get(id);return v.type==Value::Bool&&v.boolean;}
-bool native_open_skip(const std::string& id){return !open_pack.empty()&&id==kIntroSkipMod;}
 
 Value config(const Manifest& m){Value out;out.type=Value::Object;for(const auto& o:m.options){const auto& saved=database.get("config").get(m.id).get(o.id);Value v=valid_option(o,saved)?saved:o.default_value;if(o.type=="number"&&v.type==Value::Number)v.number=snap_number(o,v.number);out[o.id]=v;}return out;}
 void strip_legacy(){database.object.erase("active");database.object.erase("profiles");database.object.erase("builtins");database.object.erase("builtin_options");}
@@ -314,10 +313,8 @@ void initialize(){
     }
     ready=true;defaults();
     try{fs::create_directories(root);auto path=root/"mods.json";if(!fs::exists(path)&&fs::exists(root/"profiles.json"))path=root/"profiles.json";if(fs::exists(path)){database=json::parse(read_text(path));normalize_database();}
-        if(!open_pack.empty())fprintf(stderr,"[mod-manager] --open: native boot skip replaces %s\n",kIntroSkipMod);
         scan();
-        if(!open_pack.empty()&&records.contains(kIntroSkipMod))records.at(kIntroSkipMod).status="Replaced by the native boot skip";
-        try { auto enabled=enabled_set();auto sequence=order(enabled);validate_conflicts(enabled);std::erase_if(sequence,[](const auto& id){return native_open_skip(id);});
+        try { auto enabled=enabled_set();auto sequence=order(enabled);validate_conflicts(enabled);
             content::Files files;
             for(const auto& id:sequence){auto& record=records.at(id);if(record.manifest.kind=="content"||(record.manifest.kind=="lua"&&has_content_files(record.manifest))){
                 files.insert(record.manifest.files.begin(),record.manifest.files.end());record.active=true;
@@ -379,7 +376,7 @@ void frame(uint64_t step){
     static uint64_t previous=~uint64_t(0);if(step==previous)return;previous=step;
     if(dirty.exchange(false)){
         std::map<std::string,std::pair<Record,Value>> desired;std::vector<std::string> sequence;
-        {std::lock_guard guard(mutex);try{auto enabled=enabled_set();sequence=order(enabled);validate_conflicts(enabled);std::erase_if(sequence,[](const auto& id){return native_open_skip(id);});std::erase_if(sequence,[](const auto& id){return startup_only(records.at(id).manifest);});for(const auto& id:sequence){desired[id]={records.at(id),config(records.at(id).manifest)};records.at(id).loading=true;}}catch(const std::exception& e){last_problem=e.what();for(auto& [id,r]:records)if(wanted(id))r.error=e.what();sequence.clear();desired.clear();}}
+        {std::lock_guard guard(mutex);try{auto enabled=enabled_set();sequence=order(enabled);validate_conflicts(enabled);std::erase_if(sequence,[](const auto& id){return startup_only(records.at(id).manifest);});for(const auto& id:sequence){desired[id]={records.at(id),config(records.at(id).manifest)};records.at(id).loading=true;}}catch(const std::exception& e){last_problem=e.what();for(auto& [id,r]:records)if(wanted(id))r.error=e.what();sequence.clear();desired.clear();}}
         std::vector<std::string> preserved;
         for(auto it=live_order.rbegin();it!=live_order.rend();++it){
             bool file_backed=false;{std::lock_guard guard(mutex);if(records.contains(*it))file_backed=has_content_files(records.at(*it).manifest);}
