@@ -350,6 +350,7 @@ static void print_help(const char* argv0) {
            "  --save DIR            Save data directory\n"
            "  --trace               Log HLE calls\n"
            "  --renderer API        metal or vulkan (also --renderer=API)\n"
+           "  --open W-C            Boot into a course pack with the intro skip (e.g. 1-1)\n"
 #ifdef NSMBU_HAS_METAL
            "  --warm-shaders        Fill the Metal shader cache and exit\n"
 #endif
@@ -358,6 +359,20 @@ static void print_help(const char* argv0) {
 #endif
            "  -h, --help            Show this help\n",
            name);
+}
+
+static bool valid_open_pack(const char* s) {
+    const char* dash = strchr(s, '-');
+    if (!dash || dash == s || dash[-1] < '1' || dash[-1] > '9' || dash != s + 1) return false;
+    const char* p = dash + 1;
+    if (*p == '0' || !*p) return false;
+    long course = 0;
+    for (; *p; ++p) {
+        if (*p < '0' || *p > '9') return false;
+        course = course * 10 + (*p - '0');
+        if (course > 256) return false;
+    }
+    return course >= 1;
 }
 
 int main(int argc, char** argv) {
@@ -404,6 +419,24 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--save") && i + 1 < argc) config::save_dir = argv[++i];
         else if (!strcmp(argv[i], "--trace")) g_trace_hle = true;
         else if (!strcmp(argv[i], "--warm-shaders")) warm_shaders = true;
+        else if (!strcmp(argv[i], "--open") && i + 1 < argc) {
+            const char* pack = argv[++i];
+            if (!valid_open_pack(pack)) {
+                fprintf(stderr, "--open expects a course pack like 1-1\n");
+                print_help(argv[0]);
+                return 1;
+            }
+            mods::packages::set_open_pack(pack);
+        }
+        else if (!strncmp(argv[i], "--open=", 7)) {
+            const char* pack = argv[i] + 7;
+            if (!valid_open_pack(pack)) {
+                fprintf(stderr, "--open expects a course pack like 1-1\n");
+                print_help(argv[0]);
+                return 1;
+            }
+            mods::packages::set_open_pack(pack);
+        }
 #ifdef NSMBU_HAS_VULKAN
         else if (!strcmp(argv[i], "--renderer-smoke")) renderer_smoke = true;
 #endif

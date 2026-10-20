@@ -27,6 +27,10 @@ static const uint32_t kCourseInfo = GD(0x101D18EC);
 static const uint32_t kCourseTask = GD(0x101D15F0);
 static const uint32_t kFieldGame = GD(0x101D1604);
 static const uint32_t kMainGame = GD(0x101E7D7C);
+static const uint32_t kCreatorMap = GC(0x020292B8);
+static const uint32_t kCreatorCourseSelect = GC(0x0202B86C);
+
+static bool g_banner_armed = false;
 
 static uint32_t g_world_course_textbox = 0;
 static uint32_t g_world_course_multi2d = 0;
@@ -142,6 +146,7 @@ static void reapply_world_course_textbox(Cpu* c) {
 }
 
 static void fill_course_banner_digits(Cpu* c, uint32_t glyph_base, bool refresh) {
+    if (!g_banner_armed) return;
     if (mods::lua_sdk::story_leave_pending()) return;
     uint8_t g[3];
     uint8_t world = 0;
@@ -166,6 +171,10 @@ static void fill_course_banner_digits(Cpu* c, uint32_t glyph_base, bool refresh)
     if (refresh) reapply_world_course_textbox(c != nullptr ? c : threads::current());
 }
 
+extern "C" void nsmbu_banner_entry_arm(void) {
+    g_banner_armed = true;
+}
+
 extern "C" void nsmbu_fill_course_banner_digits(void) {
     fill_course_banner_digits(threads::current(), 0, true);
 }
@@ -186,6 +195,8 @@ extern "C" void hook_0252F900(Cpu* c) {
 extern "C" void hook_02994164(Cpu* c) {
     uint32_t factory = ld32(c->r[5] + 4);
     nsmbu_note_scene_src(c->r[4], factory);
+    if (g_banner_armed && (factory == kCreatorMap || factory == kCreatorCourseSelect))
+        g_banner_armed = false;
     f_02994164_orig(c);
     mods::packages::scene_change(factory);
 }
@@ -214,6 +225,10 @@ extern "C" void site_024BE280(Cpu* c) {
 }
 
 extern "C" void hook_025D8B28(Cpu* c) {
+    if (!g_banner_armed) {
+        f_025D8B28_orig(c);
+        return;
+    }
     fill_course_banner_digits(c, 0, false);
     f_025D8B28_orig(c);
     reapply_world_course_textbox(c);
@@ -221,6 +236,10 @@ extern "C" void hook_025D8B28(Cpu* c) {
 
 extern "C" void hook_0267CB3C(Cpu* c) {
     if (mods::lua_sdk::story_leave_pending()) return;
+    if (!g_banner_armed) {
+        f_0267CB3C_orig(c);
+        return;
+    }
     uint8_t course = 0;
     uint32_t before = c->r[4];
     if (read_course_info(nullptr, &course)) {
@@ -237,6 +256,10 @@ extern "C" void hook_0267CB3C(Cpu* c) {
 
 extern "C" void hook_02681BFC(Cpu* c) {
     if (mods::lua_sdk::story_leave_pending()) return;
+    if (!g_banner_armed) {
+        f_02681BFC_orig(c);
+        return;
+    }
     uint32_t textbox = c->r[3];
     uint8_t world = 0;
     uint8_t course = 0;
@@ -254,6 +277,10 @@ extern "C" void hook_02681BFC(Cpu* c) {
 }
 
 extern "C" void hook_02672C90(Cpu* c) {
+    if (!g_banner_armed) {
+        f_02672C90_orig(c);
+        return;
+    }
     uint32_t multi2d = c->r[3];
     uint32_t textbox = c->r[4];
     uint8_t world = 0;

@@ -20,6 +20,7 @@ extern "C" {
 }
 
 extern "C" void nsmbu_fill_course_banner_digits(void);
+extern "C" void nsmbu_banner_entry_arm(void);
 
 namespace mods::lua_sdk {
 std::atomic<bool> g_story_leave_queued{false};
@@ -418,6 +419,7 @@ const uint32_t kMainGame = GD(0x101E7D7C);
 constexpr uint32_t kSinglePlayerDrc = 0x14u;
 const uint32_t kSaveMgr = GD(0x101E7DA4);
 const uint32_t kSaveApplyFlag = GD(0x101E7D9C);
+const uint32_t kCourseInfo = GD(0x101D18EC);
 constexpr uint32_t kSaveFileCount = 3u;
 constexpr uint32_t kSaveApplyFlagOff = 0x11u;
 const uint32_t kFaderBusy = GC(0x02983B28);
@@ -450,6 +452,8 @@ constexpr uint32_t kAppGateSelect = 0xDB1u;
 constexpr uint32_t kAppGateStory = 0xDB2u;
 constexpr uint32_t kSaveDataOff = 0x24u;
 constexpr uint32_t kLastFileOff = 0x07u;
+constexpr uint32_t kCourseInfoNextWorldOff = 0x1Cu;
+constexpr uint32_t kCourseInfoNextCourseOff = 0x1Du;
 constexpr uint32_t kCourseTaskSrcOff = 0x10u;
 const uint32_t kCreatorBoot = GC(0x0202930C);
 const uint32_t kCreatorFlow = GC(0x0297B9F8);
@@ -1751,7 +1755,7 @@ bool save_file_arg(lua_State* L, uint32_t& file, std::string& err) {
     return true;
 }
 
-bool apply_save_file(uint32_t file, std::string& err) {
+bool apply_save_file(uint32_t file, int32_t world, int32_t course, bool entry, std::string& err) {
     if (!scene_change_open(err)) return false;
     uint32_t mgr = 0;
     if (!lua_guest::read_u32(kSaveMgr, mgr, err)) return false;
@@ -1772,6 +1776,17 @@ bool apply_save_file(uint32_t file, std::string& err) {
         err = "file not ready";
         return false;
     }
+    if (entry) {
+        uint32_t info = 0;
+        if (!luau_guest::read_u32(kCourseInfo, info, err)) return false;
+        if (info == 0) {
+            err = "file not ready";
+            return false;
+        }
+        if (!luau_guest::write_u8(info + kCourseInfoNextWorldOff, (uint8_t)world, err)) return false;
+        if (!luau_guest::write_u8(info + kCourseInfoNextCourseOff, (uint8_t)course, err)) return false;
+        ::nsmbu_banner_entry_arm();
+    }
     uint32_t gate = 0;
     if (!lua_guest::read_u32(kSaveApplyFlag, gate, err)) return false;
     if (gate != 0 && !lua_guest::write_u8(gate + kSaveApplyFlagOff, 0, err)) return false;
@@ -1790,7 +1805,16 @@ int l_scene_apply_save(lua_State* L) {
     uint32_t file = 0;
     std::string err;
     if (!save_file_arg(L, file, err)) return fail(L, err.c_str());
-    if (!apply_save_file(file, err)) return fail(L, err.c_str());
+    int32_t world = 0;
+    int32_t course = 0;
+    bool entry = lua_gettop(L) >= 2;
+    if (entry) {
+        if (!lua_isnumber(L, 2) || !lua_isnumber(L, 3)) return fail(L, "bad type");
+        world = (int32_t)lua_tonumber(L, 2);
+        course = (int32_t)lua_tonumber(L, 3);
+        if (world < 0 || world > 8 || course < 0 || course > 255) return fail(L, "bad entry");
+    }
+    if (!apply_save_file(file, world, course, entry, err)) return fail(L, err.c_str());
     lua_pushboolean(L, 1);
     return 1;
 }
@@ -1799,7 +1823,7 @@ int l_scene_open_first_save(lua_State* L) {
     uint32_t file = 0;
     std::string err;
     if (!save_file_arg(L, file, err)) return fail(L, err.c_str());
-    if (!apply_save_file(file, err)) return fail(L, err.c_str());
+    if (!apply_save_file(file, 0, 0, false, err)) return fail(L, err.c_str());
     uint32_t src = 0;
     if (!continue_source(src, err)) return fail(L, err.c_str());
     guest_call(t_guest_cpu, kOpenFirstSave, {src});
@@ -1977,6 +2001,7 @@ bool scene_load_story_transition(int32_t world, int32_t course, std::string& err
         err = "scene busy";
         return false;
     }
+    ::nsmbu_banner_entry_arm();
     ::nsmbu_fill_course_banner_digits();
     return true;
 }

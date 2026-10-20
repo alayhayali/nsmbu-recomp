@@ -256,7 +256,17 @@ bool push_aabb(Snapshot& s, float x0, float y0, float x1, float y1) {
         y0 = y1;
         y1 = t;
     }
-    if (!(x1 > x0) || !(y1 > y0)) return false;
+    constexpr float kMin = 1.0f;
+    if (x1 - x0 < kMin) {
+        const float c = (x0 + x1) * 0.5f;
+        x0 = c - kMin * 0.5f;
+        x1 = c + kMin * 0.5f;
+    }
+    if (y1 - y0 < kMin) {
+        const float c = (y0 + y1) * 0.5f;
+        y0 = c - kMin * 0.5f;
+        y1 = c + kMin * 0.5f;
+    }
     const float w = x1 - x0, h = y1 - y0;
     if (w > 512.0f || h > 512.0f) return false;
     push_box(s, x0, y0, x1, y1, true, false);
@@ -278,22 +288,37 @@ bool expand_aabb(float& x0, float& y0, float& x1, float& y1, float x, float y, b
     return true;
 }
 
-bool capture_bg_ride(Snapshot& s, uint32_t bgc) {
+bool ride_aabb(uint32_t bgc, float ox, float oy, float& x0, float& y0, float& x1, float& y1) {
     uint32_t count_u = 0, lines = 0;
     if (!read_u32(bgc + kBgRideCount, count_u) || !read_u32(bgc + kBgRidePtr, lines)) return false;
     const int32_t count = (int32_t)count_u;
     if (count < 1 || count > 32 || !lines) return false;
-    float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
     bool any = false;
     for (int32_t i = 0; i < count; i++) {
         const uint32_t seg = lines + (uint32_t)i * kRideStride + kRideSeg;
         float ax = 0, ay = 0, bx = 0, by = 0;
         if (!read_f32(seg, ax) || !read_f32(seg + 4, ay) || !read_f32(seg + 8, bx) || !read_f32(seg + 12, by))
             return false;
-        if (!expand_aabb(x0, y0, x1, y1, ax, ay, any) || !expand_aabb(x0, y0, x1, y1, bx, by, any)) return false;
+        if (!expand_aabb(x0, y0, x1, y1, ax + ox, ay + oy, any) ||
+            !expand_aabb(x0, y0, x1, y1, bx + ox, by + oy, any))
+            return false;
     }
-    if (!any) return false;
-    return push_aabb(s, x0, y0, x1, y1);
+    return any;
+}
+
+bool near_pos(float x0, float y0, float x1, float y1, float px, float py) {
+    const float cx = (x0 + x1) * 0.5f, cy = (y0 + y1) * 0.5f;
+    return std::fabs(cx - px) < 256.0f && std::fabs(cy - py) < 256.0f;
+}
+
+bool capture_bg_ride(Snapshot& s, uint32_t bgc, float px, float py) {
+    float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    if (ride_aabb(bgc, 0, 0, x0, y0, x1, y1) && near_pos(x0, y0, x1, y1, px, py))
+        return push_aabb(s, x0, y0, x1, y1);
+    x0 = y0 = x1 = y1 = 0;
+    if (ride_aabb(bgc, px, py, x0, y0, x1, y1) && near_pos(x0, y0, x1, y1, px, py))
+        return push_aabb(s, x0, y0, x1, y1);
+    return false;
 }
 
 bool capture_bg_points(Snapshot& s, uint32_t bgc, uint32_t actor) {
@@ -327,10 +352,11 @@ bool capture_one_bg(Snapshot& s, uint32_t bgc, std::unordered_set<uint32_t>& see
     if (!bgc || !seen.insert(bgc).second) return false;
     uint8_t inactive = 0;
     if (read_u8(bgc + kBgInactive, inactive) && inactive) return false;
-    if (capture_bg_ride(s, bgc)) return true;
     uint32_t owner = 0;
     read_u32(bgc + kBgOwner, owner);
     if (capture_bg_points(s, bgc, owner)) return true;
+    float px = 0, py = 0;
+    if (bg_world_pos(bgc, owner, px, py) && capture_bg_ride(s, bgc, px, py)) return true;
     return capture_bg_affected(s, bgc);
 }
 
@@ -436,9 +462,9 @@ void capture(Cpu* c) {
     }
     s.boxes.reserve(1024);
     if (read_u32(kBg, bg) && bg) capture_tiles(c, s, bg);
+    capture_actor_bg(s);
     capture_hitboxes_mgr(c, s);
     capture_hitboxes_actors(c, s);
-    capture_actor_bg(s);
     s.valid = true;
     std::lock_guard<std::mutex> lk(g_mu);
     g_snap = std::move(s);

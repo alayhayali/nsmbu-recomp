@@ -6,6 +6,7 @@
 namespace mods::packages {
 inline constexpr const char* kGameId="nsmbu-usa";
 inline constexpr const char* kManagerVersion="1.0.0";
+inline constexpr const char* kIntroSkipMod="example.intro-skip";
 struct Option {
     std::string id,name,description,type;
     json::Value value,default_value;
@@ -20,6 +21,7 @@ struct View {
 };
 
 void initialize();
+void set_open_pack(std::string pack);
 bool supported();
 std::string unsupported_reason();
 std::string directory();
