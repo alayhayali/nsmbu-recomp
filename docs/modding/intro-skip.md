@@ -176,7 +176,7 @@ Do not use `open_file_select()`, `0x0202B61C`, or `0x0297D58C` for this screen.
 
 ## Save and file loading (RE)
 
-Decompiled sources live in `decomp/src/system/SaveMgr.cpp` (declarations in `decomp/include/system/SaveMgr.h`).
+Decompiled sources live in `vendor/decomp/src/system/SaveMgr.cpp` (declarations in `vendor/decomp/include/system/SaveMgr.h`).
 Addresses are USA v1.3.0.
 
 ### `SaveMgr` (singleton `0x101E7DA4`)

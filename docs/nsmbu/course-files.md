@@ -18,7 +18,7 @@ A course stage draws its data from two layers:
 
 The course data layer is a set of flat blocks.
 The struct that points at them is `CourseDataFile`
-(`decomp/include/map/CourseData.h`, 0x3B8 bytes).
+(`vendor/decomp/include/map/CourseData.h`, 0x3B8 bytes).
 It holds for each block a pointer, a byte size, and an entry count
 (`mBlock`, `mBlockSize`, `mBlockEntryNum`, 15 entries, `cBlock_Num`).
 
