@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 
@@ -43,11 +42,7 @@ def link_example_mods(src_root, mods_dir):
         manifest_path = os.path.join(src, "manifest.json")
         if not os.path.isdir(src) or not os.path.isfile(manifest_path):
             continue
-        with open(manifest_path, encoding="utf-8") as f:
-            package_id = json.load(f).get("id")
-        if not isinstance(package_id, str) or not package_id:
-            continue
-        dest = os.path.join(mods_dir, package_id)
+        dest = os.path.join(mods_dir, name)
         target = os.path.relpath(src, mods_dir)
         if os.path.islink(dest):
             if os.readlink(dest) == target:

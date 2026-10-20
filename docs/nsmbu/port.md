@@ -99,7 +99,7 @@ The setup importer can also read `<repo>/nsmbu` from a source checkout.
 `nsmbu run --release` runs `nsmbu build --release` then `nsmbu launch --no-debug`.
 This is the configuration the released installs use.
 
-`nsmbu launch` / `nsmbu run` symlink each `modding/examples/` package into `nsmbu/mods/<id>/` before start.
+`nsmbu launch` / `nsmbu run` symlink each `modding/examples/` package into `nsmbu/mods/` under its folder name before start.
 Real folders already in mods are not replaced.
 Enable packages in Mods.
 Set `NSMBU_NO_EXAMPLE_MODS=1` to skip those links.
