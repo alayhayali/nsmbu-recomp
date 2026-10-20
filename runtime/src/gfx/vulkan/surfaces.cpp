@@ -1433,7 +1433,7 @@ static Thin1Choice thin1_choose(Surface* s, uint32_t level, uint32_t base, uint3
             if (thin1_page_hash(lv, base, size, pi) != lv.pageHash[pi]) choice.pages[kept++] = pi;
         }
         if (!kept) {
-            if (s->dirty) return choice;
+            if (s->dirty && s->dirtyOob) return choice;
             choice.use = Thin1Use::Unchanged;
             return choice;
         }
@@ -1446,7 +1446,7 @@ static Thin1Choice thin1_choose(Surface* s, uint32_t level, uint32_t base, uint3
         lv.drop();
         return choice;
     }
-    if (n == 0 && !s->dirty && (s->levelHashValid & hashBit)) {
+    if (n == 0 && !s->dirtyOob && (s->levelHashValid & hashBit)) {
         choice.use = Thin1Use::Unchanged;
         return choice;
     }
@@ -1664,7 +1664,7 @@ void upload_surface(Surface* s) {
         if(choice[level].use==Thin1Use::Unchanged&&(s->levelHashValid&hashBit)) hashes[level]=s->levelHash[level];
         else if(choice[level].use==Thin1Use::Partial) { hashes[level]=s->levelHash[level]; anyPartial=true; }
         else {
-            bool reuse=!s->dirty&&level<16&&(s->levelHashValid&hashBit)&&wwatch::active()&&
+            bool reuse=!s->dirtyOob&&level<16&&(s->levelHashValid&hashBit)&&wwatch::active()&&
                 !wwatch::written_since(ranges[level].first,ranges[level].second,priorStamp);
             hashes[level]=reuse?s->levelHash[level]:content_hash(mem::ptr(ranges[level].first),size_t(ranges[level].second));
         }
@@ -1672,6 +1672,7 @@ void upload_surface(Surface* s) {
     }
     if(!anyPartial&&hash==s->contentHash) {
         if(wwatch::active()) s->dirty=false;
+        s->dirtyOob=false;
         return;
     }
     struct Thin1Copy { uint32_t level; Buffer staging; std::vector<VkBufferImageCopy> copies; size_t bytes; };
@@ -1695,11 +1696,12 @@ void upload_surface(Surface* s) {
     for(uint32_t level=0;level<levels&&!needGpu;++level) {
         if(choice[level].use==Thin1Use::Partial) continue;
         const uint32_t hashBit=1u<<level;
-        bool hashMatched=!s->dirty&&s->mips<=16&&(s->levelHashValid&hashBit)&&s->levelHash[level]==hashes[level];
+        bool hashMatched=!s->dirtyOob&&s->mips<=16&&(s->levelHashValid&hashBit)&&s->levelHash[level]==hashes[level];
         if(!hashMatched) needGpu=true;
     }
     if(!needGpu) {
         if(wwatch::active()) s->dirty=false;
+        s->dirtyOob=false;
         return;
     }
     const bool scaleGuest=s->imageType==VK_IMAGE_TYPE_2D&&s->mips==1&&(s->extent.width!=s->width||s->extent.height!=s->height);
@@ -1725,7 +1727,7 @@ void upload_surface(Surface* s) {
         for(uint32_t level=0;level<s->mips;++level) {
             if(choice[level].use==Thin1Use::Partial) continue;
             const uint32_t hashBit=1u<<level;
-            bool hashMatched=!s->dirty&&s->mips<=16&&(s->levelHashValid&hashBit)&&s->levelHash[level]==hashes[level];
+            bool hashMatched=!s->dirtyOob&&s->mips<=16&&(s->levelHashValid&hashBit)&&s->levelHash[level]==hashes[level];
             if(hashMatched)continue;
             if(!choice[level].store) if(Thin1Level* lv=thin1_find(s,level)) lv->drop();
             s->levelHash[level]=hashes[level];s->levelHashValid|=hashBit;
@@ -1782,7 +1784,7 @@ void upload_surface(Surface* s) {
         throw;
     }
     if(scaleGuest) destroy_surface_image(&guest);
-    s->contentHash=hash;s->writeSeq=next_write_seq();s->dirty=false;++g_stat_uploads;
+    s->contentHash=hash;s->writeSeq=next_write_seq();s->dirty=false;s->dirtyOob=false;++g_stat_uploads;
     if (g_uploadProbe.enabled()) g_uploadProbe.record(s, uploaded);
 }
 void clear_color(const uint32_t*,uint32_t cb,const float rgba[4]) {
@@ -1980,7 +1982,7 @@ void copy_surface_impl(uint32_t srcAddr,uint32_t srcMip,uint32_t srcSlice,uint32
         uint32_t offset=element_offset(di,dtm,x,y,dstSlice,bpp,dswz,&dci,(df.depth||df.convert==Convert::D24_R32F));
         memcpy(mem::ptr(dbase+offset),rows.data()+(size_t(y)*bw+x)*sf.bytesPerBlock,sf.bytesPerBlock);
     }
-    for(auto& [address,image]:R.surfaces)if(address==dbase){image->gpuWritten=false;image->dirty=true;image->lastCheckedFrame=~0ull;}
+    for(auto& [address,image]:R.surfaces)if(address==dbase){image->gpuWritten=false;image->dirty=true;image->dirtyOob=true;image->lastCheckedFrame=~0ull;}
 }
 void copy_surface(uint32_t src,uint32_t srcMip,uint32_t srcSlice,uint32_t dst,uint32_t dstMip,uint32_t dstSlice) {
     copy_surface_impl(src,srcMip,srcSlice,dst,dstMip,dstSlice);
@@ -2028,6 +2030,6 @@ void invalidate(uint32_t flags,uint32_t addr,uint32_t size) {
 }
 void ss_reset_surfaces() {
     R.mainDepthAddr = 0;
-    for(auto& [addr,s]:R.surfaces){s->guestLayout.reset();s->dirty=true;s->lastCheckedFrame=~0ull;}
+    for(auto& [addr,s]:R.surfaces){s->guestLayout.reset();s->dirty=true;s->dirtyOob=true;s->lastCheckedFrame=~0ull;}
 }
 }
