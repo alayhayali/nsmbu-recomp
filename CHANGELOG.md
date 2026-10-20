@@ -27,6 +27,7 @@ Use the `changelog` skill when editing.
 - The USA base disc runs without the 1.3.0 update.
   Mods still need that update.
 - Crash and setup error dialogs stay compact and offer Report crash / Report issue.
+- Cemu content mods are supported drop them into the mods folder and enable them in F12 menu then reboot.
 
 ### Changed
 
