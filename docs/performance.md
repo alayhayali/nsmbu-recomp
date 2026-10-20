@@ -384,6 +384,51 @@ Frames 1800–2760 stay on the vsync limit.
 
 The replay still reports 7 position mismatches, first at step 1036.
 
+## Uncapped 1-1 replay: texture re-hash and small copies (2026-10-20)
+
+`perf` needs `perf_event_paranoid` at 1 or lower, which this machine does not allow.
+The numbers below come from a `SIGPROF` leaf sampler on the thread CPU clock (1 ms) attached with `LD_PRELOAD`, plus the `[prof]` windows of `nsmbu replay --release --uncapped`.
+
+A replay with its position columns stops at the first divergence, so the uncapped runs use a copy of `replays/1-1.replay` without those columns; it plays all 2420 steps.
+The machine and build match the note above, with a warm shader cache.
+
+The render thread was the largest CPU user (about 55% of samples).
+Two costs came out of it:
+
+- The 4 MiB CPU texture was hashed on every frame.
+  Surface `41410800` is 2048x512 `TM_2D_TILED_THIN1`, one level of 4.00 MiB.
+  The game calls `GX2Invalidate` on it every frame, which set `dirty` and made `upload_surface` hash the whole level with XXH3.
+  Write tracking showed that none of the written pages had changed, so the hash only confirmed that the image was unchanged.
+  `dirty` now tells apart changes that write tracking cannot see (`dirtyOob`: `GX2CopySurface` into the surface, a save-state load) from an invalidation that only announces CPU writes.
+  In-band changes therefore use the per-page verdict and the 4 MiB hash is skipped; out-of-band changes still take the whole-level path.
+- Small copies went through libc.
+  `apply_small_regs` compared and copied every register set with `memcmp` and `memcpy`, twice when a context shadow was bound, and the command queue copied every payload with `vector::insert`.
+  Sets of 16 words or fewer now compare and copy word by word, the shadow is written only when a word differs, and small payloads are appended without `insert`.
+
+Frames 1200-3300 of the uncapped 1-1 run, four runs each, medians of the 120-frame `[prof]` windows:
+
+| 2x internal resolution | before | after |
+| --- | ---: | ---: |
+| render-thread CPU ms/frame | 1.35 | 1.14 |
+| textures ms/frame | 0.27 | 0.08 |
+| regs ms/frame | 0.42 | 0.36 |
+| draw op ms/frame | 0.87 | 0.70 |
+| frame time ms | 1.75 | 1.75 |
+| swaps/s | 571 | 572 |
+
+At 2x the GPU takes the CPU time that was freed, so frame time does not move.
+The same replay at 1x internal resolution is CPU-bound, and there the faster render thread raises throughput:
+
+| 1x internal resolution | before | after |
+| --- | ---: | ---: |
+| render-thread CPU ms/frame | 1.36 | 1.10 |
+| frame time ms | 1.51 | 1.22 |
+| swaps/s | 663 | 818 |
+| whole run wall time | 6.15 s | 5.81 s |
+
+The capped replay behaves as before: both builds stop at the same divergence, step 17, recorded 600.000 and now 600.100.
+`ctest` and `--renderer-smoke` pass.
+
 ## Texture change detection (2026-10-06)
 
 The renderers used to re-hash a CPU texture in full only when it was new, invalidated by an exact

@@ -15,6 +15,7 @@ Use the `changelog` skill when editing.
 
 ### Changed
 
+- The renderer uses less CPU each frame, so busy scenes and high frame rate settings hold their speed better.
 - Mods run on LuaJIT and load `.lua` scripts.
   Luau mods with `.luau` files do not load until the scripts are converted.
 - The mod examples and the SDK ship TypeScript source compiled to Lua.
