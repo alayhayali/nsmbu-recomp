@@ -6,6 +6,8 @@
 #import <QuartzCore/QuartzCore.h>
 #include <Carbon/Carbon.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <mutex>
 
@@ -29,9 +31,12 @@ namespace input {
 
 static std::mutex g_mu;
 static bool g_keys[256];
-static PadState g_pad;
+static PadState g_pads[input::kMaxPlayers];
 static bool g_touch;
 static float g_tx, g_ty;
+static float g_player_values[input::kMaxPlayers][input_map::kPadCount];
+static int g_controller_count = 0;
+static std::array<std::string, input::kMaxPlayers> g_controller_names;
 
 void set_touch(bool down, float x, float y) {
     std::lock_guard<std::mutex> lk(g_mu);
@@ -48,13 +53,16 @@ static PadState keyboard_state(bool use_host) {
     return input_map::keyboard_state(input_map::current(), keys);
 }
 
-void controller_values(float* v) {
+static int read_controllers(float values[input::kMaxPlayers][input_map::kPadCount]) {
     using namespace input_map;
-    for (int i = 0; i < kPadCount; i++) v[i] = 0;
-    auto put = [&](int p, float x) { if (x > v[p]) v[p] = x; };
-    for (GCController* c in [GCController controllers]) {
+    NSArray<GCController*>* controllers = [GCController controllers];
+    const int n = std::min<int>((int)controllers.count, input::kMaxPlayers);
+    for (int i = 0; i < n; i++) {
+        GCController* c = controllers[i];
         GCExtendedGamepad* g = c.extendedGamepad;
         if (!g) continue;
+        float* v = values[i];
+        auto put = [&](int p, float x) { if (x > v[p]) v[p] = x; };
         auto b = [&](GCControllerButtonInput* in, int p) {
             if (in) put(p, in.isPressed ? std::max(in.value, 0.51f) : std::min(in.value, 0.5f));
         };
@@ -72,12 +80,41 @@ void controller_values(float* v) {
         stick(g.leftThumbstick, kPadLSUp, kPadLSDown, kPadLSLeft, kPadLSRight);
         stick(g.rightThumbstick, kPadRSUp, kPadRSDown, kPadRSLeft, kPadRSRight);
     }
+    return n;
+}
+
+void controller_values(float* v) {
+    using namespace input_map;
+    float values[input::kMaxPlayers][kPadCount] = {};
+    const int n = read_controllers(values);
+    for (int i = 0; i < kPadCount; i++) v[i] = 0;
+    for (int p = 0; p < n; p++)
+        for (int i = 0; i < kPadCount; i++) v[i] = std::max(v[i], values[p][i]);
+}
+
+void controller_values(int player, float* v) {
+    std::lock_guard<std::mutex> lk(g_mu);
+    player = std::clamp(player, 0, input::kMaxPlayers - 1);
+    std::copy(g_player_values[player], g_player_values[player] + input_map::kPadCount, v);
 }
 
 static float g_host_values[input_map::kPadCount];
 void host_controller_values(float* v) {
     std::lock_guard<std::mutex> lk(g_mu);
     std::copy(g_host_values, g_host_values + input_map::kPadCount, v);
+}
+
+void host_controller_values(int player, float* v) { controller_values(player, v); }
+
+bool controller_connected(int player) {
+    std::lock_guard<std::mutex> lk(g_mu);
+    return player >= 0 && player < g_controller_count;
+}
+
+std::string controller_name(int player) {
+    std::lock_guard<std::mutex> lk(g_mu);
+    if (player < 0 || player >= input::kMaxPlayers) return {};
+    return g_controller_names[player];
 }
 
 void held_keys(bool* keys) {
@@ -265,12 +302,28 @@ void init() {
     [GCController startWirelessControllerDiscoveryWithCompletionHandler:nil];
 
     [NSTimer scheduledTimerWithTimeInterval:1.0 / 240 repeats:YES block:^(NSTimer*) {
-        float v[input_map::kPadCount];
-        controller_values(v);
-        PadState s = input_map::controller_state(input_map::current(), v);
+        float values[input::kMaxPlayers][input_map::kPadCount] = {};
+        const int n = read_controllers(values);
+        PadState states[input::kMaxPlayers];
+        for (int i = 0; i < input::kMaxPlayers; i++)
+            states[i] = input_map::controller_state(input_map::player(i), values[i]);
+        float v[input_map::kPadCount] = {};
+        for (int i = 0; i < input_map::kPadCount; i++)
+            for (int p = 0; p < n; p++) v[i] = std::max(v[i], values[p][i]);
         {
             std::lock_guard<std::mutex> lk(g_mu);
-            g_pad = s;
+            g_controller_count = n;
+            for (int i = 0; i < input::kMaxPlayers; i++) {
+                std::copy(values[i], values[i] + input_map::kPadCount, g_player_values[i]);
+                g_pads[i] = states[i];
+                if (i < n && i < (int)[[GCController controllers] count]) {
+                    GCController* c = [GCController controllers][i];
+                    const char* name = c.vendorName.UTF8String ?: c.productCategory.UTF8String;
+                    g_controller_names[i] = name ? name : "";
+                } else {
+                    g_controller_names[i].clear();
+                }
+            }
             std::copy(v, v + input_map::kPadCount, g_host_values);
         }
 
@@ -455,7 +508,8 @@ static std::atomic<bool> g_pro{env::PRO_CONTROLLER() != nullptr};
 bool pro_controller() { return g_pro.load(std::memory_order_relaxed); }
 void set_pro_controller(bool on) { g_pro = on; LOG("[input] keyboard/controller act as %s", on ? "Pro Controller" : "GamePad"); }
 
-PadState read() {
+PadState read(int player) {
+    player = std::clamp(player, 0, input::kMaxPlayers - 1);
     static const std::vector<Press> script = scripted();
     static const std::vector<Stick> sticks = scripted_stick();
     static const std::vector<KeyPress> keys = scripted_keys();
@@ -463,38 +517,43 @@ PadState read() {
     std::lock_guard<std::mutex> lk(g_mu);
 
     static const bool no_host = env::NO_HOST_INPUT() != nullptr;
-    if (!keys.empty()) {
-        memset(g_script_keys, 0, sizeof g_script_keys);
-        for (auto& p : keys)
-            if (render::frame_count() >= p.from && render::frame_count() <= p.to)
-                for (int c : p.codes) g_script_keys[c] = true;
-    }
-    PadState k = keyboard_state(!no_host), s = g_pad;
+    PadState s = g_pads[player];
     if (no_host) s = PadState{};
-    for (auto& p : script)
-        if (render::frame_count() >= p.from && render::frame_count() <= p.to) s.buttons |= p.bits;
-    for (auto& p : sticks)
-        if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.lx = p.x; s.ly = p.y; }
-    for (auto& p : rsticks)
-        if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.rx = p.x; s.ry = p.y; }
-    apply_scenario(s);
-    s.buttons |= k.buttons;
-    if (k.lx || k.ly) { s.lx = k.lx; s.ly = k.ly; }
-    if (k.rx || k.ry) { s.rx = k.rx; s.ry = k.ry; }
-    s.touch = g_touch;
-    s.tx = g_tx;
-    s.ty = g_ty;
-    if (g_test_touch) s.touch = true, s.tx = g_test_tx, s.ty = g_test_ty;
+    if (player == 0) {
+        if (!keys.empty()) {
+            memset(g_script_keys, 0, sizeof g_script_keys);
+            for (auto& p : keys)
+                if (render::frame_count() >= p.from && render::frame_count() <= p.to)
+                    for (int c : p.codes) g_script_keys[c] = true;
+        }
+        PadState k = keyboard_state(!no_host);
+        for (auto& p : script)
+            if (render::frame_count() >= p.from && render::frame_count() <= p.to) s.buttons |= p.bits;
+        for (auto& p : sticks)
+            if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.lx = p.x; s.ly = p.y; }
+        for (auto& p : rsticks)
+            if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.rx = p.x; s.ry = p.y; }
+        apply_scenario(s);
+        s.buttons |= k.buttons;
+        if (k.lx || k.ly) { s.lx = k.lx; s.ly = k.ly; }
+        if (k.rx || k.ry) { s.rx = k.rx; s.ry = k.ry; }
+        s.touch = g_touch;
+        s.tx = g_tx;
+        s.ty = g_ty;
+        if (g_test_touch) s.touch = true, s.tx = g_test_tx, s.ty = g_test_ty;
 
-    static const bool log_buttons = env::LOG_BUTTONS() != nullptr;
-    static uint32_t last_buttons = 0;
-    if (log_buttons && s.buttons != last_buttons) {
-        LOG("[input] frame %llu buttons %04X", (unsigned long long)render::frame_count(), s.buttons);
-        last_buttons = s.buttons;
+        static const bool log_buttons = env::LOG_BUTTONS() != nullptr;
+        static uint32_t last_buttons = 0;
+        if (log_buttons && s.buttons != last_buttons) {
+            LOG("[input] frame %llu buttons %04X", (unsigned long long)render::frame_count(), s.buttons);
+            last_buttons = s.buttons;
+        }
     }
     if (overlay::blocks_input()) s = PadState{};
     return s;
 }
+
+PadState read() { return read(0); }
 
 void prompt_text(const std::u16string& initial, int max_len,
                  std::function<void(bool ok, std::u16string text)> done) {

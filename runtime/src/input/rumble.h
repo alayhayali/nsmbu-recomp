@@ -37,6 +37,7 @@ void set_enabled(bool on);
 bool env_override();
 
 float host_level(uint64_t window_us);
+float host_level(int player, uint64_t window_us);
 
 bool log_enabled();
 

@@ -23,6 +23,14 @@ A build from source stores it in the port config directory.
 That directory is `~/.config/nsmbu` on Linux, `%APPDATA%\NSMBU` on Windows, and `~/Library/Application Support/NSMBU` on macOS.
 Set `NSMBU_CONTROLS` to use another file.
 
+Up to four controllers work as separate players.
+Player 1 uses the keyboard and the first controller.
+Each extra controller joins as the next player.
+In **Controls**, keep **Same controls for every player** on to use one layout for every controller.
+Turn it off to bind buttons for one player at a time.
+In GamePad mode Player 1 is the Wii U GamePad and extra controllers act as Wii U Pro Controllers.
+In Pro Controller mode every controller acts as a Wii U Pro Controller.
+
 Host gamepads use the same layout as the Wii U GamePad by default (face buttons by position).
 The bottom face button (Xbox **A**) is Wii U **B**.
 The right face button (Xbox **B**) is Wii U **A**.

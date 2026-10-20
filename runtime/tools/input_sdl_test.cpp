@@ -155,6 +155,44 @@ int main(){
  }
  rumble::reset();
  {
+  SDL_VirtualJoystickDesc second;SDL_INIT_INTERFACE(&second);
+  second.type=SDL_JOYSTICK_TYPE_GAMEPAD;second.naxes=SDL_GAMEPAD_AXIS_COUNT;second.nbuttons=SDL_GAMEPAD_BUTTON_COUNT;second.name="second test pad";
+  const SDL_JoystickID pad2=SDL_AttachVirtualJoystick(&second);assert(pad2);
+  for(SDL_Event e;SDL_PollEvent(&e);)input::handle_event(e);
+  assert(input::controller_connected(0)&&input::controller_connected(1));
+  assert(!input::controller_name(1).empty());
+
+  auto config=input_map::config();
+  config.sync=false;
+  config.players[0]=input_map::Mapping::defaults();
+  config.players[1]=input_map::Mapping::defaults();
+  config.players[0].pad[input_map::kA]=input_map::kPadA;
+  config.players[0].pad[input_map::kB]=input_map::kPadNone;
+  config.players[1].pad[input_map::kA]=input_map::kPadX;
+  config.players[1].pad[input_map::kY]=input_map::kPadNone;
+  input_map::set_config(config,false);
+
+  SDL_Joystick* first=SDL_GetJoystickFromID(padId);
+  SDL_Joystick* other=SDL_GetJoystickFromID(pad2);
+  assert(first&&other);
+  SDL_SetJoystickVirtualButton(first,SDL_GAMEPAD_BUTTON_SOUTH,true);
+  SDL_SetJoystickVirtualButton(other,SDL_GAMEPAD_BUTTON_WEST,true);
+  SDL_UpdateJoysticks();
+  input::update();
+  assert(input::read(0).buttons==input::kA);
+  assert(input::read(1).buttons==input::kA);
+  assert(input::read(2).buttons==0);
+  input::release_keys();
+  SDL_SetJoystickVirtualButton(first,SDL_GAMEPAD_BUTTON_SOUTH,false);
+  SDL_SetJoystickVirtualButton(other,SDL_GAMEPAD_BUTTON_WEST,false);
+  SDL_UpdateJoysticks();
+  input::update();
+  assert(input::read(0).buttons==0&&input::read(1).buttons==0);
+  input_map::set_config(input_map::Config::defaults(),false);
+  SDL_DetachVirtualJoystick(pad2);
+  for(SDL_Event e;SDL_PollEvent(&e);)input::handle_event(e);
+ }
+ {
   const char* rec="input_record_test.txt";
   remove(rec);
   set_env(env::RECORD_INPUT,rec);

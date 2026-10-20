@@ -11,6 +11,7 @@ struct ControlsView {
 
     input_map::Mapping m;
     bool pro = false;
+    bool keys_enabled = true;
     int cap_action = -1, cap_col = 0;
 
     const float* pad = nullptr;

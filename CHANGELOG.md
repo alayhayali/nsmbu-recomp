@@ -10,6 +10,7 @@ Use the `changelog` skill when editing.
 
 ### Added
 
+- Up to four controllers work as separate players, with per-player bindings and an option to keep one layout for every player.
 - Collision Viewer in the settings debug tab draws solid tiles and actor solids in blue and actor hitboxes in red.
 
 ### Changed

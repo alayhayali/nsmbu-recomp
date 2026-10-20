@@ -1,5 +1,6 @@
 
 #include "input/rumble.h"
+#include "input/input.h"
 #include "core/runtime.h"
 #include <algorithm>
 #include <atomic>
@@ -48,7 +49,8 @@ bool Motor::active(uint64_t now) const {
 
 namespace {
 std::mutex g_mu;
-Motor g_motor;
+Motor g_vpad;
+Motor g_pro[input::kMaxPlayers];
 
 uint64_t now_us() {
     return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -71,31 +73,33 @@ void gamepad_pattern(uint32_t chan, const uint8_t* bits, uint32_t nbits) {
         LOG("[rumble] %.3f game: GamePad pattern of %u bits (%s), %.0f ms", now_us() / 1e6, nbits, hex, std::min(nbits, Motor::kMaxBits) * Motor::kBitUs / 1000.0);
     }
     std::lock_guard lk(g_mu);
-    g_motor.gamepad_pattern(bits, nbits, now_us());
+    g_vpad.gamepad_pattern(bits, nbits, now_us());
 }
 
 void gamepad_stop(uint32_t chan) {
     if (chan != 0) return;
     if (log_enabled()) LOG("[rumble] %.3f game: GamePad motor stop", now_us() / 1e6);
     std::lock_guard lk(g_mu);
-    g_motor.gamepad_stop();
+    g_vpad.gamepad_stop();
 }
 
 void pro_motor(uint32_t chan, bool on) {
-    if (chan != 0) return;
+    if (chan >= input::kMaxPlayers) return;
     const uint64_t now = now_us();
     std::lock_guard lk(g_mu);
 
-    static bool logged = false;
-    if (log_enabled() && on != logged) LOG("[rumble] %.3f game: Pro Controller motor %s", now / 1e6, on ? "on" : "off");
-    logged = on;
-    g_motor.pro_motor(on, now);
+    static bool logged[input::kMaxPlayers] = {};
+    if (log_enabled() && on != logged[chan])
+        LOG("[rumble] %.3f game: controller %u motor %s", now / 1e6, chan + 1, on ? "on" : "off");
+    logged[chan] = on;
+    g_pro[chan].pro_motor(on, now);
 }
 
 void reset() {
     if (log_enabled()) LOG("[rumble] save state loaded: motors still");
     std::lock_guard lk(g_mu);
-    g_motor.reset();
+    g_vpad.reset();
+    for (auto& m : g_pro) m.reset();
 }
 
 bool enabled() { return g_enabled.load(std::memory_order_relaxed); }
@@ -107,7 +111,20 @@ bool env_override() { return env() != nullptr; }
 float host_level(uint64_t window_us) {
     if (!enabled()) return 0.0f;
     std::lock_guard lk(g_mu);
-    return g_motor.level(now_us(), window_us);
+    const uint64_t now = now_us();
+    float level = g_vpad.level(now, window_us);
+    for (auto& m : g_pro) level = std::max(level, m.level(now, window_us));
+    return level;
+}
+
+float host_level(int player, uint64_t window_us) {
+    if (!enabled()) return 0.0f;
+    if (player < 0 || player >= input::kMaxPlayers) return 0.0f;
+    std::lock_guard lk(g_mu);
+    const uint64_t now = now_us();
+    float level = g_pro[player].level(now, window_us);
+    if (player == 0) level = std::max(level, g_vpad.level(now, window_us));
+    return level;
 }
 
 }

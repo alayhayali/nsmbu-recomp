@@ -37,11 +37,15 @@ namespace gfx { void display_plus_pressed(); }
 namespace input {
 static std::mutex g_mu;
 static bool g_keys[256]={},g_script_keys[256]={};
-static PadState g_pad;
+static PadState g_pads[input::kMaxPlayers];
 static float g_values[input_map::kPadCount]={};
+static float g_player_values[input::kMaxPlayers][input_map::kPadCount]={};
 static bool g_touch=false;static float g_tx=0,g_ty=0;
 static std::map<SDL_JoystickID,SDL_Gamepad*> g_controllers;
 static std::set<SDL_JoystickID> g_rumble_controllers;
+static std::array<SDL_JoystickID,input::kMaxPlayers> g_slot{};
+static std::array<std::string,input::kMaxPlayers> g_slot_name;
+static std::mutex g_pads_mu;
 static SDL_Window* g_prompt_window=nullptr;
 static std::function<void(bool,std::u16string)> g_pending,g_done;
 static std::u16string g_initial,g_text;
@@ -164,7 +168,19 @@ void set_touch(bool down,float x,float y){std::lock_guard lk(g_mu);g_touch=down;
 void release_keys(){std::lock_guard lk(g_mu);memset(g_keys,0,sizeof g_keys);g_touch=false;}
 void held_keys(bool* keys){std::lock_guard lk(g_mu);for(int i=0;i<256;i++)keys[i]=g_keys[i]||g_script_keys[i];}
 void controller_values(float* out){std::lock_guard lk(g_mu);std::copy(std::begin(g_values),std::end(g_values),out);}
+void controller_values(int player,float* out){std::lock_guard lk(g_mu);player=std::clamp(player,0,input::kMaxPlayers-1);std::copy(std::begin(g_player_values[player]),std::end(g_player_values[player]),out);}
 void host_controller_values(float* out){controller_values(out);}
+void host_controller_values(int player,float* out){controller_values(player,out);}
+bool controller_connected(int player){
+ if(player<0||player>=input::kMaxPlayers)return false;
+ std::lock_guard lk(g_pads_mu);
+ return g_slot[player]!=0;
+}
+std::string controller_name(int player){
+ if(player<0||player>=input::kMaxPlayers)return {};
+ std::lock_guard lk(g_pads_mu);
+ return g_slot_name[player];
+}
 
 static int overlay_mods(SDL_Keymod m){
  return (m&SDL_KMOD_SHIFT?overlay::kShift:0)|(m&SDL_KMOD_CTRL?overlay::kCtrl:0)|(m&SDL_KMOD_ALT?overlay::kAlt:0)|(m&SDL_KMOD_GUI?overlay::kSuper:0);
@@ -202,30 +218,39 @@ static bool overlay_event(const SDL_Event& event){
 static PadState keyboard_state(bool host){bool keys[256];for(int i=0;i<256;i++)keys[i]=(host&&g_keys[i])||g_script_keys[i];return input_map::keyboard_state(input_map::current(),keys);}
 
 constexpr Uint32 kRumbleRefreshMs=150,kRumbleStallMs=300;
-static std::mutex g_pads_mu;
 static std::map<SDL_JoystickID,Uint16> g_rumble_sent;
 static std::atomic<bool> g_rumble_quit{false};
 static std::atomic<Uint64> g_rumble_update_ms{0};
-static void rumble_all_locked(Uint16 level,Uint32 ms){
+static void rumble_stop_locked(){
 
  if(!SDL_WasInit(SDL_INIT_GAMEPAD))return;
  for(auto id:g_rumble_controllers){
   auto i=g_controllers.find(id);
   if(i==g_controllers.end()||!SDL_GamepadConnected(i->second))continue;
-  Uint16& sent=g_rumble_sent[id];
-  if(level||sent)SDL_RumbleGamepad(i->second,level,level,level?ms:0);
-  if(rumble::log_enabled()&&level!=sent)LOG("[rumble] host: controller %u motor %.2f",(unsigned)id,level/65535.0);
-  sent=level;
+  SDL_RumbleGamepad(i->second,0,0,0);
+  g_rumble_sent[id]=0;
  }
 }
 static void apply_rumble(){
  g_rumble_update_ms=SDL_GetTicks();
  if(g_rumble_controllers.empty()||g_rumble_quit)return;
 
- float level=rumble::host_level(1000000/60);
- if(overlay::is_open()||!SDL_GetKeyboardFocus())level=0;
+ const bool silent=overlay::is_open()||!SDL_GetKeyboardFocus();
+ float levels[input::kMaxPlayers];
+ for(int i=0;i<input::kMaxPlayers;i++)levels[i]=silent?0.f:rumble::host_level(i,1000000/60);
  std::lock_guard lk(g_pads_mu);
- rumble_all_locked((Uint16)(std::clamp(level,0.f,1.f)*0xFFFFu),kRumbleRefreshMs);
+ if(!SDL_WasInit(SDL_INIT_GAMEPAD))return;
+ for(int slot=0;slot<input::kMaxPlayers;slot++){
+  const SDL_JoystickID id=g_slot[slot];
+  if(!id||!g_rumble_controllers.contains(id))continue;
+  auto i=g_controllers.find(id);
+  if(i==g_controllers.end()||!SDL_GamepadConnected(i->second))continue;
+  const Uint16 level=(Uint16)(std::clamp(levels[slot],0.f,1.f)*0xFFFFu);
+  Uint16& sent=g_rumble_sent[id];
+  if(level||sent)SDL_RumbleGamepad(i->second,level,level,level?kRumbleRefreshMs:0);
+  if(rumble::log_enabled()&&level!=sent)LOG("[rumble] host: player %d controller %u motor %.2f",slot+1,(unsigned)id,level/65535.0);
+  sent=level;
+ }
 }
 static void rumble_watchdog(){
  while(!g_rumble_quit){
@@ -234,7 +259,7 @@ static void rumble_watchdog(){
   std::lock_guard lk(g_pads_mu);
   if(std::any_of(g_rumble_sent.begin(),g_rumble_sent.end(),[](auto& s){return s.second!=0;})){
    LOG("[rumble] the main loop stalls: motors stopped");
-   rumble_all_locked(0,0);
+   rumble_stop_locked();
   }
  }
 }
@@ -242,7 +267,7 @@ void stop_rumble_now(){
  g_rumble_quit=true;
 
  std::unique_lock lk(g_pads_mu,std::try_to_lock);
- if(lk.owns_lock())rumble_all_locked(0,0);
+ if(lk.owns_lock())rumble_stop_locked();
 }
 
 static bool rumble_quit_watch(void*,SDL_Event* event){
@@ -299,11 +324,20 @@ static void sensor_event(const SDL_GamepadSensorEvent& e){
  auto a=g_accel.find(e.which);if(a==g_accel.end())return;
  motion::controller_sample((uint64_t)e.which,e.sensor_timestamp,e.data,a->second.data());
 }
+static int slot_of_locked(SDL_JoystickID id){
+ for(int i=0;i<input::kMaxPlayers;i++)if(g_slot[i]==id)return i;
+ return -1;
+}
+static int free_slot_locked(){
+ for(int i=0;i<input::kMaxPlayers;i++)if(!g_slot[i])return i;
+ return -1;
+}
 static void open_controller(SDL_JoystickID id){
  std::lock_guard lk(g_pads_mu);
  if(g_controllers.contains(id))return;
  if(auto* pad=SDL_OpenGamepad(id)){g_controllers[id]=pad;
-
+  const int slot=free_slot_locked();
+  if(slot>=0){g_slot[slot]=id;const char* name=SDL_GetGamepadName(pad);g_slot_name[slot]=name?name:"";}
   if(SDL_RumbleGamepad(pad,0,0,0))g_rumble_controllers.insert(id);
   if(g_sensors_on)set_sensors_locked(pad,true);}
 }
@@ -406,7 +440,7 @@ void handle_event(const SDL_Event& event){
  if(overlay::captures())mods::update_mouse();
  else if(mods::handle_mouse_event(event))return;
  if(event.type==SDL_EVENT_GAMEPAD_ADDED&&!env::NO_CONTROLLERS())open_controller(event.gdevice.which);
- if(event.type==SDL_EVENT_GAMEPAD_REMOVED){std::lock_guard lk(g_pads_mu);auto i=g_controllers.find(event.gdevice.which);if(i!=g_controllers.end()){SDL_CloseGamepad(i->second);g_controllers.erase(i);}g_rumble_controllers.erase(event.gdevice.which);g_rumble_sent.erase(event.gdevice.which);g_accel.erase(event.gdevice.which);g_sensor_seen.erase(event.gdevice.which);g_sensor_kick.erase(event.gdevice.which);motion::controller_gone(event.gdevice.which);}
+ if(event.type==SDL_EVENT_GAMEPAD_REMOVED){std::lock_guard lk(g_pads_mu);auto i=g_controllers.find(event.gdevice.which);if(i!=g_controllers.end()){SDL_CloseGamepad(i->second);g_controllers.erase(i);}const int slot=slot_of_locked(event.gdevice.which);if(slot>=0){g_slot[slot]=0;g_slot_name[slot].clear();}g_rumble_controllers.erase(event.gdevice.which);g_rumble_sent.erase(event.gdevice.which);g_accel.erase(event.gdevice.which);g_sensor_seen.erase(event.gdevice.which);g_sensor_kick.erase(event.gdevice.which);motion::controller_gone(event.gdevice.which);}
  if(event.type==SDL_EVENT_GAMEPAD_SENSOR_UPDATE){g_sensor_seen[event.gsensor.which]=SDL_GetTicks();if(!env::NO_HOST_INPUT()&&!overlay::blocks_input())sensor_event(event.gsensor);return;}
  if(event.type==SDL_EVENT_WINDOW_FOCUS_LOST)release_keys();
  if(text_entry_event(event))return;
@@ -483,24 +517,32 @@ void update(){
   }
  }
  post_test_keys();
- float v[input_map::kPadCount]={};using namespace input_map;
- auto put=[&](int p,float x){v[p]=std::max(v[p],x);};
- for(auto [id,pad]:g_controllers){
-  if(!SDL_GamepadConnected(pad))continue;
-  auto button=[&](SDL_GamepadButton b,int p){put(p,SDL_GetGamepadButton(pad,b)?1.f:0.f);};
-  button(SDL_GAMEPAD_BUTTON_SOUTH,kPadA);button(SDL_GAMEPAD_BUTTON_EAST,kPadB);button(SDL_GAMEPAD_BUTTON_WEST,kPadX);button(SDL_GAMEPAD_BUTTON_NORTH,kPadY);
-  button(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,kPadLB);button(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,kPadRB);
-  button(SDL_GAMEPAD_BUTTON_START,kPadMenu);button(SDL_GAMEPAD_BUTTON_BACK,kPadOptions);button(SDL_GAMEPAD_BUTTON_GUIDE,kPadHome);
-  button(SDL_GAMEPAD_BUTTON_LEFT_STICK,kPadL3);button(SDL_GAMEPAD_BUTTON_RIGHT_STICK,kPadR3);
-  button(SDL_GAMEPAD_BUTTON_DPAD_UP,kPadDUp);button(SDL_GAMEPAD_BUTTON_DPAD_DOWN,kPadDDown);button(SDL_GAMEPAD_BUTTON_DPAD_LEFT,kPadDLeft);button(SDL_GAMEPAD_BUTTON_DPAD_RIGHT,kPadDRight);
-  put(kPadLT,std::max(0.f,SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_LEFT_TRIGGER)/32767.f));put(kPadRT,std::max(0.f,SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)/32767.f));
-  auto stick=[&](SDL_GamepadAxis ax,SDL_GamepadAxis ay,int up,int down,int left,int right){float x=SDL_GetGamepadAxis(pad,ax)/32768.f,y=SDL_GetGamepadAxis(pad,ay)/32768.f;put(right,std::max(x,0.f));put(left,std::max(-x,0.f));put(up,std::max(-y,0.f));put(down,std::max(y,0.f));};
-  stick(SDL_GAMEPAD_AXIS_LEFTX,SDL_GAMEPAD_AXIS_LEFTY,kPadLSUp,kPadLSDown,kPadLSLeft,kPadLSRight);stick(SDL_GAMEPAD_AXIS_RIGHTX,SDL_GAMEPAD_AXIS_RIGHTY,kPadRSUp,kPadRSDown,kPadRSLeft,kPadRSRight);
+ float v[input_map::kPadCount]={};float pv[input::kMaxPlayers][input_map::kPadCount]={};
+ using namespace input_map;
+ {
+  std::lock_guard lk(g_pads_mu);
+  for(auto [id,pad]:g_controllers){
+   if(!SDL_GamepadConnected(pad))continue;
+   const int slot=slot_of_locked(id);
+   if(slot<0)continue;
+   auto put=[&](int p,float x){pv[slot][p]=std::max(pv[slot][p],x);v[p]=std::max(v[p],x);};
+   auto button=[&](SDL_GamepadButton b,int p){put(p,SDL_GetGamepadButton(pad,b)?1.f:0.f);};
+   button(SDL_GAMEPAD_BUTTON_SOUTH,kPadA);button(SDL_GAMEPAD_BUTTON_EAST,kPadB);button(SDL_GAMEPAD_BUTTON_WEST,kPadX);button(SDL_GAMEPAD_BUTTON_NORTH,kPadY);
+   button(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,kPadLB);button(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,kPadRB);
+   button(SDL_GAMEPAD_BUTTON_START,kPadMenu);button(SDL_GAMEPAD_BUTTON_BACK,kPadOptions);button(SDL_GAMEPAD_BUTTON_GUIDE,kPadHome);
+   button(SDL_GAMEPAD_BUTTON_LEFT_STICK,kPadL3);button(SDL_GAMEPAD_BUTTON_RIGHT_STICK,kPadR3);
+   button(SDL_GAMEPAD_BUTTON_DPAD_UP,kPadDUp);button(SDL_GAMEPAD_BUTTON_DPAD_DOWN,kPadDDown);button(SDL_GAMEPAD_BUTTON_DPAD_LEFT,kPadDLeft);button(SDL_GAMEPAD_BUTTON_DPAD_RIGHT,kPadDRight);
+   put(kPadLT,std::max(0.f,SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_LEFT_TRIGGER)/32767.f));put(kPadRT,std::max(0.f,SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)/32767.f));
+   auto stick=[&](SDL_GamepadAxis ax,SDL_GamepadAxis ay,int up,int down,int left,int right){float x=SDL_GetGamepadAxis(pad,ax)/32768.f,y=SDL_GetGamepadAxis(pad,ay)/32768.f;put(right,std::max(x,0.f));put(left,std::max(-x,0.f));put(up,std::max(-y,0.f));put(down,std::max(y,0.f));};
+   stick(SDL_GAMEPAD_AXIS_LEFTX,SDL_GAMEPAD_AXIS_LEFTY,kPadLSUp,kPadLSDown,kPadLSLeft,kPadLSRight);stick(SDL_GAMEPAD_AXIS_RIGHTX,SDL_GAMEPAD_AXIS_RIGHTY,kPadRSUp,kPadRSDown,kPadRSLeft,kPadRSRight);
+  }
  }
- auto state=input_map::controller_state(input_map::current(),v);
+ PadState states[input::kMaxPlayers];
+ for(int i=0;i<input::kMaxPlayers;i++)states[i]=input_map::controller_state(input_map::player(i),pv[i]);
 
- {static bool plus=false;const bool now=(state.buttons&input::kPlus)!=0;if(now&&!plus&&!overlay::blocks_input())gfx::display_plus_pressed();plus=now;}
- std::lock_guard lk(g_mu);std::copy(std::begin(v),std::end(v),g_values);g_pad=state;
+ {static bool plus=false;const bool now=(states[0].buttons&input::kPlus)!=0;if(now&&!plus&&!overlay::blocks_input())gfx::display_plus_pressed();plus=now;}
+ std::lock_guard lk(g_mu);std::copy(std::begin(v),std::end(v),g_values);
+ for(int i=0;i<input::kMaxPlayers;i++){std::copy(std::begin(pv[i]),std::end(pv[i]),g_player_values[i]);g_pads[i]=states[i];}
  if(!overlay::blocks_input()&&!env::NO_HOST_INPUT()){motion::poll_recalibrate(v,g_keys);screenshot::poll_controller(v);}
 }
 void prompt_text(const std::u16string& initial,int max_len,std::function<void(bool,std::u16string)> done){std::lock_guard lk(g_mu);g_initial=initial;g_pending_max_len=std::max(0,max_len);if(g_initial.size()>(size_t)g_pending_max_len)g_initial.resize(g_pending_max_len);g_pending=std::move(done);}
@@ -1245,8 +1287,9 @@ static std::atomic<bool> g_pro{env::PRO_CONTROLLER() != nullptr};
 bool pro_controller() { return g_pro.load(std::memory_order_relaxed); }
 void set_pro_controller(bool on) { g_pro = on; LOG("[input] keyboard/controller act as %s", on ? "Pro Controller" : "GamePad"); }
 
-PadState read() {
-    if (env::REPLAY_INPUT()) {
+PadState read(int player) {
+    player = std::clamp(player, 0, input::kMaxPlayers - 1);
+    if (player == 0 && env::REPLAY_INPUT()) {
         PadState s{};
         if (apply_replay(s)) return s;
     }
@@ -1257,38 +1300,43 @@ PadState read() {
     std::lock_guard<std::mutex> lk(g_mu);
 
     static const bool no_host = env::NO_HOST_INPUT() != nullptr;
-    if (!keys.empty()) {
-        memset(g_script_keys, 0, sizeof g_script_keys);
-        for (auto& p : keys)
-            if (render::frame_count() >= p.from && render::frame_count() <= p.to)
-                for (int c : p.codes) g_script_keys[c] = true;
-    }
-    PadState k = keyboard_state(!no_host), s = g_pad;
+    PadState s = g_pads[player];
     if (no_host) s = PadState{};
-    for (auto& p : script)
-        if (render::frame_count() >= p.from && render::frame_count() <= p.to) s.buttons |= p.bits;
-    for (auto& p : sticks)
-        if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.lx = p.x; s.ly = p.y; }
-    for (auto& p : rsticks)
-        if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.rx = p.x; s.ry = p.y; }
-    apply_scenario(s);
-    s.buttons |= k.buttons;
-    if (k.lx || k.ly) { s.lx = k.lx; s.ly = k.ly; }
-    if (k.rx || k.ry) { s.rx = k.rx; s.ry = k.ry; }
-    agent_ctl::apply_pad(s);
-    s.touch = g_touch;
-    s.tx = g_tx;
-    s.ty = g_ty;
+    if (player == 0) {
+        if (!keys.empty()) {
+            memset(g_script_keys, 0, sizeof g_script_keys);
+            for (auto& p : keys)
+                if (render::frame_count() >= p.from && render::frame_count() <= p.to)
+                    for (int c : p.codes) g_script_keys[c] = true;
+        }
+        PadState k = keyboard_state(!no_host);
+        for (auto& p : script)
+            if (render::frame_count() >= p.from && render::frame_count() <= p.to) s.buttons |= p.bits;
+        for (auto& p : sticks)
+            if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.lx = p.x; s.ly = p.y; }
+        for (auto& p : rsticks)
+            if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.rx = p.x; s.ry = p.y; }
+        apply_scenario(s);
+        s.buttons |= k.buttons;
+        if (k.lx || k.ly) { s.lx = k.lx; s.ly = k.ly; }
+        if (k.rx || k.ry) { s.rx = k.rx; s.ry = k.ry; }
+        agent_ctl::apply_pad(s);
+        s.touch = g_touch;
+        s.tx = g_tx;
+        s.ty = g_ty;
 
-    static const bool log_buttons = env::LOG_BUTTONS() != nullptr;
-    static uint32_t last_buttons = 0;
-    if (log_buttons && s.buttons != last_buttons) {
-        LOG("[input] frame %llu buttons %04X", (unsigned long long)render::frame_count(), s.buttons);
-        last_buttons = s.buttons;
+        static const bool log_buttons = env::LOG_BUTTONS() != nullptr;
+        static uint32_t last_buttons = 0;
+        if (log_buttons && s.buttons != last_buttons) {
+            LOG("[input] frame %llu buttons %04X", (unsigned long long)render::frame_count(), s.buttons);
+            last_buttons = s.buttons;
+        }
     }
     if (overlay::blocks_input()) s = PadState{};
-    record_pad(s);
+    if (player == 0) record_pad(s);
     return s;
 }
+
+PadState read() { return read(0); }
 
 }
