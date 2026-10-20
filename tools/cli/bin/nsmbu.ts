@@ -19,6 +19,7 @@ import {
     cmdWine,
 } from "../src/dev.ts";
 import {
+    cmdEval,
     cmdOpen,
     cmdPress,
     cmdQuit,
@@ -189,6 +190,9 @@ async function main(): Promise<void> {
                 break;
             case "screenshot":
                 await cmdScreenshot(repo, rest);
+                break;
+            case "eval":
+                await cmdEval(repo, rest);
                 break;
             case "wait":
                 await cmdWait(repo, rest);

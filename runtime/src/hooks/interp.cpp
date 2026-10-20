@@ -17,6 +17,7 @@
 #include "guest_addr.h"
 #include "gfx/render_prof.h"
 #include "core/runtime.h"
+#include "agent/agent_ctl.h"
 #include "save/savestate.h"
 
 #include "core/env.h"
@@ -864,6 +865,7 @@ extern "C" void hook_025DE788(Cpu* c) {
     if (!interp::g_hold_frame) {
         mods::lua_sdk::set_cpu(c);
         mods::packages::frame(interp::g_logic_steps);
+        agent_ctl::guest_service();
     }
     g_in_execute = false;
 }

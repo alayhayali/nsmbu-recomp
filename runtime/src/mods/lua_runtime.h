@@ -33,6 +33,7 @@ struct Instance {
     Instance& operator=(const Instance&) = delete;
 };
 
+std::unique_ptr<Instance> create(const LoadInfo& info);
 std::unique_ptr<Instance> load(const LoadInfo& info);
 void unload(Instance&);
 void set_config(Instance&, const json::Value& config);

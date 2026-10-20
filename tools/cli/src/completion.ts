@@ -78,6 +78,14 @@ const COMMANDS: CommandSpec[] = [
     { name: "stick", description: "Pulse left stick", noFiles: true },
     { name: "rstick", description: "Pulse right stick", noFiles: true },
     { name: "screenshot", description: "Capture a PNG" },
+    {
+        name: "eval",
+        description: "Run Lua in the running game",
+        flags: [
+            { name: "file", description: "Read code from PATH", takesFile: true },
+            { name: "timeout", description: "Lua execution timeout in milliseconds" },
+        ],
+    },
     { name: "wait", description: "Wait for frame or step", noFiles: true },
     { name: "quit", description: "Quit the agent game", noFiles: true },
     { name: "close", description: "Quit the agent game", noFiles: true },

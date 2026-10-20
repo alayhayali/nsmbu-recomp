@@ -45,6 +45,7 @@ flowchart LR
   Game["build/debug/nsmbu"] --> Sock
   Game --> Input["agent pad overlay"]
   Game --> Shot["screenshot::request"]
+  Game --> Eval["mods::lua_eval"]
 ```
 
 ### Transport
@@ -115,10 +116,13 @@ Commands talk to the single running game over the fixed control socket.
 - `nsmbu press A` / `press 8000` — short pulse (configurable frames).
 - `nsmbu stick <x> <y> [--frames N]` / `rstick …`
 - `nsmbu screenshot [path]` — wait until PNG written; print path.
+- `nsmbu eval [code] [--file PATH] [--timeout MS]` — run Lua on the game thread and print its output.
+  The state persists between calls, has the mod SDK as the global `nsmbu`, and reads code from stdin when no code or file is given.
+  `--timeout` limits execution time in milliseconds (default 5000) so a runaway loop errors instead of freezing the game.
 - `nsmbu wait --frame N` / `wait --step N` — poll `status` until bound.
 - `nsmbu quit` / `close` — graceful quit and tear down control files under `.tmp/agent/`.
 
-These commands block until their work is done: `open` waits for the socket, `press` / `stick` hold for their frames, `screenshot` waits for the PNG, and `wait` polls until the frame or step bound.
+These commands block until their work is done: `open` waits for the socket, `press` / `stick` hold for their frames, `screenshot` waits for the PNG, `eval` waits for the game thread to run the code, and `wait` polls until the frame or step bound.
 Do not add shell sleeps between control commands.
 Use `wait --step N` when the next action needs guest progress.
 
@@ -133,6 +137,8 @@ New small module (for example `runtime/src/agent/agent_ctl.cpp` and header):
 - Accept one local client connection at a time (or multiplex simple request IDs).
 - Apply pad overlay each `input::read()`.
 - Service screenshot, status, and quit on the render/host thread safely (queue commands, apply on known threads — same discipline as overlay / `hostui::post`).
+- Service `eval` on the guest thread next to `mods::packages::frame()`, so Lua reads and writes game state at the same point as mods.
+  Keep one persistent `lua_mod` instance for the console and reuse `mods::lua_eval` from `runtime/src/mods/lua_eval.cpp`.
 - Wire quit to the existing SDL quit path.
 
 No change to the replay file format or `NSMBU_PRESS` start-only tables except coexistence (agent overlay OR’ed with scripted/replay as documented).

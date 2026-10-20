@@ -17,6 +17,7 @@ void env(const char* key, const char* value) {
 }
 }
 #include "mods/cemu_pack.h"
+#include "mods/lua_eval.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -369,8 +370,39 @@ int main(int argc, char** argv) {
         assert(set_hot_reload(false,error));
         assert(remove("lua.both",error));
 
+        {
+            auto r=mods::lua_eval::run("return 1+1", 1000);
+            assert(r.ok&&r.output=="2\n");
+        }
+        {
+            auto r=mods::lua_eval::run("answer = 41\nreturn answer", 1000);
+            assert(r.ok&&r.output=="41\n");
+            r=mods::lua_eval::run("return answer + 1", 1000);
+            assert(r.ok&&r.output=="42\n");
+        }
+        {
+            auto r=mods::lua_eval::run("print('hi', 3)", 1000);
+            assert(r.ok&&r.output=="hi\t3\n");
+        }
+        {
+            auto r=mods::lua_eval::run("return {1, 2, x = 'y'}", 1000);
+            assert(r.ok&&r.output.find("{1, 2")!=std::string::npos&&r.output.find("x = \"y\"")!=std::string::npos);
+        }
+        {
+            auto r=mods::lua_eval::run("local nsmbu=require('nsmbu')\nreturn type(nsmbu.Level)", 1000);
+            assert(r.ok&&r.output=="table\n");
+        }
+        {
+            auto r=mods::lua_eval::run("error('boom')", 1000);
+            assert(!r.ok&&r.output.find("boom")!=std::string::npos);
+        }
+        {
+            auto r=mods::lua_eval::run("while true do end", 25);
+            assert(!r.ok&&r.output.find("timed out")!=std::string::npos);
+        }
+
         fs::remove_all(root);
-        std::cout<<"Lua load, options, onSceneChange, fault isolation, sandbox, guest memory, level/player API, content_dir, and hot reload passed\n";
+        std::cout<<"Lua load, options, onSceneChange, fault isolation, sandbox, guest memory, level/player API, content_dir, hot reload, and eval passed\n";
         return 0;
     }
     if(argc==2&&(std::string(argv[1])=="--cemu-startup"||std::string(argv[1])=="--cemu-backend")){

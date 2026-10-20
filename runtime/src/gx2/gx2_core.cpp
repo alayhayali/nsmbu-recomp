@@ -24,6 +24,7 @@
 #include "gfx/vulkan/api.h"
 #endif
 #include "core/runtime.h"
+#include "agent/agent_ctl.h"
 #include "save/savestate.h"
 #include "mods/sdk/nsmbu.h"
 #include "guest_addr.h"
@@ -860,6 +861,7 @@ HLE(gx2, GX2SwapScanBuffers) {
     if (!hold) {
         mods::lua_sdk::set_cpu(c);
         mods::packages::frame(steps);
+        agent_ctl::guest_service();
         collision_wireframe::capture(c);
     }
 

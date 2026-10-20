@@ -1,6 +1,6 @@
 ---
 name: nsmbu
-description: "nsmbu CLI, scripted headless boots, and NSMBU_* env vars. Use when driving the game, measuring a Release replay, running a dev recipe, nsmbu scripted, scripted inputs or exit frames, or adding, renaming, or reading an NSMBU_* variable."
+description: "nsmbu CLI, Lua eval, scripted headless boots, and NSMBU_* env vars. Use when driving the game, running Lua in the running game, measuring a Release replay, running a dev recipe, nsmbu scripted, scripted inputs or exit frames, or adding, renaming, or reading an NSMBU_* variable."
 ---
 
 # nsmbu
@@ -43,8 +43,9 @@ If `nsmbu open` refuses because a game is already running, run `nsmbu status` or
 | Scripted boot and frame PNGs | `scripted <name>` |
 | Convert save data to JSON or back | `save <save.dat\|save.json>` |
 | Look and tap | `open` -> `status` / `screenshot` -> `press` / `stick` -> `wait` -> `close` |
+| Run Lua in the game | `eval 'return nsmbu.Player.get_player(0):pos()'` |
 
-`open`, `press`, `stick`, `screenshot`, and `wait` block until their work is done.
+`open`, `press`, `stick`, `screenshot`, `eval`, and `wait` block until their work is done.
 Do not sleep between control commands; use `wait --step N` when the next action needs guest progress.
 | Open a course file | `open game/content/Common/course_res_pack/1-27.szs` |
 
@@ -52,6 +53,14 @@ The loading card for `open 1-5` is in `docs/nsmbu/course-open.md`.
 
 `screenshot [path]` blocks until the PNG exists and prints the path.
 A long pad timeline stays on `record` and `replay`.
+
+## Lua eval
+
+`nsmbu eval '<code>'` runs Lua on the guest thread of the running game, at the same point as mod logic.
+The global `nsmbu` is the same SDK that mods use.
+The state persists, so globals set by one call are visible to the next.
+Use `--file PATH` to run a file, or pipe code on stdin.
+`--timeout MS` (default 5000) stops a runaway loop with an error instead of freezing the game.
 
 ## Replay measure
 
