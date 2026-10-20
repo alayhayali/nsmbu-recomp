@@ -173,12 +173,15 @@ int main(){
   assert(strstr(buf,"course=2-1"));
   assert(strstr(buf,"origin=control"));
   assert(strstr(buf,"mode=fire"));
+  assert(strstr(buf,"player_coins=0"));
+  assert(strstr(buf,"\ncoins=0"));
+  assert(!strstr(buf,"pos="));
   assert(strstr(buf,"\n0 "));
   remove(rec);
   const char* rep="input_replay_test.txt";
   FILE* wf=fopen(rep,"w");
   assert(wf);
-  fputs("version=1\ncourse=1-1\nclock=course\norigin=control\nplayer=0\nmode=fire\npos=600 -848 3000\n"
+  fputs("version=1\ncourse=1-1\norigin=control\nplayer=0\nmode=fire\n"
         "# step buttons lx ly rx ry touch tx ty x y z\n"
         "0 - 0 0 0 0 0 0 0 600 -848 3000\n"
         "10 A+Y 0.5 -1 0 0 1 0.25 0.5 600 -848 3000\n"

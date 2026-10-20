@@ -113,16 +113,17 @@ These are separate from `scripted-run.sh` and appear in benches and device check
 
 ## Input replays
 
+The `.replay` format is a text input log; [replay-format.md](replay-format.md) lists each line, key, and field.
 `NSMBU_RECORD_INPUT` writes one line each time the pad changes.
 The step count starts when in-level play begins (`AreaTask` is live), then follows guest logic steps (one per simulation tick, not per rendered frame).
 New files start with `version=1` and use `replays/<name>.replay` paths from `nsmbu record` / `nsmbu replay`.
 Metadata lines are `key=value`; `#` starts a comment.
 `course=` names the course; `nsmbu replay` launches it.
 `origin=control` (what new files write) arms the step count when the game hands control to the player, so a slow boot or an uncapped run does not shift the recording.
-Files without `origin=` fall back to arming when the player reaches the recorded `pos=`, which depends on how long the load takes.
+Files without `origin=` fall back to arming when the player reaches a recorded `pos=`, which depends on how long the load takes.
 `NSMBU_RECORD_COURSE` supplies that name when the runtime writes the file.
 Each pad line ends with the player position (`x y z`).
-Start config lines record `player=`, `lives=`, `coins=`, `course_coins=`, `mode=`, and `pos=`, one per line; replay checks that snapshot at step 0 and starts the player with the recorded power-up mode.
+Start config lines record `player=`, `lives=`, `player_coins=`, `coins=`, and `mode=`, one per line; replay starts the player with the recorded power-up mode.
 `mode=` is `small`, `normal`, `fire`, `mini`, `propeller`, `penguin`, `ice`, `squirrel`, or `psquirrel`; numeric `0`–`8` still loads.
 The buttons field is `-` when no button is down, otherwise `+`-joined names such as `A+Y`; legacy hex values still load.
 `exit=input` (the default) quits when the recorded input ends; `exit=none` keeps the game running and hands control back to live input.

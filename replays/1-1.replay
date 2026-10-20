@@ -1,13 +1,11 @@
 version=1
 origin=control
 course=1-1
-clock=course
 player=0
 lives=5
+player_coins=0
 coins=0
-course_coins=0
 mode=fire
-pos=600 -848 3000
 # step buttons lx ly rx ry touch tx ty x y z
 17 - 1 0 0 0 0 0 0 600 -848 3000
 24 Y 1 0 0 0 0 0 0 602.590027 -848 3000

@@ -678,6 +678,7 @@ static std::string replay_course_from_path(const char* path) {
 
 struct ReplayStart {
     bool have = false;
+    bool have_pos = false;
     interp::PlayerSnapshot expect{};
 };
 
@@ -785,21 +786,22 @@ static bool parse_start_line(const char* p, ReplayStart& start) {
     if (strncmp(p, "start", 5) != 0) return false;
     p += 5;
     int player = 0;
-    int32_t lives = 0, coins = 0, course_coins = 0;
+    int32_t lives = 0, player_coins = 0, coins = 0;
     char mode_text[16] = {};
     float x = 0, y = 0, z = 0;
-    if (sscanf(p, " player=%d lives=%d coins=%d course_coins=%d mode=%15s pos=%f %f %f", &player, &lives, &coins,
-            &course_coins, mode_text, &x, &y, &z) != 8
-        && sscanf(p, " player %d lives %d coins %d course_coins %d mode %15s pos %f %f %f", &player, &lives, &coins,
-            &course_coins, mode_text, &x, &y, &z) != 8)
+    if (sscanf(p, " player=%d lives=%d player_coins=%d coins=%d mode=%15s pos=%f %f %f", &player, &lives, &player_coins,
+            &coins, mode_text, &x, &y, &z) != 8
+        && sscanf(p, " player %d lives %d player_coins %d coins %d mode %15s pos %f %f %f", &player, &lives,
+            &player_coins, &coins, mode_text, &x, &y, &z) != 8)
         return false;
     const int mode = player_mode_from_text(mode_text);
     if (mode < 0) return false;
     start.have = true;
+    start.have_pos = true;
     start.expect.player = player;
     start.expect.lives = lives;
-    start.expect.coins = coins;
-    start.expect.course_coins = course_coins;
+    start.expect.coins = player_coins;
+    start.expect.course_coins = coins;
     start.expect.mode = mode;
     start.expect.x = x;
     start.expect.y = y;
@@ -818,19 +820,23 @@ static void parse_start_fields(const char* p, ReplayStart& start) {
         start.expect.player = value;
     else if (sscanf(f, " lives=%d", &value) == 1)
         start.expect.lives = value;
-    else if (sscanf(f, " coins=%d", &value) == 1)
+    else if (sscanf(f, " player_coins=%d", &value) == 1)
         start.expect.coins = value;
-    else if (sscanf(f, " course_coins=%d", &value) == 1)
+    else if (sscanf(f, " coins=%d", &value) == 1)
         start.expect.course_coins = value;
     else if (sscanf(f, " mode=%15s", mode_text) == 1 || sscanf(f, " mode %15s", mode_text) == 1) {
         const int mode = player_mode_from_text(mode_text);
-        if (mode >= 0) start.expect.mode = mode;
+        if (mode < 0) return;
+        start.expect.mode = mode;
     } else if (sscanf(f, " pos=%f %f %f", &x, &y, &z) == 3) {
         start.expect.x = x;
         start.expect.y = y;
         start.expect.z = z;
-        start.have = true;
+        start.have_pos = true;
+    } else {
+        return;
     }
+    start.have = true;
 }
 
 static bool parse_start_field_line(const char* line, ReplayStart& start) {
@@ -841,9 +847,9 @@ static bool parse_start_field_line(const char* line, ReplayStart& start) {
         start.expect.player = value;
     else if (sscanf(line, "lives=%d", &value) == 1)
         start.expect.lives = value;
-    else if (sscanf(line, "coins=%d", &value) == 1)
+    else if (sscanf(line, "player_coins=%d", &value) == 1)
         start.expect.coins = value;
-    else if (sscanf(line, "course_coins=%d", &value) == 1)
+    else if (sscanf(line, "coins=%d", &value) == 1)
         start.expect.course_coins = value;
     else if (sscanf(line, "mode=%15s", mode_text) == 1) {
         const int mode = player_mode_from_text(mode_text);
@@ -852,9 +858,10 @@ static bool parse_start_field_line(const char* line, ReplayStart& start) {
         start.expect.x = x;
         start.expect.y = y;
         start.expect.z = z;
-        start.have = true;
+        start.have_pos = true;
     } else
         return false;
+    start.have = true;
     return true;
 }
 
@@ -868,7 +875,6 @@ static FILE* open_record_file(const char* path) {
     const std::string course = given && given[0] ? std::string(given) : replay_course_from_path(path);
     fprintf(f, "version=1\n");
     if (!course.empty()) fprintf(f, "course=%s\n", course.c_str());
-    fprintf(f, "clock=course\n");
     fprintf(f, "origin=control\n");
     LOG("[input] recording %s from in-level play", path);
     return f;
@@ -899,13 +905,12 @@ static void record_pad(const PadState& s) {
     if (!start_written && have_snap) {
         fprintf(f, "player=%d\n", snap.player);
         fprintf(f, "lives=%d\n", snap.lives);
-        fprintf(f, "coins=%d\n", snap.coins);
-        fprintf(f, "course_coins=%d\n", snap.course_coins);
+        fprintf(f, "player_coins=%d\n", snap.coins);
+        fprintf(f, "coins=%d\n", snap.course_coins);
         if (const char* mode = player_mode_text(snap.mode))
             fprintf(f, "mode=%s\n", mode);
         else
             fprintf(f, "mode=%d\n", snap.mode);
-        fprintf(f, "pos=%.9g %.9g %.9g\n", snap.x, snap.y, snap.z);
         start_written = true;
     }
     if (!legend_written) {
@@ -1058,8 +1063,10 @@ static const std::vector<ReplaySample>& replay_samples() {
     LOG("[input] replaying %zu samples from %s (%zu position checks)", samples.size(), path, witness_count);
     if (!g_replay_course.empty()) LOG("[input] replay course %s", g_replay_course.c_str());
     if (g_replay_start.have)
-        LOG("[input] replay start player %d mode %d pos %.3f %.3f %.3f", g_replay_start.expect.player,
-            g_replay_start.expect.mode, g_replay_start.expect.x, g_replay_start.expect.y, g_replay_start.expect.z);
+        LOG("[input] replay start player %d mode %d", g_replay_start.expect.player, g_replay_start.expect.mode);
+    if (g_replay_start.have_pos)
+        LOG("[input] replay start pos %.3f %.3f %.3f", g_replay_start.expect.x, g_replay_start.expect.y,
+            g_replay_start.expect.z);
     return samples;
 }
 
@@ -1101,7 +1108,7 @@ static void apply_replay_start_mode() {
 }
 
 static bool replay_course_clock_ready() {
-    if (!g_replay_start.have && !g_clock_from_control) return true;
+    if (!g_replay_start.have_pos && !g_clock_from_control) return true;
     interp::PlayerSnapshot snap;
     if (g_clock_from_control) {
         if (interp::input_enabled()) {
@@ -1157,7 +1164,7 @@ static bool replay_step(uint64_t& step) {
 }
 
 static void check_replay_start(uint64_t step) {
-    if (g_replay_start_checked || !g_replay_start.have || step != 0) return;
+    if (g_replay_start_checked || !g_replay_start.have_pos || step != 0) return;
     g_replay_start_checked = true;
     interp::PlayerSnapshot now;
     if (!interp::player_snapshot(now, g_replay_start.expect.player)) return;
@@ -1166,8 +1173,8 @@ static void check_replay_start(uint64_t step) {
         return;
     g_start_miss = 1;
     if (!g_witness_first) g_witness_first = step;
-    LOG("[input] replay start mismatch: recorded player %d lives %d coins %d course_coins %d mode %d pos %.3f %.3f %.3f now "
-        "player %d lives %d coins %d course_coins %d mode %d pos %.3f %.3f %.3f",
+    LOG("[input] replay start mismatch: recorded player %d lives %d player_coins %d coins %d mode %d pos %.3f %.3f %.3f now "
+        "player %d lives %d player_coins %d coins %d mode %d pos %.3f %.3f %.3f",
         g_replay_start.expect.player, g_replay_start.expect.lives, g_replay_start.expect.coins,
         g_replay_start.expect.course_coins, g_replay_start.expect.mode, g_replay_start.expect.x, g_replay_start.expect.y,
         g_replay_start.expect.z, now.player, now.lives, now.coins, now.course_coins, now.mode, now.x, now.y, now.z);
