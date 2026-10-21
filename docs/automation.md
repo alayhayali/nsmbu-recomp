@@ -1,6 +1,6 @@
 # Automation runs
 
-Headless boots use `nsmbu scripted <name>` from the repo root (wraps `tools/scripted-run.sh`).
+Headless boots use `nsmbu scripted <name>` from the repo root (wraps `tools/run/scripted-run.sh`).
 The script copies `nsmbu/save` into `.tmp/<name>/save`, then starts `build/debug/nsmbu` (or another build dir if present) with that save.
 Frame dumps land in `.tmp/<name>/` as `frame_<n>.png`.
 The repo `nsmbu/save` stays unread by the game.
@@ -16,12 +16,12 @@ The repo `nsmbu/save` stays unread by the game.
 3. Read one dumped frame.
    Continue only when that frame is the scene you mean.
 4. For a shake check, dump the same consecutive frames at scale 1 and at scale 2.
-   Run `python3 tools/flicker.py FIRST LAST .tmp/<name>`.
+   Run `python3 tools/frames/flicker.py FIRST LAST .tmp/<name>`.
    The check is done when both scales have a result and you have looked at one frame from each.
 
 ## Environment the script sets
 
-`tools/scripted-run.sh` always exports these values:
+`tools/run/scripted-run.sh` always exports these values:
 
 | Variable | Value | Role |
 | --- | --- | --- |
@@ -86,7 +86,7 @@ NSMBU_PRESS='1800-1820:8000,2600-2620:8000,3400-3420:8000,4200-4220:8000,5000-50
 NSMBU_STICK='5400-6000:1:0' \
 NSMBU_DUMP_FRAMES=7000 \
 NSMBU_EXIT_AT_FRAME=7100 \
-tools/scripted-run.sh w11
+tools/run/scripted-run.sh w11
 ```
 
 Frame 7000 is the course.

@@ -317,7 +317,7 @@ Two changes in the per-frame register stream:
   (one bump per write fault, host write, or hint), so `write_seq()` now returns `g_clock - 1` and
   each hint, fault, and host write does one atomic RMW instead of two. Page stamping is unchanged.
 
-`tools/perf.py` passes `--call-graph none` for the flat report (perf 7.0 removed
+`tools/run/perf.py` passes `--call-graph none` for the flat report (perf 7.0 removed
 `--no-callchains`).
 
 | Symbol (P-core sample periods, ~6.9 s / ~5.8 s windows) | before | after |

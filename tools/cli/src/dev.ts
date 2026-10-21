@@ -73,7 +73,7 @@ export function cmdLaunch(
         args.push("--wine");
     }
     args.push(...rest);
-    runPython(repo, "tools/launch.py", args, extraEnv);
+    runPython(repo, "tools/run/launch.py", args, extraEnv);
 }
 
 export function cmdCrash(repo: string): void {

@@ -42,15 +42,15 @@ The change is to stop using Python as the orchestration language around them.
 
 | `nsmbu` command | Python today | Notes |
 | --- | --- | --- |
-| `build` | `tools/build.py` | Configure + build; may call `recomp.py` / `stubgen.py`; clang/`libstdc++` probe |
-| `launch` / `run` / `record` / `replay` | `tools/launch.py` (+ `slot.py`, `devdata.py`) | Env, save dir, slot/course args, gdb/lldb, `execve` |
-| `extract` | `tools/extract.py` → `wudextract.py`, `game_dump.py`, `recomp/builds.py` | Disc extract + update merge + SHA check |
-| `profile` / `perf` | `tools/profile.py`, `tools/perf.py` | Fixed-scene profile; Linux `perf` wrapper |
-| `installer` | `build.py` + `installer/dev_pkg.py` | Local release-shaped package then setup GUI |
+| `build` | `tools/build/build.py` | Configure + build; may call `recomp.py` / `stubgen.py`; clang/`libstdc++` probe |
+| `launch` / `run` / `record` / `replay` | `tools/run/launch.py` (+ `tools/lib/slot.py`, `tools/lib/devdata.py`) | Env, save dir, slot/course args, gdb/lldb, `execve` |
+| `extract` | `tools/disc/extract.py` → `tools/disc/wudextract.py`, `tools/disc/game_dump.py`, `recomp/builds.py` | Disc extract + update merge + SHA check |
+| `profile` / `perf` | `tools/run/profile.py`, `tools/run/perf.py` | Fixed-scene profile; Linux `perf` wrapper |
+| `installer` | `tools/build/build.py` + `installer/dev_pkg.py` | Local release-shaped package then setup GUI |
 | `recomp` | `tools/recomp/recomp.py` | RPX → `build/gen` |
-| `open` (spawn path) | `launch.py` again | Agent control loop itself is already TS |
+| `open` (spawn path) | `tools/run/launch.py` again | Agent control loop itself is already TS |
 
-Also shell, not Python: `nsmbu scripted` → `tools/scripted-run.sh`, `nsmbu lint` → TypeScriptToLua / StyLua.
+Also shell, not Python: `nsmbu scripted` → `tools/run/scripted-run.sh`, `nsmbu lint` → TypeScriptToLua / StyLua.
 
 ### Not on `nsmbu` yet (still direct `python3 …`)
 
@@ -63,10 +63,10 @@ Also shell, not Python: `nsmbu scripted` → `tools/scripted-run.sh`, `nsmbu lin
 | `tools/release/{package,guard,notes,appimage}.py` | Release workflow |
 | `tools/release/test_sdk_package.py` | CMake test |
 | `tools/bench/run_bench.py` | Renderer bench orchestration |
-| `tools/shaderprep.py` | Shader cache head-start |
-| `tools/wudextract.py` | Disc image reader (MPL port of Cemu WUD/FST) |
-| `tools/rpx.py`, `rpxinfo.py`, `ppcdis.py` | RPX inspect / disasm |
-| `tools/flicker.py` | Frame-dump flicker check ([automation.md](automation.md)) |
+| `tools/shader/shaderprep.py` | Shader cache head-start |
+| `tools/disc/wudextract.py` | Disc image reader (MPL port of Cemu WUD/FST) |
+| `tools/rpx/rpx.py`, `tools/rpx/rpxinfo.py`, `tools/rpx/ppcdis.py` | RPX inspect / disasm |
+| `tools/frames/flicker.py` | Frame-dump flicker check ([automation.md](automation.md)) |
 | `.git-hooks/pre_push.py` | Git hook helper (not under `tools/`) |
 | `runtime/tools/driver_store_test.py` | CMake test wrapper |
 
@@ -84,7 +84,7 @@ Prefer driving that binary from TypeScript over re-porting the Python WUD reader
    Porting setup means either shipping Node with the release, bundling a Node SEA / similar, or rewriting setup as a native `nsmbu-setup` that no longer needs an interpreter.
 7. **CMake custom command** — `guest_stubs.py` is invoked at build time (`CMakeLists.txt`).
    Replace with a small native tool or a `nsmbu` subcommand CMake can call without Python.
-8. **Licensing** — `wudextract.py` is MPL-2.0 (Cemu port).
+8. **Licensing** — `tools/disc/wudextract.py` is MPL-2.0 (Cemu port).
    Keep license headers and NOTICE obligations on any TypeScript or C++ replacement of that logic.
 
 ## Target layout
@@ -129,7 +129,7 @@ Each wave ends when CI and `nsmbu` no longer call that wave’s Python, and beha
 
 ### Wave 1 — Dev orchestration (high leverage, small code)
 
-Port `slot.py`, `devdata.py`, `launch.py`, `build.py`, `profile.py`, `perf.py`.
+Port `tools/lib/slot.py`, `tools/lib/devdata.py`, `tools/run/launch.py`, `tools/build/build.py`, `tools/run/profile.py`, `tools/run/perf.py`.
 
 - `build`: ensure-gen (recomp or stubgen), cmake configure, ninja/`cmake --build`, compile_commands symlink, clang/`libstdc++` discovery.
 - `launch`: resolve exe, apply slot/course, example-mod symlinks, debug env defaults, gdb/lldb, `exec`/`spawn` of the game.
@@ -139,17 +139,17 @@ Port `slot.py`, `devdata.py`, `launch.py`, `build.py`, `profile.py`, `perf.py`.
 
 ### Wave 2 — Extract and disc helpers
 
-Port `game_dump.py`, `extract.py`, and either delete `wudextract.py` in favour of `nsmbu-extract` or port the remaining behaviour.
+Port `tools/disc/game_dump.py`, `tools/disc/extract.py`, and either delete `tools/disc/wudextract.py` in favour of `nsmbu-extract` or port the remaining behaviour.
 
 - Wire `nsmbu extract` to the C++ extractor + TS layout/SHA checks against `builds` JSON.
-- Port `flicker.py` as `nsmbu flicker` (or fold into `scripted` docs).
-- Optionally port `shaderprep.py`, `rpxinfo` / `ppcdis` as `nsmbu` subcommands when needed.
+- Port `tools/frames/flicker.py` as `nsmbu flicker` (or fold into `scripted` docs).
+- Optionally port `tools/shader/shaderprep.py`, `tools/rpx/rpxinfo.py` / `tools/rpx/ppcdis.py` as `nsmbu` subcommands when needed.
 
-**Done when:** `nsmbu extract` matches current checks on a real dump; CI/docs no longer mention `wudextract.py` for the happy path.
+**Done when:** `nsmbu extract` matches current checks on a real dump; CI/docs no longer mention `tools/disc/wudextract.py` for the happy path.
 
 ### Wave 3 — Recompiler
 
-Largest correctness surface: `rpx.py`, `analyze.py`, `ppc2c.py`, `singleflow.py`, `leaflocal.py`, `crlive.py`, `recomp.py`, `stubgen.py`, `guest_stubs.py`, `builds.py`, `names.py`, `mkbuildmap.py`.
+Largest correctness surface: `tools/rpx/rpx.py`, `analyze.py`, `ppc2c.py`, `singleflow.py`, `leaflocal.py`, `crlive.py`, `recomp.py`, `stubgen.py`, `guest_stubs.py`, `builds.py`, `names.py`, `mkbuildmap.py`.
 
 - Preserve USA-canonical addresses, build maps under `tools/recomp/builds/*.json`, and `headers_names.txt` flow ([names.md](names.md), [builds.md](builds.md)).
 - Golden-test: same RPX → same `build/gen` tree (or stable diff) as the Python recomp before switching `nsmbu build` / `nsmbu recomp`.
@@ -182,7 +182,7 @@ Port `installer/setup.py` and `dev_pkg.py` (and `test_setup.py`).
 - `bench/run_bench.py` → `nsmbu bench` (see [performance.md](performance.md)).
 - `.git-hooks/pre_push.py` → hook calling `nsmbu` or a small TS script.
 - `runtime/tools/driver_store_test.py` → native or TS test driver.
-- Port `scripted-run.sh` into `nsmbu scripted` if you want zero bash in the agent path (optional).
+- Port `tools/run/scripted-run.sh` into `nsmbu scripted` if you want zero bash in the agent path (optional).
 - Delete `tools/**/*.py`, drop Python from README/CI images where unused, remove `Python3` from CMake when nothing remains.
 
 **Done when:** `git ls-files '*.py'` under `tools/` and `runtime/tools/` is empty (or only agreed exceptions), and AGENTS/skills/docs say `nsmbu` only.
@@ -191,7 +191,7 @@ Port `installer/setup.py` and `dev_pkg.py` (and `test_setup.py`).
 
 | Today | After |
 | --- | --- |
-| `python3 tools/build.py` | `nsmbu build` (implementation in TS) |
+| `python3 tools/build/build.py` | `nsmbu build` (implementation in TS) |
 | `python3 tools/recomp/recomp.py …` | `nsmbu recomp` |
 | `python3 tools/recomp/stubgen.py …` | `nsmbu recomp --stub` (or `nsmbu stubgen`) |
 | `python3 tools/recomp/guest_stubs.py …` | `nsmbu recomp guest-stubs` / CMake helper |
@@ -201,8 +201,8 @@ Port `installer/setup.py` and `dev_pkg.py` (and `test_setup.py`).
 | `python3 tools/release/guard.py …` | `nsmbu release guard` |
 | `python3 tools/installer/setup.py` | native or `nsmbu setup` inside the package |
 | `python3 tools/bench/run_bench.py` | `nsmbu bench` |
-| `python3 tools/flicker.py …` | `nsmbu flicker` |
-| `python3 tools/shaderprep.py …` | `nsmbu shaderprep` |
+| `python3 tools/frames/flicker.py …` | `nsmbu flicker` |
+| `python3 tools/shader/shaderprep.py …` | `nsmbu shaderprep` |
 
 Keep flags behaviour-compatible where agents and CI already depend on them; rename only with a short deprecation or a docs sweep in the same change.
 

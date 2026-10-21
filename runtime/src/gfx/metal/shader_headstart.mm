@@ -110,7 +110,7 @@ int headstart_warm() {
     auto t0 = std::chrono::steady_clock::now();
     Stats st;
     if (!replay(true, true, st)) {
-        LOG("[warm] no shader head start at %s (build it with tools/shaderprep.py build)", headstart_path().c_str());
+        LOG("[warm] no shader head start at %s (build it with tools/shader/shaderprep.py build)", headstart_path().c_str());
         return 1;
     }
     LOG("[warm] %zu records translated (%zu failed) in %.0f ms, compiling...", st.translated, st.failed, ms_since(t0));

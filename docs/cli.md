@@ -76,17 +76,17 @@ The CLI exports `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout 
 
 | Command | Role |
 | --- | --- |
-| `nsmbu build` / `build --release` / `build --sanitizer` | `tools/build.py` |
-| `nsmbu launch` (+ `--no-debug`, `--trace`, `--gdb`, `--lldb`) | `tools/launch.py` |
+| `nsmbu build` / `build --release` / `build --sanitizer` | `tools/build/build.py` |
+| `nsmbu launch` (+ `--no-debug`, `--trace`, `--gdb`, `--lldb`) | `tools/run/launch.py` |
 | `nsmbu crash` | launch with `NSMBU_TEST_HOST_CRASH=1` to exercise the Report crash dialog |
-| `nsmbu wine` (+ `--no-debug`, `--trace`) | cross-build `build/windows/nsmbu.exe` then `tools/launch.py --wine` |
+| `nsmbu wine` (+ `--no-debug`, `--trace`) | cross-build `build/windows/nsmbu.exe` then `tools/run/launch.py --wine` |
 | `nsmbu run` / `run --release` | build then launch |
-| `nsmbu extract` | `tools/extract.py` |
+| `nsmbu extract` | `tools/disc/extract.py` |
 | `nsmbu save <save.dat\|save.json> [output] [--output PATH]` | convert `rp_savedata.dat` to JSON and back |
 | `nsmbu record <course> [name]` / `replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name>` | env + launch (see [automation.md](automation.md)) |
 | `nsmbu profile` / `perf` | profiling helpers |
 | `nsmbu installer` / `lint` / `recomp` | installer, TypeScript mod build, recomp only |
-| `nsmbu scripted <name>` | wraps `tools/scripted-run.sh` |
+| `nsmbu scripted <name>` | wraps `tools/run/scripted-run.sh` |
 
 Run `nsmbu` with no arguments (or `--help`) for the full list.
 
@@ -126,7 +126,7 @@ These commands block until their work is done: `open` waits for the socket, `pre
 Do not add shell sleeps between control commands.
 Use `wait --step N` when the next action needs guest progress.
 
-Headless boots that use `tools/scripted-run.sh` stay available as `nsmbu scripted <name>` so agents can still do exit-at-frame dumps without a second path.
+Headless boots that use `tools/run/scripted-run.sh` stay available as `nsmbu scripted <name>` so agents can still do exit-at-frame dumps without a second path.
 Live `open` / `press` / `screenshot` is the interactive loop.
 
 ## Runtime work
