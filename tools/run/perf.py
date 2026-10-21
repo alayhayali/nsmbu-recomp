@@ -5,9 +5,9 @@ The samples land in .tmp/perf/nsmbu.data with a readable report next to it.
 Send .tmp/perf/nsmbu.data, .tmp/perf/report.txt and .tmp/perf/report_flat.txt.
 
 usage:
-  python3 tools/perf.py [--seconds N] [profile.py options...]
-      starts the fixed 1-1 scene (tools/profile.py) and records it
-  python3 tools/perf.py --attach PID [--seconds N]
+  python3 tools/run/perf.py [--seconds N] [profile.py options...]
+      starts the fixed 1-1 scene (tools/run/profile.py) and records it
+  python3 tools/run/perf.py --attach PID [--seconds N]
       records an already running game
 
 Attachments need `perf_event_paranoid` at 1 or lower. When it is higher, the
@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, ".tmp", "perf")
 DATA = os.path.join(OUT, "nsmbu.data")
 GAME_LOG = os.path.join(OUT, "game.log")
@@ -156,7 +156,7 @@ def main():
             pid = args.attach
         else:
             os.makedirs(OUT, exist_ok=True)
-            cmd = [sys.executable, os.path.join(ROOT, "tools", "profile.py"),
+            cmd = [sys.executable, os.path.join(ROOT, "tools", "run", "profile.py"),
                    "--log", GAME_LOG]
             if args.run:
                 cmd += args.run

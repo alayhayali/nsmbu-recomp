@@ -47,7 +47,7 @@ export function cmdBuild(repo: string, release: boolean, sanitizer: boolean, res
         args.push("--sanitizer");
     }
     args.push(...rest);
-    runPython(repo, "tools/build.py", args);
+    runPython(repo, "tools/build/build.py", args);
 }
 
 export function cmdLaunch(
@@ -89,20 +89,20 @@ export function cmdWine(
 ): void {
     const buildArgs: string[] = opts.noDebug ? ["--release"] : [];
     buildArgs.push(...rest);
-    runPythonInherit(repo, "tools/build_windows.py", buildArgs);
+    runPythonInherit(repo, "tools/build/build_windows.py", buildArgs);
     cmdLaunch(repo, { noDebug: opts.noDebug, trace: opts.trace, gdb: false, lldb: false, wine: true }, rest);
 }
 
 export function cmdRun(repo: string, release: boolean, rest: string[]): void {
     const buildArgs: string[] = release ? ["--release"] : [];
     buildArgs.push(...rest);
-    runPythonInherit(repo, "tools/build.py", buildArgs);
+    runPythonInherit(repo, "tools/build/build.py", buildArgs);
     const launchArgs = [...rest];
     cmdLaunch(repo, { noDebug: release, trace: false, gdb: false, lldb: false }, launchArgs);
 }
 
 export function cmdExtract(repo: string, rest: string[]): void {
-    runPython(repo, "tools/extract.py", rest);
+    runPython(repo, "tools/disc/extract.py", rest);
 }
 
 const REPLAY_NAME = /^[A-Za-z0-9._-]+$/;
@@ -201,18 +201,18 @@ export function cmdReplay(repo: string, name: string, opts: ReplayOpts, rest: st
 }
 
 export function cmdProfile(repo: string, rest: string[]): void {
-    runPython(repo, "tools/profile.py", rest);
+    runPython(repo, "tools/run/profile.py", rest);
 }
 
 export function cmdPerf(repo: string, rest: string[]): void {
-    runPython(repo, "tools/perf.py", rest);
+    runPython(repo, "tools/run/perf.py", rest);
 }
 
 export function cmdInstaller(repo: string, rest: string[]): void {
     const rel = "build/release";
     const cmakeExtra = ["-G", "Ninja", "-DNSMBU_SETUP_GUI=ON"];
     for (const target of ["nsmbu", "nsmbu-extract", "nsmbu-setup"]) {
-        runPythonInherit(repo, "tools/build.py", [
+        runPythonInherit(repo, "tools/build/build.py", [
             "--release",
             "--target",
             target,
@@ -248,7 +248,7 @@ export function cmdRecomp(repo: string): void {
 }
 
 export function cmdScripted(repo: string, name: string, rest: string[]): void {
-    runShell(repo, `bash tools/scripted-run.sh ${shellQuote(name)} ${rest.map(shellQuote).join(" ")}`.trim());
+    runShell(repo, `bash tools/run/scripted-run.sh ${shellQuote(name)} ${rest.map(shellQuote).join(" ")}`.trim());
 }
 
 function shellQuote(s: string): string {

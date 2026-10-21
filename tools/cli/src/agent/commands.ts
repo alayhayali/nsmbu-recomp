@@ -24,7 +24,7 @@ export async function cmdOpen(repo: string, rest: string[]): Promise<void> {
     await ensureNotRunning(repo);
     mkdirSync(agentDir(repo), { recursive: true });
     const sock = agentSocketPath(repo);
-    const child = spawnPython(repo, "tools/launch.py", rest, {
+    const child = spawnPython(repo, "tools/run/launch.py", rest, {
         detached: true,
         stdio: "ignore",
         extraEnv: { NSMBU_AGENT_SOCK: sock },

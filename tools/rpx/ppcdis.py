@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from rpx import Rpx
 import capstone
 _rpx = None
-def dis(addr, count=32, path=os.path.join(os.path.dirname(__file__), "..", "game/code/red-pro2.rpx")):
+def dis(addr, count=32, path=os.path.join(os.path.dirname(__file__), "..", "..", "game/code/red-pro2.rpx")):
     global _rpx
     _rpx = _rpx or Rpx(path)
     t = _rpx.by_name[".text"]

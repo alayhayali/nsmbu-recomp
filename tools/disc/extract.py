@@ -3,8 +3,8 @@ import os
 import subprocess
 import sys
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "tools"))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools", "recomp"))
 import builds
 import game_dump
@@ -59,7 +59,7 @@ def main():
     subprocess.run(
         [
             sys.executable,
-            os.path.join(ROOT, "tools", "wudextract.py"),
+            os.path.join(ROOT, "tools", "disc", "wudextract.py"),
             image,
             "extract",
             game,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-root=$(cd "$(dirname "$0")/.." && pwd)
+root=$(cd "$(dirname "$0")/../.." && pwd)
 name=${1:-survey}
 if [ -z "${NSMBU_EXIT_AT_FRAME:-}" ]; then
     echo "Set NSMBU_EXIT_AT_FRAME" >&2

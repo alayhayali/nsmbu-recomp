@@ -64,7 +64,7 @@ import sys
 import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))
 TEMPLATE = os.path.join(ROOT, "game", "shadercache", "template.bin")
 
 REC_SHADER, REC_PIPELINE, REC_SPECULATIVE = 1, 2, 3
@@ -260,7 +260,7 @@ def read_template(path):
     if not os.path.isfile(path):
         sys.exit("no state template at %s\n"
                  "make one from your own runtime cache after playing for a while:\n"
-                 "  tools/shaderprep.py template ~/Library/Caches/nsmbu/shaders.bin" % path)
+                 "  tools/shader/shaderprep.py template ~/Library/Caches/nsmbu/shaders.bin" % path)
     d = open(path, "rb").read()
     if d[:4] != b"WWHT":
         sys.exit("not a template: " + path)

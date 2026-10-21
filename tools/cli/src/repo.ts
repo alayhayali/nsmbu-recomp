@@ -7,7 +7,7 @@ const pkgRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 function walkUp(start: string): string | null {
     let dir = start;
     for (;;) {
-        if (existsSync(join(dir, "tools", "build.py")) || existsSync(join(dir, ".git"))) {
+        if (existsSync(join(dir, "tools", "build", "build.py")) || existsSync(join(dir, ".git"))) {
             return dir;
         }
         const parent = dirname(dir);
@@ -25,7 +25,7 @@ export function findRepoRoot(): string {
             return root;
         }
     }
-    throw new Error("NSMBU repo root not found (looked for tools/build.py or .git)");
+    throw new Error("NSMBU repo root not found (looked for tools/build/build.py or .git)");
 }
 
 export function nsmbuUserDir(repo: string): string {
