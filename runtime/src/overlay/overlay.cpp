@@ -384,8 +384,15 @@ void feed_gamepad(ImGuiIO& io, bool enabled) {
     key(ImGuiKey_GamepadStart, kPadMenu);
 }
 
+void wrapped_tooltip(const char* text) {
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+    ImGui::TextUnformatted(text);
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+}
 void help(const char* text) {
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", text);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_ForTooltip)) wrapped_tooltip(text);
 }
 void heading(const char* text) {
     ImGui::Spacing();
@@ -469,9 +476,9 @@ void tab_saves() {
                 if (s.older_other && s.portable) {
 
                     ImGui::TextDisabled("also holds an older full state (slot%d.bin, %.0f MB)", i, s.older_bytes / 1048576.0);
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Kept on disk, not loaded: the newer portable state is. It contains game data: "
-                                          "don't share it. Delete it in the states folder if you no longer need it.");
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_ForTooltip))
+                        wrapped_tooltip("Kept on disk, not loaded: the newer portable state is. It contains game data: "
+                                        "don't share it. Delete it in the states folder if you no longer need it.");
                 } else if (s.older_other) {
                     ImGui::TextDisabled("also holds an older portable state (slot%d.nsstate)", i);
                 }
@@ -949,7 +956,8 @@ void package_controls() {
                     if (ImGui::InputText(option.name.c_str(), value, sizeof value, ImGuiInputTextFlags_EnterReturnsTrue))
                         configure(mod.id, option.id, std::string(value), error);
                 }
-                if (!option.description.empty() && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", option.description.c_str());
+                if (!option.description.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_ForTooltip))
+                    wrapped_tooltip(option.description.c_str());
                 ImGui::PopID();
             }
             if(mod.restart_required) note("Changes apply on the next game start. Active files stay loaded until exit.");
