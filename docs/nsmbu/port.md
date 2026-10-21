@@ -60,6 +60,8 @@ User files live under `game/`:
   Without it, a known USA base-disc RPX (title version 0) is allowed; mods are unsupported on that build.
 - `game/code/`, `game/content/`, `game/meta/` — output of `nsmbu extract` (base disc plus update)
 
+In the setup window you can also type or paste each key as 32 hex digits instead of a key file.
+
 `.gitignore` ignores all of `game/` except `game/README.md` (layout and steps for this folder).
 
 `nsmbu extract` starts by checking `game/update/` is a known 1.3.0 build.
@@ -78,7 +80,7 @@ Otherwise it runs `stubgen.py` so the tree links without your RPX.
 `nsmbu build --sanitizer` adds AddressSanitizer and UBSan.
 
 Clang needs a GNU `libstdc++` (for example `libstdc++-14-dev` on Ubuntu).
-`tools/build.py` adds the matching `-L` path when it finds `libstdc++.so` under `/usr/lib/gcc/`.
+`tools/build/build.py` adds the matching `-L` path when it finds `libstdc++.so` under `/usr/lib/gcc/`.
 
 The `nsmbu` CLI exports `NSMBU_USER_DIR` to the gitignored `nsmbu/` folder on dev commands.
 `nsmbu launch` starts `build/debug/nsmbu` with `--game` set to `game/` and `--save nsmbu/save`.

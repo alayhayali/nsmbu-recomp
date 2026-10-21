@@ -933,6 +933,8 @@ static void set_source(const std::string& path) {
     A.update_dir.clear();
     A.update_skipped = false;
     A.keys_msg.clear();
+    SDL_memset(A.disc_paste, 0, sizeof A.disc_paste);
+    SDL_memset(A.paste, 0, sizeof A.paste);
     request("probe", "\"path\":" + jstr(path));
 }
 
@@ -983,6 +985,8 @@ static void start_install(const std::string& source) {
     std::string f = "\"source\":" + jstr(source);
     if (source != "installed") f += ",\"path\":" + jstr(A.source_path);
     request("install", f);
+    SDL_memset(A.disc_paste, 0, sizeof A.disc_paste);
+    SDL_memset(A.paste, 0, sizeof A.paste);
     go(Screen::Installing);
 }
 
@@ -996,8 +1000,6 @@ static void check_keys() {
     A.keys_msg = chosen_update_dir().empty() ? "Checking the keys..." : "Checking the keys and update...";
     request("check_keys", f);
     f.assign(f.size(), '\0');
-    SDL_memset(A.disc_paste, 0, sizeof A.disc_paste);
-    SDL_memset(A.paste, 0, sizeof A.paste);
 }
 
 static int step_index(const std::string& id) {
@@ -1021,6 +1023,10 @@ static void handle_reply(const J& ev) {
         A.disc_key_found = ev.str("disc_key");
         A.common_key_found = ev.str("common_key");
         A.update_dir_found = ev.str("update_dir");
+        if (A.source_kind == "image") {
+            set_disc_mode(A.disc_key_found.empty() && A.disc_key_file.empty() ? 1 : 0);
+            set_common_mode(A.common_key_found.empty() && A.common_key_file.empty() ? 1 : 0);
+        }
         apply_source_identity(ev);
         if (ev.get("message") && !ev.str("message").empty())
             A.probe_msg = ev.str("message");
@@ -1439,8 +1445,8 @@ static void key_panel(const char* id, const char* title, int* mode, char* paste,
                       int status_mark, const char* choose_id, const char* file_target,
                       const SDL_DialogFileFilter* keyf, int keyf_n, float width) {
     char file_radio[64], paste_radio[64], ctrl_id[64], paste_id[64], choose_btn[64];
-    std::snprintf(file_radio, sizeof file_radio, "Key file##%s", id);
-    std::snprintf(paste_radio, sizeof paste_radio, "Paste the key##%s", id);
+    std::snprintf(file_radio, sizeof file_radio, "Use a key file##%s", id);
+    std::snprintf(paste_radio, sizeof paste_radio, "Type or paste the key##%s", id);
     std::snprintf(ctrl_id, sizeof ctrl_id, "ctrl##%s", id);
     std::snprintf(paste_id, sizeof paste_id, "##paste_%s", id);
     std::snprintf(choose_btn, sizeof choose_btn, "Choose key file...##%s", choose_id);
@@ -1454,9 +1460,9 @@ static void key_panel(const char* id, const char* title, int* mode, char* paste,
         ImGui::Dummy(ImVec2(0, ImGui::GetTextLineHeight()));
     }
     int prev = *mode;
-    radio(file_radio, mode, 0);
-    ImGui::SameLine(0, 30);
     radio(paste_radio, mode, 1);
+    ImGui::SameLine(0, 30);
+    radio(file_radio, mode, 0);
     if (*mode != prev) keys_changed();
     float row_h = ImGui::GetFrameHeight();
     ImGui::BeginChild(ctrl_id, ImVec2(-1, row_h), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
@@ -1464,7 +1470,7 @@ static void key_panel(const char* id, const char* title, int* mode, char* paste,
         if (button(choose_btn, ImVec2(-1, row_h))) choose_file(file_target, keyf, keyf_n);
     } else {
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::InputTextWithHint(paste_id, "32 hex digits (hidden)", paste, paste_n,
+        if (ImGui::InputTextWithHint(paste_id, "Type or paste 32 hex digits (hidden)", paste, paste_n,
                                      ImGuiInputTextFlags_Password | ImGuiInputTextFlags_CharsNoBlank))
             keys_changed();
     }

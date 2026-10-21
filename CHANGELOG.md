@@ -22,6 +22,11 @@ Use the `changelog` skill when editing.
   Luau mods with `.luau` files do not load until the scripts are converted.
 - The mod examples and the SDK ship TypeScript source compiled to Lua.
 
+### Fixed
+
+- The Keys screen takes the disc key and the Wii U common key typed or pasted as 32 hex digits.
+  A key file saved by Notepad or a Cemu `keys.txt` works too.
+
 ## [0.5.0] - 2026-10-19
 
 ### Added

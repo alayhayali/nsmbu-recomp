@@ -23,6 +23,8 @@ Non-interactive use (tests, scripts):
   setup.py --yes --gen-dir GENERATED_C --no-launch   (build check with placeholder code, no game)
 
 Keys can also come from the WIIU_COMMON_KEY environment variable / IMAGE.key next to the image.
+A key file holds 16 raw bytes, one line of 32 hex digits, or the common/disc line of a Cemu keys.txt
+(UTF-8 or UTF-16, with a byte order mark or without).
 Keys are never printed, logged or stored.
 """
 import argparse
@@ -414,25 +416,112 @@ def parse_key(data):
     if isinstance(data, bytes) and len(data) == 16:
         return data
     if isinstance(data, bytes):
+        if data[:3] == b"\xef\xbb\xbf":
+            data = data[3:]
         try:
             data = data.decode("ascii")
         except UnicodeDecodeError:
             return None
-    h = re.sub(r"[\s-]", "", data)
+    h = re.sub(r"[\s-]", "", data.lstrip("\ufeff"))
     if h[:2].lower() == "0x":
         h = h[2:]
     if not re.fullmatch(r"[0-9a-fA-F]{32}", h):
         return None
     return bytes.fromhex(h)
 
-def read_key_file(path):
+def decode_key_text(data):
+    """A key file's text: UTF-16 (byte order mark), UTF-8 (byte order mark), else UTF-8 and then latin-1."""
+    if data[:2] == b"\xff\xfe":
+        return data[2:].decode("utf-16-le", "replace")
+    if data[:2] == b"\xfe\xff":
+        return data[2:].decode("utf-16-be", "replace")
+    if data[:3] == b"\xef\xbb\xbf":
+        data = data[3:]
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode("latin-1")
+
+def keys_in_text(text):
+    """The keys of a line-oriented key file (Cemu's keys.txt, for example): a dict of common, disc, bare and title."""
+    out = {"common": None, "disc": None, "bare": None, "title": []}
+    for line in re.split(r"\r\n|[\n\r]", text):
+        line = line.strip().lstrip("\ufeff").strip()
+        if not line or line.startswith("#") or line.startswith("//"):
+            continue
+        if "=" in line:
+            label, _, value = line.partition("=")
+        elif ":" in line:
+            label, _, value = line.partition(":")
+        else:
+            label, value = None, line
+        value = value.strip().strip("\"'").strip()
+        if label is None:
+            k = parse_key(value)
+            if k and out["bare"] is None:
+                out["bare"] = k
+            continue
+        name = " ".join(label.strip().strip("\"'").replace("_", " ").split()).lower()
+        k = parse_key(value)
+        if not k:
+            continue
+        if name in ("common", "common key", "wii u common key"):
+            if out["common"] is None:
+                out["common"] = k
+        elif name in ("disc", "disc key"):
+            if out["disc"] is None:
+                out["disc"] = k
+        elif re.fullmatch(r"[0-9a-f]{16}", name):
+            out["title"].append((name, k))
+    return out
+
+def read_key_data(path):
+    """A key file's bytes (at most 4096), or None."""
     try:
         if os.path.getsize(path) > 4096:
             return None
         with open(path, "rb") as f:
-            return parse_key(f.read())
+            return f.read()
     except OSError:
         return None
+
+def read_key_file(path, kind):
+    """The disc key or common key of a key file: 16 raw bytes, one line of 32 hex digits, or a keys.txt line."""
+    data = read_key_data(path)
+    if data is None:
+        return None
+    if len(data) == 16:
+        return data
+    found = keys_in_text(decode_key_text(data))
+    return found[kind] or found["bare"]
+
+def read_named_key_file(path, kind):
+    """The common or disc line of a line-oriented key file (a Cemu keys.txt); None without that line."""
+    data = read_key_data(path)
+    if data is None or len(data) == 16:
+        return None
+    return keys_in_text(decode_key_text(data))[kind]
+
+def key_file_problem(path, kind):
+    """Why read_key_file(path, kind) found no key; None when it holds one."""
+    what = "the Wii U common key" if kind == "common" else "the disc key"
+    hint = ("That file does not contain %s: it must hold 16 raw bytes or one line of 32 hex digits, "
+            "or be a Cemu keys.txt with a line for it." % what)
+    try:
+        if os.path.getsize(path) > 4096:
+            return "%s This file is larger than 4096 bytes." % hint
+        with open(path, "rb") as f:
+            found = keys_in_text(decode_key_text(f.read()))
+    except OSError as e:
+        return "That file cannot be read: %s" % e
+    if found[kind] or found["bare"]:
+        return None
+    if found["title"]:
+        return "That file holds a title key for %s, not %s." % (format_title_id(found["title"][0][0]), what)
+    other = "disc" if kind == "common" else "common"
+    if found[other]:
+        return "That file holds the %s key, not %s." % ("disc" if other == "disc" else "Wii U common", what)
+    return hint
 
 class Keys:
     def __init__(self):
@@ -442,22 +531,22 @@ class Keys:
     def stdin_blob(self):
         return ("disc %s\ncommon %s\n" % (self.disc.hex(), self.common.hex())).encode()
 
-def ask_key(ui, what, hint):
-    """Asks for a key file or a pasted key; returns 16 bytes."""
+def ask_key(ui, what, hint, kind):
+    """Asks for a pasted key or a key file; returns 16 bytes."""
     while True:
         i = ui.choose("The %s is needed (%s). How do you want to provide it?" % (what, hint),
-                      ["choose a key file", "paste it (32 hex digits; the input is hidden)"])
+                      ["type or paste it (32 hex digits; the input is hidden)", "choose a key file"])
         if i == 0:
-            p = ui.pick_path("Choose the %s file" % what)
-            k = read_key_file(p)
-            if k:
-                return k
-            say("  That file does not contain a key: it must hold 16 raw bytes or one line of 32 hex digits.")
-        else:
-            k = parse_key(ui.secret("Paste the %s and press Enter:" % what))
+            k = parse_key(ui.secret("Type or paste the %s and press Enter:" % what))
             if k:
                 return k
             say("  That is not a key: it must be 32 hex digits (0-9, a-f).")
+        else:
+            p = ui.pick_path("Choose the %s file" % what)
+            k = read_key_file(p, kind)
+            if k:
+                return k
+            say("  %s" % key_file_problem(p, kind))
 
 def default_data_dir():
     if PORTABLE:
@@ -630,7 +719,7 @@ def image_identity(image, disc_key_path=None, common_key=None, update_dir=None):
     out = {}
     keys = Keys()
     if disc_key_path:
-        keys.disc = read_key_file(disc_key_path)
+        keys.disc = read_key_file(disc_key_path, "disc")
     if common_key:
         keys.common = common_key if isinstance(common_key, (bytes, bytearray)) else None
     if keys.disc and keys.common:
@@ -947,35 +1036,32 @@ def folder_size(path):
 def get_disc_keys(image, ui, args):
     keys = Keys()
     if args.disc_key:
-        keys.disc = read_key_file(args.disc_key)
+        keys.disc = read_key_file(args.disc_key, "disc")
         if not keys.disc:
-            raise SetupError("%s does not contain a disc key (16 raw bytes or 32 hex digits)" % args.disc_key)
+            raise SetupError("%s: %s" % (args.disc_key, key_file_problem(args.disc_key, "disc")))
     else:
         side = os.path.splitext(image)[0] + ".key"
         if os.path.isfile(side):
-            keys.disc = read_key_file(side)
+            keys.disc = read_key_file(side, "disc")
             if keys.disc:
                 say("  Disc key: found %s" % os.path.basename(side))
     if args.common_key:
-        keys.common = read_key_file(args.common_key)
+        keys.common = read_key_file(args.common_key, "common")
         if not keys.common:
-            raise SetupError("%s does not contain the Wii U common key (16 raw bytes or 32 hex digits)" % args.common_key)
+            raise SetupError("%s: %s" % (args.common_key, key_file_problem(args.common_key, "common")))
     elif os.environ.get("WIIU_COMMON_KEY"):
         keys.common = parse_key(os.environ["WIIU_COMMON_KEY"])
         if not keys.common:
             raise SetupError("WIIU_COMMON_KEY is not 32 hex digits")
         say("  Common key: from WIIU_COMMON_KEY")
     else:
-        for d in (os.path.dirname(image), PKG):
-            p = os.path.join(d, "common.key")
-            if os.path.isfile(p) and read_key_file(p):
-                keys.common = read_key_file(p)
-                say("  Common key: found %s" % p)
-                break
+        src, keys.common = find_common_key(image)
+        if keys.common:
+            say("  Common key: found %s" % src)
     if not keys.disc:
-        keys.disc = ask_key(ui, "disc key", "16 bytes, dumped together with this disc, usually a .key file next to the image")
+        keys.disc = ask_key(ui, "disc key", "16 bytes, dumped together with this disc, usually a .key file next to the image", "disc")
     if not keys.common:
-        keys.common = ask_key(ui, "Wii U common key", "16 bytes, the same for every Wii U, dumped from your console")
+        keys.common = ask_key(ui, "Wii U common key", "16 bytes, the same for every Wii U, dumped from your console", "common")
     while True:
         problem, err, info = disc_info(image, keys)
         if not problem:
@@ -984,12 +1070,12 @@ def get_disc_keys(image, ui, args):
             say("  The disc key does not match this disc image.")
             if not ui.interactive or args.disc_key:
                 raise SetupError(err)
-            keys.disc = ask_key(ui, "disc key", "it must be the key dumped together with this disc")
+            keys.disc = ask_key(ui, "disc key", "it must be the key dumped together with this disc", "disc")
         elif problem in ("common_key_bad", "common_key_wrong"):
             say("  The Wii U common key is not correct.")
             if not ui.interactive or args.common_key:
                 raise SetupError(err)
-            keys.common = ask_key(ui, "Wii U common key", "the same 16 bytes for every Wii U console")
+            keys.common = ask_key(ui, "Wii U common key", "the same 16 bytes for every Wii U console", "common")
         else:
             raise SetupError("cannot read the disc image: %s" % err)
 
@@ -1979,14 +2065,19 @@ def run(args, ui):
 
 def find_sidecar_disc_key(image):
     side = os.path.splitext(image)[0] + ".key"
-    return side if os.path.isfile(side) and read_key_file(side) else None
+    return side if os.path.isfile(side) and read_key_file(side, "disc") else None
 
 def find_common_key(image):
     if os.environ.get("WIIU_COMMON_KEY") and parse_key(os.environ["WIIU_COMMON_KEY"]):
         return "WIIU_COMMON_KEY", parse_key(os.environ["WIIU_COMMON_KEY"])
     for d in (os.path.dirname(image), PKG):
         p = os.path.join(d, "common.key")
-        k = read_key_file(p) if os.path.isfile(p) else None
+        k = read_key_file(p, "common") if os.path.isfile(p) else None
+        if k:
+            return p, k
+    for d in (os.path.dirname(image), PKG):
+        p = os.path.join(d, "keys.txt")
+        k = read_named_key_file(p, "common") if os.path.isfile(p) else None
         if k:
             return p, k
     return None, None
@@ -2108,23 +2199,25 @@ def gui_main(args):
         if req.get("disc_key_hex"):
             keys.disc = parse_key(req["disc_key_hex"])
         elif req.get("disc_key_file"):
-            keys.disc = read_key_file(req["disc_key_file"])
+            keys.disc = read_key_file(req["disc_key_file"], "disc")
         else:
             side = find_sidecar_disc_key(image)
-            keys.disc = read_key_file(side) if side else None
+            keys.disc = read_key_file(side, "disc") if side else None
         if not keys.disc:
-            return None, (("disc_key_bad", KEY_MESSAGES["disc_key_bad"]) if given_disc
+            why = key_file_problem(req["disc_key_file"], "disc") if req.get("disc_key_file") else None
+            return None, (("disc_key_bad", why or KEY_MESSAGES["disc_key_bad"]) if given_disc
                           else ("disc_key_missing",
                                 "No disc key was found next to the image: choose the key file or paste it."))
         given = req.get("common_key_hex") or req.get("common_key_file")
         if req.get("common_key_hex"):
             keys.common = parse_key(req["common_key_hex"])
         elif req.get("common_key_file"):
-            keys.common = read_key_file(req["common_key_file"])
+            keys.common = read_key_file(req["common_key_file"], "common")
         else:
             keys.common = find_common_key(image)[1]
         if not keys.common:
-            return None, (("common_key_bad", KEY_MESSAGES["common_key_bad"]) if given
+            why = key_file_problem(req["common_key_file"], "common") if req.get("common_key_file") else None
+            return None, (("common_key_bad", why or KEY_MESSAGES["common_key_bad"]) if given
                           else ("common_key_missing", "The Wii U common key is needed."))
         return keys, None
 

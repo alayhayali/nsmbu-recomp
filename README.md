@@ -127,13 +127,19 @@ A disc image also needs:
 - the Wii U common key
 - the matching 1.3.0 update
 
+On the Keys screen, type or paste each key's 32 hex digits into its own field.
+The disc key belongs to that disc image.
+The common key is the same on every Wii U.
+
 Put the update in an `update/` folder next to the disc image (`code/`, `content/`, `meta/`).
 You can also choose that folder in the installer.
 
+Key files are optional.
 If a `.key` file with the same name as the image sits next to the image, the installer uses it.
 If `common.key` sits next to the image, the installer uses that too.
-When a key is missing, choose a key file or paste 32 hex digits.
-The paste field hides the text.
+You can also choose a key file.
+A key file can be 16 raw bytes, one line of 32 hex digits, or a Cemu `keys.txt`.
+The text field hides the key.
 Keys stay in memory until extraction starts.
 The setup log never stores keys.
 

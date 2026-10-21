@@ -70,7 +70,8 @@ process (so Python is found or fetched exactly as in the terminal setup; on Wind
 `setup.py` directly with the Python the release ships, see below) and talks to `setup.py`
 over its stdin/stdout. Screens: welcome (or, when installed: play / update / repair / reinstall /
 import saves or settings / open the folder), choose the disc image, Cemu archive or game folder (native file dialogs), keys
-(disc images only: disc key and common key as a file next to the image, chosen, or pasted into a hidden field), installation
+(disc images only: disc key and common key typed or pasted as 32 hex digits, or taken from a key file next to the image
+or chosen), installation
 (a bar per step, an overall bar, the log under "Details"), optional save import (an NSMBU
 `rp_personal_savedata.dat`
 folder, or the saves and settings of an
@@ -172,6 +173,27 @@ Requests on stdin: `{"cmd": ..., "id": n, ...}`
 Keys: an image install uses the keys from the last successful `check_keys`; they stay in the
 `setup.py` process's memory and are dropped when the installation starts extracting. Requests are
 never logged or echoed, and no key is written to disk or passed on a command line.
+
+## Disc image keys
+
+A disc image needs its disc key and the Wii U common key. On the Keys screen each one is typed or
+pasted as 32 hex digits, or taken from a key file. The disc key belongs to that one image; the common
+key is the same on every Wii U.
+
+For both keys the pasted text is the first option: `disc_key_hex` and `common_key_hex` in the protocol
+above, with the key file next to the image used when nothing is pasted. A key file holds one of:
+
+- 16 raw bytes;
+- one line of 32 hex digits (spaces, dashes and a leading `0x` are ignored);
+- a Cemu `keys.txt` with a `common = <32 hex>` line and a `disc = <32 hex>` line.
+
+UTF-8 and UTF-16 files work, with or without a byte order mark (Notepad's "UTF-8 with BOM",
+"Unicode" and "UTF-8" encodings all do).
+
+A `keys.txt` next to the image or in the release folder is used too: its `common` line is the common key,
+its `disc` line is the disc key. There a bare line is not used as the common key (it is usually the disc
+key). Title-key lines (`<title id> = <32 hex>`) are not keys for these two, and a file with only a title
+key is rejected with a message that names the title id.
 
 ## Cemu archives (`.wua`)
 

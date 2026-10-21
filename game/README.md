@@ -15,6 +15,8 @@ Put these in **this** folder (`game/`):
 | `common.key` | Wii U common key from your console (same formats), **or** set `WIIU_COMMON_KEY` |
 | `update/` | Optional matching **1.3.0** update (already extracted). Recommended for mods. |
 
+In the setup window you can also type or paste each key as 32 hex digits instead of a key file.
+
 ### `update/` layout
 
 | Path | Contents |
