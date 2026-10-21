@@ -26,3 +26,7 @@ script open the Yaz0 → SARC → `BAHS` shader blobs.
   first draw.
 - The Metal start-up replay costs about 6.2 s plus 1.6 s of head start, and `shaders.bin` reaches
   about 290 MB (`docs/performance.md`).
+
+## Recomp.py
+
+The recomp tool doesnt seem to be multithreaded.
