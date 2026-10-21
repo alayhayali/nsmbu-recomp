@@ -476,3 +476,12 @@ Frame time and swaps/s stay inside the run-to-run spread (the medians above are 
 The direct effect is on the guest code.
 A 1 ms `SIGPROF` leaf sampler on the thread CPU clock, attached with `LD_PRELOAD`, counts the guest thread's samples in `f_*` code between 881 and 928 with the pass off and between 830 and 884 with it on, about 8% fewer.
 That is CPU headroom, not frames, on this machine.
+
+`nsmbu recomp` writes the reload count to `report.txt`; recompile the same tree with `NSMBU_RECOMP_NONLEAF_LIVE=0` for the baseline.
+A build with the pass on must still print `62 position checks` and `replay finished at step 2420, player state matched` for `nsmbu replay --release 1-1`.
+`python3 -m unittest tools/recomp/test_leaflocal.py` covers the transform itself.
+
+Three things mislead while measuring this.
+The `[prof]` windows for one setting swing up to 20% between runs here, so compare three runs per side and use the medians; a single pair can show a gain that is not there.
+`perf` is unavailable (`perf_event_paranoid=4`), which is why the guest CPU number comes from a `SIGPROF` sampler on the thread CPU clock.
+`NSMBU_RECOMP_LEAF_POISON=1` fills the locals that a reload would have overwritten with garbage, and it also writes garbage into the `Cpu` struct at every return, so it is good for a short boot and not for a full replay (SIGSEGV at guest address `00000034` with r5-r12 all `DEADBEEF`).
