@@ -449,3 +449,30 @@ The 300-frame `[gfx]` report (Metal) and the `[vulkan textures]` line (`NSMBU_VK
 full checks, hashed bytes (Metal), uploads, page write faults and pages protected;
 `NSMBU_LOG_TEXCHECK=1` (Metal) logs which textures were re-checked because of a write.
 
+
+## Guest register reloads after calls (2026-10-21)
+
+Functions with calls now keep the guest registers in C locals between calls and reload only the ones a later read needs.
+A backward liveness pass over each function's statement graph (`tools/recomp/leaflocal.py`, `NSMBU_RECOMP_NONLEAF_LIVE`, on by default) drops the reloads of registers and float halves that are overwritten before they are read again, and keeps the ones a return, a tail call or a loop-head sync still needs.
+
+The recompiler emits one reload statement per register per call, and the game has 173,463 calls in functions with calls.
+`report.txt` therefore counts 2,918,797 reload statements with the pass off and 621,916 with it on: 79% of them are gone.
+
+`NSMBU_RECOMP_NONLEAF_ABI`, an earlier version that also left r0, r11 and r12 in their locals at a call, was removed because both halves break the game.
+A generated callee loads `c->r[0]`, `c->r[11]` and `c->r[12]` in its prologue, and 6 and 36 guest functions read r0 and r11 before writing them, so skipping the write-back loses their input (the boot hangs before `[gx2] initialized`).
+A callee with calls of its own writes those registers back at its own calls, so skipping the reload leaves the caller a stale copy (SIGSEGV at guest address `00000019`, `lr=02000278`).
+In a plain (struct form) recomp, 0 of 84,509 functions read r12 before writing it and 40 read r0 or r11, but a sound skip needs the callee's live-in set at each call site for about 15% of what the live pass already saves.
+
+Release `replays/1-1.replay`, uncapped copy without the position columns, frames 1200-3240, median of the 18 120-frame `[prof]` windows, three runs each:
+
+| | 2x off | 2x on | 1x off | 1x on |
+| --- | ---: | ---: | ---: | ---: |
+| frame time ms | 2.070 | 2.085 | 1.325 | 1.280 |
+| swaps/s | 482 | 480 | 753 | 782 |
+| render-thread CPU ms/frame | 1.165 | 1.195 | 1.115 | 1.070 |
+| guest-thread `f_*` CPU samples | - | - | 911 | 836 |
+
+Frame time and swaps/s stay inside the run-to-run spread (the medians above are within 4%): the guest thread has slack at 24% of the process CPU and the render thread or the GPU sets the pace (56% busy at 2x, 84% at 1x).
+The direct effect is on the guest code.
+A 1 ms `SIGPROF` leaf sampler on the thread CPU clock, attached with `LD_PRELOAD`, counts the guest thread's samples in `f_*` code between 881 and 928 with the pass off and between 830 and 884 with it on, about 8% fewer.
+That is CPU headroom, not frames, on this machine.
