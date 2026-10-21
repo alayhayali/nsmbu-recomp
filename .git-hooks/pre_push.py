@@ -18,7 +18,7 @@ REQUIRED_TESTS = (
     "mod_cemu_startup",
     "mod_cemu_backend",
     "mod_packages",
-    "mod_luau",
+    "mod_lua",
     "mod_content_fs_on",
     "mod_content_fs_off",
 )
@@ -95,12 +95,16 @@ def ensure_worktree(commit):
             cwd=ROOT,
             check=True,
         )
-        return
+    else:
+        subprocess.run(
+            ["git", "-C", WORKTREE, "checkout", "--detach", "--force", commit],
+            check=True,
+        )
+        subprocess.run(["git", "-C", WORKTREE, "clean", "-fd"], check=True)
     subprocess.run(
-        ["git", "-C", WORKTREE, "checkout", "--detach", "--force", commit],
+        ["git", "-C", WORKTREE, "submodule", "update", "--init", "--recursive"],
         check=True,
     )
-    subprocess.run(["git", "-C", WORKTREE, "clean", "-fd"], check=True)
 
 
 def configure_and_test(tree):
