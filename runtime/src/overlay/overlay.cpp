@@ -604,21 +604,21 @@ void tab_graphics() {
     }
     heading("Frame rate");
     int m = interp::mode(), f = interp::fps();
-    for (int r : {60, 120, 165, 240}) {
-        if (r != 60) ImGui::SameLine();
+    static const int rates[] = {30, 60, 90, 120, 144, 165, 240};
+    for (int r : rates) {
+        if (r != rates[0]) ImGui::SameLine();
         char label[16];
-        if (r != 60) ImGui::BeginDisabled();
         snprintf(label, sizeof label, "%d fps", r);
         const bool on = r == 60 ? m != 1 : m == 1 && f == r;
         if (radio(label, on)) post_changed([r] {
             if (r == 60) interp::set_mode(0);
             else { interp::set_fps(r); interp::set_mode(1); }
         });
-        if (r != 60) ImGui::EndDisabled();
     }
-    help("60 fps is the game rate.\n"
-         "120, 165 and 240 fps are the higher rates. The game logic stays at 60 steps a second.\n"
-         "The display shows at most its refresh rate.");
+    help("60 fps is the game rate. 30 fps draws one frame every other step: the game logic still runs at\n"
+         "60 steps a second. 90, 120, 144, 165 and 240 fps add in-between frames for the steps in between.\n"
+         "The display shows at most its refresh rate. Hotkeys: 6 = 60 fps, 7 = cycle rates,\n"
+         "9 = toggle 60 fps and the last non-60 rate.");
 
     if (const int hz = interp::display_hz(); hz > 0) {
         const int out = interp::output_fps();
@@ -631,7 +631,7 @@ void tab_graphics() {
     } else if (m == 1 && f > 60) {
         note("Display refresh rate unknown: %d fps are drawn; frames beyond the display's rate are not shown.", f);
     }
-    if (m == 1) {
+    if (m == 1 && f > 60) {
         bool paced;
         if (check("Keep game speed (recommended)", interp::paced_interpolation(), &paced, !env::INTERP_PACED()))
             post_changed([paced] { interp::set_paced_interpolation(paced); });

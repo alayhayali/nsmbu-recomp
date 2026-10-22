@@ -1,12 +1,5 @@
 # New Super Mario Bros. U: Native Port / Recompilation
 
-> [!IMPORTANT]
-> This repository contains no Nintendo property.
-> It has no game code, no game assets, and no keys from Nintendo.
-
-> [!NOTE]
-> This project is made with the help of AI agents.
-
 This project compiles Wii U game assets into a standalone, native executable.  
 The release package includes the necessary runtime, build tools, and installer script.  
 You must supply your own copy of the game files, disc image, and encryption keys.  
@@ -196,8 +189,14 @@ It opens the same file window when the system provides one.
 
 Build from source, CLI commands, and developer docs are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Credits
+## Notes
 
 This repository was forked from the [Wind Waker HD recompilation](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp).
 
 The Collision Viewer is based on the collision viewer from [Tsuru](https://github.com/Zenith-Team/Tsuru).
+
+This repository contains no Nintendo property.  
+It has no game code, no game assets, and no keys from Nintendo.  
+
+>  [!IMPORTANT]
+> This project is made with the help of AI agents.

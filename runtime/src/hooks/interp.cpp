@@ -17,50 +17,22 @@
 #include "guest_addr.h"
 #include "gfx/render_prof.h"
 #include "core/runtime.h"
+#include "core/write_watch.h"
 #include "agent/agent_ctl.h"
 #include "save/savestate.h"
 
 #include "core/env.h"
 extern "C" {
-void f_025F172C_orig(Cpu* c);
-void f_0203593C_orig(Cpu* c);
-void f_020315CC_orig(Cpu* c);
-void f_02032FE8_orig(Cpu* c);
-void f_020357CC_orig(Cpu* c);
-void f_025EE048_orig(Cpu* c);
-void f_02756170_orig(Cpu* c);
-void f_02617AF4_orig(Cpu* c);
-void f_02614F74_orig(Cpu* c);
-void f_0273841C_orig(Cpu* c);
-void f_0270870C_orig(Cpu* c);
-void f_0255E854_orig(Cpu* c);
-void f_02738438_orig(Cpu* c);
-void f_0278FEBC_orig(Cpu* c);
-void f_027199C0_orig(Cpu* c);
-void f_02618940_orig(Cpu* c);
-void f_02728A74_orig(Cpu* c);
-void f_02039834_orig(Cpu* c);
-
-void f_025D42EC(Cpu* c);
-void f_025DE788_orig(Cpu* c);
-void f_025DE024_orig(Cpu* c);
-void f_025E0EE4_orig(Cpu* c);
-void f_025DDCEC_orig(Cpu* c);
-void f_025D42C4_orig(Cpu* c);
-void f_0200E6EC_orig(Cpu* c);
-void f_024FFC40_orig(Cpu* c);
-void f_025E1B44_orig(Cpu* c);
-void f_02027754_orig(Cpu* c);
-void f_0201EBA0_orig(Cpu* c);
-void f_025E1988_orig(Cpu* c);
-void f_025E19CC_orig(Cpu* c);
-void f_025E1A04_orig(Cpu* c);
-void f_025E1A40_orig(Cpu* c);
-void f_025E1A7C_orig(Cpu* c);
-void f_025E1AA4_orig(Cpu* c);
-void f_027F55FC_orig(Cpu* c);
-void f_027F5018_orig(Cpu* c);
-
+void f_029C52CC_orig(Cpu* c);
+void f_029C4FE4_orig(Cpu* c);
+void f_024FBF6C_orig(Cpu* c);
+void f_024F30DC_orig(Cpu* c);
+void f_029C5104(Cpu* c);
+void f_024FA76C(Cpu* c);
+void f_02A05A9C(Cpu* c);
+void f_02AA56EC(Cpu* c);
+void f_02AA56F4(Cpu* c);
+void imp_gx2_GX2DrawDone(Cpu* c);
 }
 
 namespace interp {
@@ -73,6 +45,8 @@ static std::atomic<bool> g_on{[] {
     return (e ? atoi(e) != 0 : g_env_fps != 0);
 }()};
 bool interp_on() { return g_on.load(std::memory_order_relaxed); }
+
+static std::atomic<int> g_granule{4};
 
 bool enabled() { return interp_on(); }
 int fps() { return g_fps.load(std::memory_order_relaxed); }
@@ -93,18 +67,19 @@ void set_display_hz(int hz) {
 void set_present_vsync(bool on) {
     if (g_present_vsync.exchange(on) != on) LOG("[interp] presentation %s the display's vsync", on ? "waits for" : "does not wait for");
 }
-int in_between() {
-    if (!interp_on()) return 0;
-    const int out = output_fps();
-    if (out >= 240) return 3;
-    if (out >= 165) return 2;
-    if (out >= 120) return 1;
-    return 0;
+static const char* fps_name(int f) {
+    switch (valid_fps(f)) {
+    case 30: return "30 fps";
+    case 90: return "90 fps";
+    case 120: return "120 fps";
+    case 144: return "144 fps";
+    case 165: return "165 fps";
+    case 240: return "240 fps";
+    default: return "60 fps";
+    }
 }
-int frames_per_step() { return in_between() + 1; }
-static const char* fps_name(int f) { return f >= 240 ? "240 fps" : f >= 165 ? "165 fps" : f >= 120 ? "120 fps" : "60 fps"; }
 void set_enabled(bool v) {
-    if (v && fps() <= 60) v = false;
+    if (v && fps() == 60) v = false;
     g_on = v;
     LOG("[interp] frame interpolation %s", v ? fps_name(fps()) : "off");
 }
@@ -112,7 +87,7 @@ void set_fps(int f) {
     f = valid_fps(f);
     if (g_fps.exchange(f) != f && interp_on()) LOG("[interp] frame interpolation at %s", fps_name(f));
 }
-int mode() { return interp_on() && fps() > 60 ? 1 : 0; }
+int mode() { return interp_on() && fps() != 60 ? 1 : 0; }
 void set_mode(int m) {
     g_on = false;
     if (m == 1) set_enabled(true);
@@ -127,240 +102,213 @@ void toggle_fps(int f) {
     set_mode(1);
 }
 const char* mode_name() {
+    static char buf[48];
     if (mode() != 1) return "60 fps";
     const int f = fps(), out = output_fps();
     if (out >= f) return fps_name(f);
-    if (f >= 240 && out >= 165) return "240 fps (165 shown)";
-    if (f >= 240 && out >= 120) return "240 fps (120 shown)";
-    if (f >= 240) return "240 fps (60 shown)";
-    if (f >= 165 && out >= 120) return "165 fps (120 shown)";
-    if (f >= 165) return "165 fps (60 shown)";
-    return "120 fps (60 shown)";
+    snprintf(buf, sizeof buf, "%d fps (%d shown)", f, out);
+    return buf;
 }
 
 uint32_t effective_swap_interval(uint32_t game) { return game; }
-int vsync_rate() { return 1; }
+int vsync_granule() { return g_granule.load(std::memory_order_relaxed); }
 
 namespace {
-constexpr uint32_t kEye = 0xDC, kCenter = 0xE8, kUp = 0xF4, kFovy = 0xD4, kBank = 0x100;
-
-struct CamState {
-    float eye[3], center[3], up[3], fovy;
-    int16_t bank;
-};
-
-CamState read_cam(uint32_t cam) {
-    CamState s;
-    for (int i = 0; i < 3; i++) {
-        s.eye[i] = (float)ldf32(cam + kEye + 4 * i);
-        s.center[i] = (float)ldf32(cam + kCenter + 4 * i);
-        s.up[i] = (float)ldf32(cam + kUp + 4 * i);
-    }
-    s.fovy = (float)ldf32(cam + kFovy);
-    s.bank = (int16_t)ld16(cam + kBank);
-    return s;
-}
-
-void write_cam(uint32_t cam, const CamState& s) {
-    for (int i = 0; i < 3; i++) {
-        stf32(cam + kEye + 4 * i, s.eye[i]);
-        stf32(cam + kCenter + 4 * i, s.center[i]);
-        stf32(cam + kUp + 4 * i, s.up[i]);
-    }
-    stf32(cam + kFovy, s.fovy);
-    st16(cam + kBank, (uint16_t)s.bank);
-}
-
-float dist(const float* a, const float* b) {
-    float d = 0;
-    for (int i = 0; i < 3; i++) d += (a[i] - b[i]) * (a[i] - b[i]);
-    return std::sqrt(d);
-}
-
-using pacing::lerp_f;
-using pacing::lerp_s16;
-
-float g_last_step = 0;
-
-bool cam_snap(const CamState& a, const CamState& b) {
-    static const float kCut = (float)env::INTERP_CUT.real_or(800.0f);
-    float step = std::max(dist(a.eye, b.eye), dist(a.center, b.center));
-    float prev = g_last_step;
-    g_last_step = step;
-    return step > kCut || std::fabs(a.fovy - b.fovy) > 20.0f || (step > 60.0f && step > 4.0f * prev + 20.0f);
-}
-
-CamState blend(const CamState& a, const CamState& b, float t) {
-    CamState m;
-    for (int i = 0; i < 3; i++) {
-        m.center[i] = lerp_f(a.center[i], b.center[i], t);
-        m.up[i] = lerp_f(a.up[i], b.up[i], t);
-    }
-
-    float da[3], db[3], la = 0, lb = 0;
-    for (int i = 0; i < 3; i++) {
-        da[i] = a.eye[i] - a.center[i];
-        db[i] = b.eye[i] - b.center[i];
-        la += da[i] * da[i];
-        lb += db[i] * db[i];
-    }
-    la = std::sqrt(la);
-    lb = std::sqrt(lb);
-    if (la > 1e-3f && lb > 1e-3f) {
-        float cosang = 0;
-        for (int i = 0; i < 3; i++) cosang += (da[i] / la) * (db[i] / lb);
-        if (cosang < 0.7071f) return b;
-
-        if (std::fabs(la - lb) > 0.1f * std::max(la, lb)) return b;
-        float dir[3], ld = 0;
-
-        float wa, wb;
-        pacing::slerp_weights(cosang, t, wa, wb);
-        for (int i = 0; i < 3; i++) {
-            dir[i] = wa * da[i] / la + wb * db[i] / lb;
-            ld += dir[i] * dir[i];
-        }
-        ld = std::sqrt(ld);
-        float len = lerp_f(la, lb, t);
-        for (int i = 0; i < 3; i++) m.eye[i] = m.center[i] + (ld > 1e-3f ? dir[i] / ld : db[i] / lb) * len;
-    } else {
-        for (int i = 0; i < 3; i++) m.eye[i] = lerp_f(a.eye[i], b.eye[i], t);
-    }
-
-    float fwd[3], lf = 0, lu = 0, d = 0;
-    for (int i = 0; i < 3; i++) { fwd[i] = m.center[i] - m.eye[i]; lf += fwd[i] * fwd[i]; }
-    lf = std::sqrt(lf);
-    if (lf > 1e-3f) {
-        for (int i = 0; i < 3; i++) { fwd[i] /= lf; d += m.up[i] * fwd[i]; }
-        for (int i = 0; i < 3; i++) { m.up[i] -= d * fwd[i]; lu += m.up[i] * m.up[i]; }
-        lu = std::sqrt(lu);
-        if (lu > 0.1f) {
-            for (int i = 0; i < 3; i++) m.up[i] /= lu;
-        } else {
-            for (int i = 0; i < 3; i++) m.up[i] = b.up[i];
-        }
-    }
-    m.fovy = lerp_f(a.fovy, b.fovy, t);
-    m.bank = lerp_s16(a.bank, b.bank, t);
-    return m;
-}
-
 std::atomic<uint64_t> g_executed_steps{0};
 uint64_t g_logic_steps = 0;
 uint64_t g_passes = 0;
 bool g_hold = false;
-bool g_cam_blended = false;
 bool g_logic_pass = false;
-bool g_blend_draw = false;
 bool g_hold_next = false;
-bool g_hold_frame = false;
+bool g_pass_valid = false;
 
 int g_step_n = 1;
+int g_frame_n = 1;
 int g_phase = 0;
 uint64_t g_record_passes = 0;
 
 bool g_exact_step = false;
 
-bool blended_hold() { return g_hold && g_phase < g_step_n; }
+constexpr uint32_t kRendererBox = 0x10;
+constexpr uint32_t kProjection = 0x20;
+constexpr uint32_t kViewInfo = 0x4C8;
+constexpr uint32_t kViewStride = 0x80;
+constexpr uint32_t kViewProj = 0x34;
+constexpr uint32_t kBgScreen = 0x88;
 
-struct Prev {
-    uint32_t cam = 0; CamState s{}; bool valid = false; bool snap = true; uint64_t snap_step = ~0ull;
-    CamState drawn{};
-    uint64_t drawn_pass = ~0ull;
+struct CamBox {
+    float v[4] = {0, 0, 0, 0};
+    uint64_t step = ~0ull;
+    bool valid = false;
 };
-Prev g_prev[4];
 
-Prev* prev_for(uint32_t cam) {
-    for (auto& p : g_prev)
-        if (p.cam == cam) return &p;
-    for (auto& p : g_prev)
-        if (!p.valid) { p.cam = cam; return &p; }
-    g_prev[0] = Prev{cam};
-    return &g_prev[0];
+struct ViewSlot {
+    uint32_t mgr;
+    uint32_t view;
+    uint32_t proj;
+};
+
+CamBox g_cam;
+float g_cam_cur[4] = {0, 0, 0, 0};
+bool g_cam_cur_valid = false;
+ViewSlot g_views[8];
+int g_view_n = 0;
+
+uint32_t renderer_instance() { return ld32(GD(0x101D2D88)); }
+
+bool read_box(uint32_t r, float* b) {
+    if (!r) return false;
+    for (int i = 0; i < 4; i++) b[i] = (float)ldf32(r + kRendererBox + 4 * i);
+    return true;
 }
+
+void write_box(uint32_t r, const float* b) {
+    for (int i = 0; i < 4; i++) stf32(r + kRendererBox + 4 * i, b[i]);
+}
+
+bool cam_cut(const float* a, const float* b) {
+    static const float kCut = (float)env::INTERP_CUT.real_or(800.0f);
+    float d = 0;
+    for (int i = 0; i < 4; i++) d = std::max(d, std::fabs(b[i] - a[i]));
+    return d > kCut;
+}
+
+void apply_box(Cpu* c, uint32_t r, const float* b) {
+    write_box(r, b);
+    c->r[3] = r;
+    f_024FA76C(c);
+}
+
+uint32_t view_info(uint32_t mgr, uint32_t view) {
+    const uint32_t base = mgr ? ld32(mgr + kViewInfo) : 0;
+    return base ? base + view * kViewStride : 0;
+}
+
+void write_view_proj(Cpu* c, uint32_t mgr, uint32_t view, uint32_t proj) {
+    const uint32_t vi = view_info(mgr, view);
+    if (!vi) return;
+    c->r[3] = proj;
+    f_02A05A9C(c);
+    const uint32_t m = c->r[3];
+    if (!m) return;
+    for (int i = 0; i < 16; i++) st32(vi + kViewProj + 4 * i, ld32(m + 4 * i));
+}
+
+void remember_view(uint32_t mgr, uint32_t view, uint32_t proj) {
+    for (int i = 0; i < g_view_n; i++)
+        if (g_views[i].mgr == mgr && g_views[i].view == view) {
+            g_views[i].proj = proj;
+            return;
+        }
+    if (g_view_n < 8) {
+        g_views[g_view_n].mgr = mgr;
+        g_views[g_view_n].view = view;
+        g_views[g_view_n].proj = proj;
+        g_view_n++;
+    }
+}
+
+}
+
+int in_between() {
+    if (!interp_on()) return 0;
+    return std::max(0, g_step_n);
+}
+int frames_per_step() {
+    if (!interp_on()) return 1;
+    return std::max(0, g_frame_n);
 }
 
 float pass_t() {
     if (!enabled()) return 1.0f;
+    if (g_frame_n <= 1) return 1.0f;
     return pacing::pass_fraction(g_hold ? g_phase : 0, g_step_n, g_exact_step);
 }
 
 bool record_pass() { return g_hold && g_phase >= g_step_n; }
 
-}
-
-static void cam_trace(uint32_t cam, const char* what) {
+void cam_trace(const char* what, const float* prev, const float* cur, const float* drawn) {
     static int left = env::INTERP_CAM_TRACE.integer_or(0);
-    if (left <= 0 || !interp::enabled()) return;
+    if (left <= 0 || !enabled()) return;
     left--;
-    interp::CamState s = interp::read_cam(cam);
-    LOG("[interp] camera %08X step %llu t %.3f %-7s eye %.3f %.3f %.3f center %.3f %.3f %.3f", cam, (unsigned long long)interp::g_logic_steps,
-        interp::pass_t(), what, s.eye[0], s.eye[1], s.eye[2], s.center[0], s.center[1], s.center[2]);
+    const uint32_t bg = ld32(GD(0x101E7C54));
+    LOG("[interp] cam %-6s step %llu hold %d phase %d/%d prev %.1f %.1f %.1f %.1f cur %.1f %.1f %.1f %.1f drawn %.1f %.1f %.1f %.1f bg %.1f %.1f %.1f %.1f",
+        what, (unsigned long long)g_logic_steps, g_hold, g_phase, g_step_n, prev[0], prev[1], prev[2], prev[3], cur[0], cur[1], cur[2],
+        cur[3], drawn[0], drawn[1], drawn[2], drawn[3], bg ? (double)ldf32(bg + kBgScreen) : 0.0,
+        bg ? (double)ldf32(bg + kBgScreen + 4) : 0.0, bg ? (double)ldf32(bg + kBgScreen + 8) : 0.0,
+        bg ? (double)ldf32(bg + kBgScreen + 12) : 0.0);
 }
 
-extern "C" void hook_024FFC40(Cpu* c) {
-    using namespace interp;
-    uint32_t cam = c->r[3];
-    Prev* p = prev_for(cam);
-    if (g_blend_draw) {
-        CamState cur = read_cam(cam);
-        if (p->valid) {
-            if (!g_hold) {
-                p->snap = cam_snap(p->s, cur);
-                p->snap_step = g_logic_steps;
-            }
-            if (p->snap_step == g_logic_steps && !p->snap) write_cam(cam, blend(p->s, cur, pass_t()));
-        }
-        p->drawn = read_cam(cam);
-        p->drawn_pass = g_passes;
-
-        g_cam_blended = p->valid;
-        cam_trace(cam, "blended");
-        f_024FFC40_orig(c);
-        g_cam_blended = false;
-        write_cam(cam, cur);
-        return;
+void apply_hold_camera(Cpu* c) {
+    if (!course_play_active() || !g_cam_cur_valid) return;
+    const uint32_t r = renderer_instance();
+    if (!r) return;
+    float cur[4], box[4];
+    for (int i = 0; i < 4; i++) cur[i] = g_cam_cur[i];
+    const bool record = record_pass();
+    const bool blend = !record && g_cam.valid && !g_exact_step && g_cam.step + 1 == g_logic_steps && !cam_cut(g_cam.v, cur);
+    if (record) {
+        g_cam.valid = true;
+        g_cam.step = g_logic_steps;
+        for (int i = 0; i < 4; i++) g_cam.v[i] = cur[i];
     }
-    p->s = read_cam(cam);
-    p->valid = true;
-    p->drawn = p->s;
-    p->drawn_pass = g_passes;
-    cam_trace(cam, "exact");
-    f_024FFC40_orig(c);
+    if (blend) {
+        const float t = pass_t();
+        for (int i = 0; i < 4; i++) box[i] = pacing::lerp_f(g_cam.v[i], cur[i], t);
+    } else {
+        for (int i = 0; i < 4; i++) box[i] = cur[i];
+    }
+    apply_box(c, r, box);
+    for (int i = 0; i < g_view_n; i++) write_view_proj(c, g_views[i].mgr, g_views[i].view, g_views[i].proj);
+    apply_box(c, r, cur);
+    cam_trace(record ? "record" : blend ? "hold" : "snap", g_cam.v, cur, box);
 }
 
-namespace interp {
-float pass_t();
-namespace {
-constexpr uint32_t kMdlJoints = 0x2C, kJntMtx = 0x10, kJntNum = 0x2C;
-constexpr int kMaxJoints = 1024;
-
-struct ModelPrev {
+constexpr uint32_t kMaxModelJoints = 256;
+constexpr uint32_t kSklWorldArr = 0x10;
+struct ModelPose {
+    uint32_t mdl = 0;
     uint32_t mtx = 0;
-    uint64_t pass = 0;
-    std::vector<uint32_t> w;
+    uint32_t joints = 0;
+    uint64_t pass = ~0ull;
+    uint64_t subst_pass = ~0ull;
+    std::vector<uint32_t> pose;
+    std::vector<uint32_t> exact;
+    std::vector<uint32_t> mid;
 };
-std::unordered_map<uint32_t, ModelPrev> g_models;
-struct ModelStats { uint32_t blended = 0, fresh = 0, cut = 0; } g_mstats;
+std::unordered_map<uint32_t, ModelPose> g_models;
+struct ModelStats { uint32_t blended = 0, fresh = 0, cut = 0, still = 0; } g_mstats;
 
-std::mutex g_ubo_mu;
-std::unordered_map<uint32_t, uint32_t> g_ubo_done;
-
-float wf(uint32_t w) { return u32_as_f32(__builtin_bswap32(w)); }
-uint32_t fw(float f) { return __builtin_bswap32(f32_as_u32(f)); }
-
-void trace_model(const char* what, uint32_t jnt, uint32_t n, const uint32_t* w) {
+void trace_model(const char* what, uint32_t mdl, uint32_t skel, uint32_t count, uint64_t gen, const uint32_t* w) {
     static int left = env::INTERP_MODEL_TRACE.integer_or(0);
-    static const uint32_t min_joints = env::INTERP_MODEL_TRACE_JOINTS.integer_or(40);
-    static uint32_t which = 0;
-    if (left <= 0 || n < min_joints || (which && which != jnt)) return;
-    which = jnt;
+    if (left <= 0 || !enabled()) return;
     left--;
-    LOG("[interp] model %08X (%u joints, mtx %08X) step %llu t %.3f %-7s root %.2f %.2f %.2f", jnt, n, ld32(jnt + kJntMtx),
-        (unsigned long long)g_logic_steps, pass_t(), what, wf(w[3]), wf(w[7]), wf(w[11]));
+    LOG("[interp] model mdl %08X skel %08X joints %u gen %llu step %llu hold %d phase %d/%d t %.3f %-7s w3 %08X w7 %08X w11 %08X",
+        mdl, skel, count, (unsigned long long)gen, (unsigned long long)g_logic_steps, g_hold, g_phase, g_step_n, pass_t(), what,
+        w ? w[3] : 0, w ? w[7] : 0, w ? w[11] : 0);
 }
 
-bool to_quat(const float* m, float* s, float* q) {
+inline uint32_t ld32g(uint32_t ea) { return ea >= 0x02000000u && ea < 0x70000000u && wwatch::readable(ea, 4) ? ld32(ea) : 0; }
+inline uint16_t ld16g(uint32_t ea) { return ea >= 0x02000000u && ea < 0x70000000u && wwatch::readable(ea, 2) ? ld16(ea) : 0; }
+
+bool model_skeleton(uint32_t mdl, uint32_t& skel, uint32_t& count, uint32_t& arr) {
+    uint32_t s = ld32g(mdl + 0x40);
+    if (s < 0x02000000u || s >= 0x70000000u) return false;
+    uint32_t a = ld32g(s + kSklWorldArr);
+    if (a < 0x02000000u || a >= 0x70000000u) return false;
+    uint32_t res = ld32g(s);
+    if (res < 0x02000000u || res >= 0x70000000u) return false;
+    count = ld16g(res + 8);
+    if (count == 0 || count > kMaxModelJoints) return false;
+    if (!wwatch::readable(a, 12 * 4 * count)) return false;
+    skel = s;
+    arr = a;
+    return true;
+}
+
+uint32_t fw(float f) { return f32_as_u32(f); }
+
+bool model_to_quat(const float* m, float* s, float* q) {
     float r[3][3];
     for (int j = 0; j < 3; j++) {
         s[j] = std::sqrt(m[j] * m[j] + m[4 + j] * m[4 + j] + m[8 + j] * m[8 + j]);
@@ -390,12 +338,12 @@ bool to_quat(const float* m, float* s, float* q) {
     return true;
 }
 
-void blend_mtx(const float* a, const float* b, float* out, float t) {
+void model_blend_mtx(const float* a, const float* b, float* out, float t) {
     float sa[3], sb[3], qa[4], qb[4];
-    for (int i = 0; i < 3; i++) out[4 * i + 3] = lerp_f(a[4 * i + 3], b[4 * i + 3], t);
-    if (!to_quat(a, sa, qa) || !to_quat(b, sb, qb)) {
+    for (int i = 0; i < 3; i++) out[4 * i + 3] = pacing::lerp_f(a[4 * i + 3], b[4 * i + 3], t);
+    if (!model_to_quat(a, sa, qa) || !model_to_quat(b, sb, qb)) {
         for (int i = 0; i < 3; i++)
-            for (int j = 0; j < 3; j++) out[4 * i + j] = lerp_f(a[4 * i + j], b[4 * i + j], t);
+            for (int j = 0; j < 3; j++) out[4 * i + j] = pacing::lerp_f(a[4 * i + j], b[4 * i + j], t);
         return;
     }
     float d = qa[0] * qb[0] + qa[1] * qb[1] + qa[2] * qb[2] + qa[3] * qb[3];
@@ -410,120 +358,204 @@ void blend_mtx(const float* a, const float* b, float* out, float t) {
                            {2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)},
                            {2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)}};
     for (int j = 0; j < 3; j++) {
-        float s = lerp_f(sa[j], sb[j], t);
+        float s = pacing::lerp_f(sa[j], sb[j], t);
         for (int i = 0; i < 3; i++) out[4 * i + j] = r[i][j] * s;
     }
 }
-}
-}
 
-extern "C" void hook_027F55FC(Cpu* c) {
-    using namespace interp;
-    static const bool off = env::INTERP_MODELS() && !atoi(env::INTERP_MODELS());
-    if (!enabled() || off || (!g_hold && g_exact_step)) {
-        f_027F55FC_orig(c);
-        return;
-    }
-    const bool record = record_pass();
-    uint32_t model = c->r[3];
-    uint32_t jnt = ld32(model + kMdlJoints);
-    uint32_t mtx = jnt ? ld32(jnt + kJntMtx) : 0;
-    uint32_t n = jnt ? ld16(jnt + kJntNum) : 0;
-    if (!mtx || n == 0 || n > kMaxJoints) {
-        f_027F55FC_orig(c);
-        return;
-    }
-    const uint32_t words = 12 * n;
-    const uint32_t* cur = (const uint32_t*)ppc_ptr(mtx);
-    if (record) {
-        ModelPrev& p = g_models[jnt];
-        p.mtx = mtx;
-        p.pass = g_record_passes;
-        p.w.assign(cur, cur + words);
-        trace_model("exact", jnt, n, cur);
-        f_027F55FC_orig(c);
-        return;
-    }
-
-    auto it = g_models.find(jnt);
-    if (it == g_models.end() || it->second.mtx != mtx || it->second.w.size() != words ||
-        it->second.pass + 1 < g_record_passes) {
-        g_mstats.fresh++;
-        trace_model("new", jnt, n, cur);
-        f_027F55FC_orig(c);
-        return;
-    }
-    const std::vector<uint32_t>& prev = it->second.w;
-    if (memcmp(prev.data(), cur, 4 * words) == 0) {
-        trace_model("still", jnt, n, cur);
-        f_027F55FC_orig(c);
-        return;
-    }
-    static const float kCut = (float)env::INTERP_MODEL_CUT.real_or(400.0f);
-    const float t = pass_t();
-    std::vector<uint32_t> saved(cur, cur + words);
-    std::vector<uint32_t> mid(words);
-    for (uint32_t m = 0; m < n; m++) {
-        float a[12], b[12], o[12];
-        for (int k = 0; k < 12; k++) { a[k] = wf(prev[12 * m + k]); b[k] = wf(saved[12 * m + k]); }
-        float dx = a[3] - b[3], dy = a[7] - b[7], dz = a[11] - b[11];
-        if (!(dx * dx + dy * dy + dz * dz <= kCut * kCut)) {
-            g_mstats.cut++;
-            trace_model("cut", jnt, n, cur);
-            f_027F55FC_orig(c);
-            return;
+bool model_pose_sane(const uint32_t* w, uint32_t count) {
+    for (uint32_t m = 0; m < count; m++) {
+        const uint32_t* a = w + 12 * m;
+        for (int k = 0; k < 12; k++) {
+            float v = u32_as_f32(a[k]);
+            if (!std::isfinite(v) || std::fabs(v) > 10000.0f) return false;
         }
-        blend_mtx(a, b, o, t);
+        for (int i = 0; i < 3; i++) {
+            float n = std::sqrt(u32_as_f32(a[i]) * u32_as_f32(a[i]) + u32_as_f32(a[4 + i]) * u32_as_f32(a[4 + i]) +
+                                u32_as_f32(a[8 + i]) * u32_as_f32(a[8 + i]));
+            if (n < 0.05f || n > 100.0f) return false;
+        }
+    }
+    return true;
+}
+
+inline void model_read(uint32_t arr, uint32_t words, std::vector<uint32_t>& out) {
+    out.resize(words);
+    const uint32_t* src = (const uint32_t*)mem::ptr(arr);
+    for (uint32_t i = 0; i < words; i++) out[i] = __builtin_bswap32(src[i]);
+}
+
+inline void model_write(uint32_t arr, const std::vector<uint32_t>& in) {
+    uint32_t* dst = (uint32_t*)mem::ptr(arr);
+    for (size_t i = 0; i < in.size(); i++) dst[i] = __builtin_bswap32(in[i]);
+}
+
+void model_upload(Cpu* c, uint32_t mdl) {
+    const uint32_t save3 = c->r[3];
+    const uint32_t save4 = c->r[4];
+    c->r[3] = mdl + 0x28;
+    c->r[4] = 0;
+    f_02AA56EC(c);
+    c->r[3] = mdl + 0x28;
+    c->r[4] = 0;
+    f_02AA56F4(c);
+    c->r[3] = save3;
+    c->r[4] = save4;
+}
+
+void model_stats_report() {
+    static uint64_t n = 0;
+    if (++n % 300 != 0 || !(g_mstats.blended + g_mstats.fresh + g_mstats.cut + g_mstats.still)) return;
+    LOG("[interp] models blended %u fresh %u cut %u still %u", g_mstats.blended, g_mstats.fresh, g_mstats.cut, g_mstats.still);
+    g_mstats = ModelStats{};
+}
+
+bool model_blend_pose(ModelPose& p, uint32_t count, uint32_t words, const std::vector<uint32_t>& cur, std::vector<uint32_t>& mid) {
+    if (p.pose.size() != words || memcmp(p.pose.data(), cur.data(), 4u * words) == 0) return false;
+    const float kCut = (float)env::INTERP_MODEL_CUT.real_or(400.0f);
+    float dx = u32_as_f32(cur[3]) - u32_as_f32(p.pose[3]);
+    float dy = u32_as_f32(cur[7]) - u32_as_f32(p.pose[7]);
+    float dz = u32_as_f32(cur[11]) - u32_as_f32(p.pose[11]);
+    if (dx * dx + dy * dy + dz * dz > kCut * kCut) return false;
+    const float t = pass_t();
+    mid.resize(words);
+    for (uint32_t m = 0; m < count; m++) {
+        float a[12], b[12], o[12];
+        for (int k = 0; k < 12; k++) {
+            a[k] = u32_as_f32(p.pose[12 * m + k]);
+            b[k] = u32_as_f32(cur[12 * m + k]);
+        }
+        model_blend_mtx(a, b, o, t);
         for (int k = 0; k < 12; k++) mid[12 * m + k] = fw(o[k]);
     }
-    g_mstats.blended++;
-    trace_model("blended", jnt, n, mid.data());
-    {
-        std::lock_guard<std::mutex> lk(g_ubo_mu);
-        g_ubo_done[model]++;
-    }
-    memcpy(ppc_ptr(mtx), mid.data(), 4 * words);
-    f_027F55FC_orig(c);
-    const uint32_t r3 = c->r[3];
-    c->r[3] = model;
-    f_027F5018_orig(c);
-    c->r[3] = r3;
-    memcpy(ppc_ptr(mtx), saved.data(), 4 * words);
+    return true;
 }
 
-extern "C" void hook_027F5018(Cpu* c) {
-    using namespace interp;
-    const uint32_t model = c->r[3];
-    {
-        std::lock_guard<std::mutex> lk(g_ubo_mu);
-        if (!enabled()) g_ubo_done.clear();
-        auto it = g_ubo_done.find(model);
-        if (it != g_ubo_done.end()) {
-            if (--it->second == 0) g_ubo_done.erase(it);
-            return;
-        }
+void model_calc_gpu(Cpu* c) {
+    const uint32_t mdl = c->r[3];
+    uint32_t skel, count, arr;
+    if (!model_skeleton(mdl, skel, count, arr)) {
+        f_024F30DC_orig(c);
+        return;
     }
-    f_027F5018_orig(c);
+    const uint32_t words = 12 * count;
+    auto it = g_models.find(skel);
+    if (it != g_models.end() && it->second.subst_pass == g_passes && it->second.mtx == arr &&
+        it->second.mid.size() == words) {
+        model_write(arr, it->second.mid);
+        if (!ld8(mdl + 0x28 + 0x0D)) model_upload(c, mdl);
+        f_024F30DC_orig(c);
+        return;
+    }
+    std::vector<uint32_t> cur;
+    model_read(arr, words, cur);
+    if (!model_pose_sane(cur.data(), count)) {
+        g_mstats.fresh++;
+        trace_model("fresh", mdl, skel, count, ~0ull, cur.data());
+        f_024F30DC_orig(c);
+        return;
+    }
+    if (record_pass()) {
+        ModelPose& p = g_models[skel];
+        p.mdl = mdl;
+        p.mtx = arr;
+        p.joints = count;
+        p.pass = g_record_passes > 0 ? g_record_passes - 1 : 0;
+        p.pose = cur;
+        p.subst_pass = ~0ull;
+        p.exact.clear();
+        p.mid.clear();
+        trace_model("record", mdl, skel, count, p.pass, cur.data());
+        f_024F30DC_orig(c);
+        return;
+    }
+    if (it == g_models.end() || it->second.mtx != arr || it->second.pose.size() != words) {
+        g_mstats.fresh++;
+        trace_model("fresh", mdl, skel, count, it != g_models.end() ? it->second.pass : ~0ull, cur.data());
+        f_024F30DC_orig(c);
+        return;
+    }
+    ModelPose& p = it->second;
+    if (p.pass + 1 != g_record_passes) {
+        g_mstats.fresh++;
+        trace_model("fresh", mdl, skel, count, p.pass, cur.data());
+        f_024F30DC_orig(c);
+        return;
+    }
+    if (memcmp(p.pose.data(), cur.data(), 4u * words) == 0) {
+        g_mstats.still++;
+        trace_model("still", mdl, skel, count, p.pass, cur.data());
+        f_024F30DC_orig(c);
+        return;
+    }
+    std::vector<uint32_t> mid;
+    if (!model_blend_pose(p, count, words, cur, mid)) {
+        g_mstats.cut++;
+        trace_model("cut", mdl, skel, count, p.pass, cur.data());
+        f_024F30DC_orig(c);
+        return;
+    }
+    p.mdl = mdl;
+    p.exact = cur;
+    p.mid = mid;
+    p.subst_pass = g_passes;
+    model_write(arr, mid);
+    if (!ld8(mdl + 0x28 + 0x0D)) model_upload(c, mdl);
+    f_024F30DC_orig(c);
+    g_mstats.blended++;
+    trace_model("blended", mdl, skel, count, p.pass, mid.data());
 }
+
+bool model_subst_pending() {
+    for (const auto& kv : g_models) {
+        const ModelPose& p = kv.second;
+        if (p.subst_pass != ~0ull && !p.exact.empty() && p.mtx) return true;
+    }
+    return false;
+}
+
+void model_restore_draw(Cpu* c) {
+    for (auto& kv : g_models) {
+        ModelPose& p = kv.second;
+        if (p.subst_pass == ~0ull || p.exact.empty() || !p.mtx) continue;
+        model_write(p.mtx, p.exact);
+        if (p.mdl && !ld8(p.mdl + 0x28 + 0x0D)) model_upload(c, p.mdl);
+        p.subst_pass = ~0ull;
+        p.exact.clear();
+        p.mid.clear();
+    }
+}
+
+void model_clear() {
+    g_models.clear();
+    g_mstats = ModelStats{};
+}
+
+}
+
+static const bool g_models_on = [] {
+    const char* e = env::INTERP_MODELS();
+    return !e || atoi(e) != 0;
+}();
+
+extern "C" void hook_024F30DC(Cpu* c) {
+    using namespace interp;
+    if (g_models_on && enabled() && course_play_active() && !g_exact_step)
+        model_calc_gpu(c);
+    else
+        f_024F30DC_orig(c);
+}
+
 
 namespace interp {
-void fx_pass_start() {}
-void fx_hold_blend(float) {}
-void fx_ss_reset() {}
-
 void ss_reset() {
-    for (auto& p : g_prev) p = Prev{};
-    g_last_step = 0;
-    g_models.clear();
-    {
-        std::lock_guard<std::mutex> lk(g_ubo_mu);
-        g_ubo_done.clear();
-    }
     g_record_passes += 8;
     g_hold_next = false;
     g_phase = 0;
     g_step_n = 1;
-    fx_ss_reset();
+    g_frame_n = 1;
+    g_cam = CamBox{};
+    model_clear();
 }
 
 static const char* const g_env_paced = env::INTERP_PACED();
@@ -551,19 +583,19 @@ float paced_drawn_share() { return paced() && interp_on() ? g_paced_share.load(s
 using pace_clock = std::chrono::steady_clock;
 static pace_clock::time_point g_last_logic{}, g_last_entry{};
 
-static pace_clock::duration g_slept{}, g_logic_avg = std::chrono::milliseconds(16), g_hold_avg = std::chrono::milliseconds(16);
+static pace_clock::duration g_slept{}, g_logic_avg = std::chrono::milliseconds(8), g_hold_avg = std::chrono::milliseconds(8);
 static pace_clock::time_point g_last_hold{};
-static bool g_probe = false;
 constexpr auto kProbeAfter = std::chrono::seconds(10);
 
 static pace_clock::duration vsync_tick() {
-    return std::chrono::nanoseconds(16'683'333LL * 2 / std::max(2, frames_per_step()));
+    const int out = std::max(30, output_fps());
+    return std::chrono::nanoseconds(1'000'000'000LL * 60 / out);
 }
 
 static bool g_pass_was_hold = false;
 static bool g_wait_step = false;
 static uint64_t g_paced_possible = 0, g_paced_holds = 0, g_paced_steps = 0, g_paced_planned = 0;
-constexpr auto kPacedStep = std::chrono::nanoseconds(33'333'333);
+constexpr auto kPacedStep = std::chrono::nanoseconds(16'666'667);
 
 constexpr auto kPacedBudget = std::chrono::nanoseconds(kPacedStep + std::chrono::milliseconds(2));
 
@@ -577,8 +609,7 @@ static void paced_pass_start() {
         const auto pass = now - g_last_entry - g_slept;
         pace_clock::duration& avg = g_pass_was_hold ? g_hold_avg : g_logic_avg;
 
-        avg = g_pass_was_hold && g_probe ? pass : pace_clock::duration(pacing::update_average(avg.count(), pass.count()));
-        if (g_pass_was_hold) g_probe = false;
+        avg = pace_clock::duration(pacing::update_average(avg.count(), pass.count()));
     }
     g_pass_was_hold = g_hold_next;
     g_last_entry = now;
@@ -593,20 +624,22 @@ static void paced_pass_start() {
 }
 
 static int g_step_holds = 0;
+static uint64_t g_plan_steps = 0;
 static int plan_step() {
-    int n = std::max(1, in_between());
-    if (n > 1 && paced() && interp_on()) {
+    g_step_holds = 0;
+    const int frames = interp_on() ? pacing::frames_for_step(output_fps(), g_plan_steps++) : 1;
+    if (frames <= 0) return -1;
+    int n = frames - 1;
+    if (n > 0 && paced() && interp_on()) {
         n = pacing::plan_in_between(n, kPacedBudget.count(), std::chrono::duration_cast<std::chrono::nanoseconds>(g_logic_avg).count(),
                                     std::chrono::duration_cast<std::chrono::nanoseconds>(g_hold_avg).count());
         g_paced_planned += n;
     }
-    if (g_exact_step) n = 1;
-    g_step_holds = 0;
     return n;
 }
 
 static void paced_step_done(int holds) {
-    const int n = std::max(1, in_between());
+    const int n = frames_per_step();
     g_paced_holds += holds;
     g_paced_possible += n;
     g_paced_steps++;
@@ -614,17 +647,17 @@ static void paced_step_done(int holds) {
     recentHolds += holds;
     recentPossible += n;
     if (++recentN == 60) {
-        g_paced_share.store(recentHolds / float(recentPossible), std::memory_order_relaxed);
+        g_paced_share.store(recentHolds / float(std::max(1u, recentPossible)), std::memory_order_relaxed);
         recentHolds = recentPossible = recentN = 0;
     }
     if (g_paced_steps >= 300) {
         if (n > 1)
             LOG("[interp] paced: %.0f%% of in-between frames drawn (in-between pass %.1f ms; %.2f of %d planned per step)",
-                100.0 * g_paced_holds / double(g_paced_possible), std::chrono::duration<double, std::milli>(g_hold_avg).count(),
+                100.0 * g_paced_holds / double(std::max<uint64_t>(1, g_paced_possible)), std::chrono::duration<double, std::milli>(g_hold_avg).count(),
                 g_paced_planned / double(g_paced_steps), n);
         else
-            LOG("[interp] paced: %.0f%% of in-between frames drawn (in-between pass %.1f ms)", 100.0 * g_paced_holds / double(g_paced_possible),
-                std::chrono::duration<double, std::milli>(g_hold_avg).count());
+            LOG("[interp] paced: %.0f%% of in-between frames drawn (in-between pass %.1f ms)",
+                100.0 * g_paced_holds / double(std::max<uint64_t>(1, g_paced_possible)), std::chrono::duration<double, std::milli>(g_hold_avg).count());
         g_paced_possible = g_paced_holds = g_paced_steps = g_paced_planned = 0;
     }
 }
@@ -650,7 +683,6 @@ static void after_pass(int phase) {
     switch (pacing::next_pass(phase, g_step_n, elapsed, pass, kPacedBudget.count())) {
     case pacing::Next::kHold:
         g_hold_next = true;
-        g_probe = probe;
         g_last_hold = now;
         break;
     case pacing::Next::kRecord:
@@ -702,181 +734,100 @@ std::string pass_cpu_report() {
 }
 }
 
-extern "C" void hook_0203593C(Cpu* c) {
+extern "C" void hook_029C52CC(Cpu* c) {
     using namespace interp;
-    fx_pass_start();
-    ss::service(c);
-    g_passes++;
-
-    static uint64_t passes = 0;
-    static const uint64_t at = env::INTERP_AT_STEP.u64_or(0);
-    if (at && ++passes == at) set_enabled(true);
-    paced_pass_start();
-    if (!enabled() || !g_hold_next) {
-        g_logic_steps++;
-    }
     if (!enabled()) {
-        g_hold_next = false;
-        g_phase = 0;
-        g_step_n = 1;
-        {
-            PassTimer timer(0);
-            f_0203593C_orig(c);
+        static const uint64_t at = env::INTERP_AT_STEP.u64_or(0);
+        static uint64_t passes = 0;
+        if (at && ++passes == at) set_enabled(true);
+        if (!enabled()) {
+            g_hold_next = false;
+            g_hold = false;
+            g_logic_pass = false;
+            g_phase = 0;
+            g_step_n = 1;
+            g_frame_n = 1;
+            g_granule.store(4, std::memory_order_relaxed);
+            g_pass_valid = false;
+            f_029C52CC_orig(c);
+            return;
         }
-        static unsigned stats_steps = 0;
-        if (pass_stats() && ++stats_steps % 300 == 0) LOG("[interp]%s", pass_cpu_report().c_str());
-        return;
     }
-    static uint64_t frames = 0;
-    frames++;
-    {
-        std::lock_guard<std::mutex> lk(g_ubo_mu);
-        g_ubo_done.clear();
-    }
+    const uint32_t self = c->r[3];
+    if (g_pass_valid) after_pass(g_hold ? g_phase : 0);
+    g_pass_valid = true;
+    g_passes++;
+    paced_pass_start();
     if (g_hold_next) {
-
         g_phase++;
         g_hold = true;
-        g_hold_frame = true;
-        PassTimer timer(record_pass() ? 2 : 1);
-        if (record_pass()) {
-            g_record_passes++;
-        } else {
-            fx_hold_blend(pass_t());
-        }
-        f_0203593C_orig(c);
-        g_hold_frame = false;
-        after_pass(g_phase);
-        g_hold = false;
+        g_logic_pass = false;
+        g_granule.store(pacing::granule_quarter(g_frame_n, g_phase), std::memory_order_relaxed);
+        if (record_pass()) g_record_passes++;
+        apply_hold_camera(c);
+        c->r[3] = self;
+        f_029C5104(c);
         return;
     }
+    g_hold = false;
+    g_logic_pass = true;
     g_phase = 0;
     g_step_n = plan_step();
+    g_frame_n = std::max(0, g_step_n + 1);
+    g_granule.store(pacing::granule_quarter(std::max(1, g_frame_n), 0), std::memory_order_relaxed);
+    g_logic_steps++;
     {
         PassTimer timer(0);
-        f_0203593C_orig(c);
+        f_029C52CC_orig(c);
     }
-    after_pass(0);
+    model_stats_report();
     static uint64_t n = 0, t0 = timebase::now(), f0 = 0;
     if (++n % 300 == 0) {
         uint64_t t = timebase::now();
-        LOG("[interp] %.1f logic steps/s (%s, %.2f frames per step); models per step: %.1f blended, %.1f new, %.1f cut%s",
-            300.0 * timebase::kTicksPerSec / (double)(t - t0), mode_name(), (frames - f0) / 300.0, g_mstats.blended / 300.0,
-            g_mstats.fresh / 300.0, g_mstats.cut / 300.0, pass_cpu_report().c_str());
+        LOG("[interp] %.1f logic steps/s (%s, %.2f frames per step)%s", 300.0 * timebase::kTicksPerSec / (double)(t - t0), mode_name(),
+            (g_passes - f0) / 300.0, pass_cpu_report().c_str());
         t0 = t;
-        f0 = frames;
-        g_mstats.blended = g_mstats.fresh = g_mstats.cut = 0;
-        for (auto it = g_models.begin(); it != g_models.end();)
-            it = it->second.pass + 2 < g_record_passes ? g_models.erase(it) : std::next(it);
+        f0 = g_passes;
     }
 }
 
-extern "C" void hook_025F172C(Cpu* c) {
+extern "C" void hook_029C4FE4(Cpu* c) {
     using namespace interp;
-    if (g_hold_frame) {
-        g_blend_draw = blended_hold();
-        f_025D42EC(c);
-        g_blend_draw = false;
+    if (enabled() && !g_hold && g_frame_n <= 0) return;
+    f_029C4FE4_orig(c);
+    if (!g_models_on || !enabled() || !course_play_active() || g_exact_step || !model_subst_pending()) return;
+    imp_gx2_GX2DrawDone(c);
+    model_restore_draw(c);
+}
+
+extern "C" void hook_024FBF6C(Cpu* c) {
+    using namespace interp;
+    const uint32_t mgr = c->r[3], view = c->r[4], proj = c->r[6];
+    f_024FBF6C_orig(c);
+    if (!enabled() || !course_play_active()) return;
+    const uint32_t r = renderer_instance();
+    if (!r || proj != r + kProjection) return;
+    float cur[4];
+    if (!read_box(r, cur)) return;
+    for (int i = 0; i < 4; i++) g_cam_cur[i] = cur[i];
+    g_cam_cur_valid = true;
+    remember_view(mgr, view, proj);
+    const bool blend = g_cam.valid && !g_exact_step && g_cam.step + 1 == g_logic_steps && !cam_cut(g_cam.v, cur);
+    if (!blend) {
+        g_cam.valid = true;
+        g_cam.step = g_logic_steps;
+        for (int i = 0; i < 4; i++) g_cam.v[i] = cur[i];
+        cam_trace("exact", cur, cur, cur);
         return;
     }
-    g_logic_pass = enabled() && !g_exact_step;
-    g_blend_draw = g_logic_pass;
-    f_025F172C_orig(c);
-    g_logic_pass = false;
-    g_blend_draw = false;
+    float mid[4];
+    const float t = pass_t();
+    for (int i = 0; i < 4; i++) mid[i] = pacing::lerp_f(g_cam.v[i], cur[i], t);
+    apply_box(c, r, mid);
+    write_view_proj(c, mgr, view, proj);
+    apply_box(c, r, cur);
+    cam_trace("blend", g_cam.v, cur, mid);
 }
-
-static Cpu* g_hold_child_cpu = nullptr;
-static bool called_from_frame_function() {
-
-    static const uint32_t lo = GC(0x0203593C), hi = GC(0x02035A78);
-    uint32_t lr = g_hold_child_cpu ? g_hold_child_cpu->lr : 0;
-    return lr > lo && lr < hi;
-}
-static bool hold_skip_child(int i) {
-
-    static const uint32_t run = (uint32_t)env::HOLD_RUN.ul_or(0x7FCC, 0) | 1;
-    return interp::g_hold_frame && !(run & (1u << i)) && called_from_frame_function();
-}
-extern "C" void hook_02032FE8(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(0)) f_02032FE8_orig(c); }
-extern "C" void hook_020357CC(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(1)) f_020357CC_orig(c); }
-extern "C" void hook_025EE048(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(2)) f_025EE048_orig(c); }
-extern "C" void hook_02756170(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(3)) f_02756170_orig(c); }
-extern "C" void hook_02617AF4(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(4)) f_02617AF4_orig(c); }
-extern "C" void hook_02614F74(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(5)) f_02614F74_orig(c); }
-extern "C" void hook_0273841C(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(6)) f_0273841C_orig(c); }
-extern "C" void hook_0270870C(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(7)) f_0270870C_orig(c); }
-namespace interp { void light_trace_add(const char*, ...) {} }
-
-namespace {
-const uint32_t kSetLightTarget = GD(0x101E8EC8), kSetLightEfTarget = GD(0x101E8ECC), kLightStatusPt = GD(0x101E8CC8);
-struct SetLightState {
-    uint64_t step = ~0ull;
-    uint32_t target, ef_target, status, pos[3];
-} g_setlight;
-}
-extern "C" void hook_0255E854(Cpu* c) {
-    g_hold_child_cpu = c;
-    if (hold_skip_child(8)) return;
-    if (interp::enabled() && called_from_frame_function()) {
-        SetLightState& s = g_setlight;
-        uint32_t st = ld32(kLightStatusPt);
-        if (!interp::g_hold_frame) {
-            s.step = interp::g_logic_steps;
-            s.target = ld32(kSetLightTarget);
-            s.ef_target = ld32(kSetLightEfTarget);
-            s.status = st;
-            for (int i = 0; i < 3; i++) s.pos[i] = st ? ld32(st + 4 * i) : 0;
-        } else if (s.step == interp::g_logic_steps && s.status == st) {
-            st32(kSetLightTarget, s.target);
-            st32(kSetLightEfTarget, s.ef_target);
-            for (int i = 0; i < 3 && st; i++) st32(st + 4 * i, s.pos[i]);
-        }
-    }
-
-    f_0255E854_orig(c);
-    uint32_t st = ld32(GD(0x101E8CC8));
-    interp::light_trace_add(" setLight t%.2f r%u p(%.1f,%.1f,%.1f)", ldf32(GD(0x101E8EC8)), st ? ld8(st + 0x18) : 0, st ? ldf32(st) : 0.0,
-                            st ? ldf32(st + 4) : 0.0, st ? ldf32(st + 8) : 0.0);
-}
-extern "C" void hook_02738438(Cpu* c) {
-    g_hold_child_cpu = c;
-    if (hold_skip_child(9)) return;
-    uint32_t o = c->r[3];
-    interp::light_trace_add(" hdl[%08X %08X %08X %08X]", ld32(o + 0x10), ld32(o + 0x14), ld32(o + 0x18), ld32(o + 0x1C));
-    f_02738438_orig(c);
-}
-extern "C" void hook_0278FEBC(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(10)) f_0278FEBC_orig(c); }
-extern "C" void hook_027199C0(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(11)) f_027199C0_orig(c); }
-extern "C" void hook_02618940(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(12)) f_02618940_orig(c); }
-extern "C" void hook_02728A74(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(13)) f_02728A74_orig(c); }
-extern "C" void hook_02039834(Cpu* c) { g_hold_child_cpu = c; if (!hold_skip_child(14)) f_02039834_orig(c); }
-
-static bool skip(int bit) {
-    static const int run = env::INTERP_RUN.integer_or(0);
-    return interp::g_hold && !(run & bit);
-}
-static bool g_in_execute = false;
-extern "C" void hook_025DE788(Cpu* c) {
-    if (skip(1)) return;
-    interp::record_executed_step();
-    g_in_execute = true;
-    f_025DE788_orig(c);
-    if (!interp::g_hold_frame) {
-        mods::lua_sdk::set_cpu(c);
-        mods::packages::frame(interp::g_logic_steps);
-        agent_ctl::guest_service();
-    }
-    g_in_execute = false;
-}
-extern "C" void hook_025DE024(Cpu* c) { if (!skip(2)) f_025DE024_orig(c); }
-extern "C" void hook_025E0EE4(Cpu* c) { if (skip(4)) c->r[3] = 1; else f_025E0EE4_orig(c); }
-extern "C" void hook_025DDCEC(Cpu* c) { if (skip(8)) c->r[3] = 1; else f_025DDCEC_orig(c); }
-extern "C" void hook_025D42C4(Cpu* c) { if (!skip(16)) f_025D42C4_orig(c); }
-extern "C" void hook_0200E6EC(Cpu* c) { if (!skip(32)) f_0200E6EC_orig(c); }
-
-extern "C" void f_02715310_orig(Cpu* c);
-extern "C" void hook_02715310(Cpu* c) { if (!skip(64)) f_02715310_orig(c); }
 
 namespace gx2 { uint64_t swap_count(); }
 
@@ -959,9 +910,6 @@ bool set_player_mode(int player, int mode) {
 
 bool logic_pass() { return g_logic_pass; }
 
-bool blend_draw() { return g_blend_draw; }
-bool in_execute() { return g_in_execute; }
-
 uint64_t hold_pass_count() { return g_record_passes; }
 uint64_t pass_count() { return g_passes; }
 const char* phase_name() { return !enabled() ? "interp off" : g_hold ? "IN-BETWEEN" : g_logic_pass ? "logic" : "other"; }
@@ -970,84 +918,4 @@ bool repeat_input() {
     static const bool off = env::INTERP_NO_REPEAT() != nullptr;
     return enabled() && g_hold_next && !off;
 }
-}
-
-static void se_trace(int fn, Cpu* c) {
-    static FILE* f = env::SE_TRACE() ? fopen(env::SE_TRACE(), "w") : nullptr;
-    if (!f || interp::g_hold) return;
-    fprintf(f, "%llu %d %d %08X %08X\n", (unsigned long long)interp::g_logic_steps, interp::g_hold ? 0 : 1, fn, c->r[4], c->lr);
-    fflush(f);
-}
-static void se_stat(int fn) {
-    static const bool on = env::SE_STATS() != nullptr;
-    if (!on) return;
-    static uint32_t n[7][4];
-    int ph = !interp::enabled() ? 0 : interp::g_hold ? 1 : interp::g_logic_pass ? 2 : 3;
-    n[fn][ph]++;
-    static uint64_t t0 = timebase::now();
-    uint64_t t = timebase::now();
-    if (t - t0 > 5 * timebase::kTicksPerSec) {
-        static const char* fns[7] = {"core", "w1988", "w19CC", "w1A04", "w1A40", "w1A7C", "w1AA4"};
-        char buf[700];
-        int k = snprintf(buf, sizeof buf, "[se] starts per 5 s [off/in-between/logic/other]:");
-        for (int f = 0; f < 7; f++)
-            if (n[f][0] + n[f][1] + n[f][2] + n[f][3])
-                k += snprintf(buf + k, sizeof buf - k, " %s=%u/%u/%u/%u", fns[f], n[f][0], n[f][1], n[f][2], n[f][3]);
-        LOG("%s", buf);
-        memset(n, 0, sizeof n);
-        t0 = t;
-    }
-}
-extern "C" void hook_0201EBA0(Cpu* c) { se_stat(0); se_trace(0, c); if (interp::g_hold) { c->r[3] = 0; return; } f_0201EBA0_orig(c); }
-extern "C" void hook_025E1988(Cpu* c) { se_stat(1); se_trace(1, c); if (interp::g_hold) { c->r[3] = 0; return; } f_025E1988_orig(c); }
-extern "C" void hook_025E19CC(Cpu* c) { se_stat(2); se_trace(2, c); if (interp::g_hold) { c->r[3] = 0; return; } f_025E19CC_orig(c); }
-extern "C" void hook_025E1A04(Cpu* c) { se_stat(3); se_trace(3, c); if (interp::g_hold) { c->r[3] = 0; return; } f_025E1A04_orig(c); }
-extern "C" void hook_025E1A40(Cpu* c) { se_stat(4); se_trace(4, c); if (interp::g_hold) { c->r[3] = 0; return; } f_025E1A40_orig(c); }
-extern "C" void hook_025E1A7C(Cpu* c) { se_stat(5); se_trace(5, c); if (interp::g_hold) { c->r[3] = 0; return; } f_025E1A7C_orig(c); }
-extern "C" void hook_025E1AA4(Cpu* c) { se_stat(6); se_trace(6, c); if (interp::g_hold) { c->r[3] = 0; return; } f_025E1AA4_orig(c); }
-
-extern "C" void hook_025E1B44(Cpu* c) {
-    if (interp::g_cam_blended) return;
-    if (!interp::enabled()) {
-        f_025E1B44_orig(c);
-        return;
-    }
-    const uint32_t eye = mem::fixed_slot(mem::kFixInterpEye), mtx = mem::fixed_slot(mem::kFixInterpMtx);
-    for (int i = 0; i < 3; i++) st32(eye + 4 * i, ld32(c->r[3] + 4 * i));
-    for (int i = 0; i < 12; i++) st32(mtx + 4 * i, ld32(c->r[4] + 4 * i));
-    c->r[3] = eye;
-    c->r[4] = mtx;
-    f_025E1B44_orig(c);
-}
-extern "C" void hook_02027754(Cpu* c) { if (!interp::g_cam_blended) f_02027754_orig(c); }
-
-extern "C" void hook_020315CC(Cpu* c) {
-    using namespace interp;
-    static uint64_t done_for = ~0ull;
-    if (enabled()) {
-        if (done_for == g_logic_steps) return;
-        done_for = g_logic_steps;
-    }
-    f_020315CC_orig(c);
-}
-
-extern "C" void f_02574144_orig(Cpu* c);
-extern "C" void hook_02574144(Cpu* c) {
-    using namespace interp;
-    if (!enabled()) {
-        f_02574144_orig(c);
-        return;
-    }
-    CamState exact[4];
-    bool swapped[4] = {};
-    for (int i = 0; i < 4; i++) {
-        Prev& p = g_prev[i];
-        if (!p.cam || p.drawn_pass != g_passes) continue;
-        exact[i] = read_cam(p.cam);
-        write_cam(p.cam, p.drawn);
-        swapped[i] = true;
-    }
-    f_02574144_orig(c);
-    for (int i = 3; i >= 0; i--)
-        if (swapped[i]) write_cam(g_prev[i].cam, exact[i]);
 }

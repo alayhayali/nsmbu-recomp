@@ -18,3 +18,8 @@
 0252F900  # course HUD: AreaTask is null while a course change replaces the area
 025CF020  # course HUD helper: AreaTask is null during course teardown
 02931C1C  # PlayerObject::setItem: honor the mod pickup lock
+029C52CC  # ApplicationFramework::procCalc_: start a frame; an in-between pass skips the task-tree logic
+024FBF6C  # RenderObjRenderMgr::calcView: bake the in-between camera projection for the draw
+029C4FE4  # ApplicationFramework::procDraw_: a 30 fps step draws no frame
+
+024F30DC  # ModelG3d::calcGPU: capture the model world pose and draw the in-between pass blended

@@ -203,6 +203,14 @@ bool page_span(uint32_t addr, uint32_t size, uint32_t& shift, uint32_t& firstPag
     return true;
 }
 
+bool readable(uint32_t addr, uint32_t size) {
+    uint64_t first, last;
+    if (!page_range(addr, size, first, last)) return true;
+    for (uint64_t p = first; p <= last; p++)
+        if (g_flags[p].load(std::memory_order_acquire) & kProt) return false;
+    return true;
+}
+
 void host_write_begin(uint32_t addr, uint32_t size) {
     uint64_t first, last;
     if (!page_range(addr, size, first, last)) return;

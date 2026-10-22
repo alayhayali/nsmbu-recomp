@@ -31,3 +31,9 @@ What a variable does stays in the feature doc that already describes it (`docs/a
 This file is how a variable is defined in code, not a catalog of gameplay effects.
 
 The host test `env` in `runtime/tools/env_test.cpp` covers `.name()`, a read after `setenv`, and `env::unset`.
+
+## Frame interpolation
+
+`NSMBU_INTERP_MODELS` opts out of per-model pose blending when frame interpolation is on.
+Unset or any non-zero value keeps model interpolation enabled; set `0` to disable it.
+Other interpolation variables (`NSMBU_INTERP`, `NSMBU_INTERP_FPS`, `NSMBU_INTERP_PACED`, and the rest in `env.h`) are listed only in `env.h` unless a feature doc describes them.

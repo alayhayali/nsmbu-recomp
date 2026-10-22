@@ -17,7 +17,6 @@ Only stop on failure without retagging when the user explicitly says to watch on
 1. Confirm the version string with the user if they did not name one (example `0.4.0`).
    The git tag is `v` plus that string (`v0.4.0`).
    The CHANGELOG heading is Keep a Changelog form without `v` (`## [0.4.0] - YYYY-MM-DD`).
-   If the user asks for a prerelease, note that and mark the GitHub Release with `gh release edit vX.Y.Z --prerelease` after publish (step 7).
 2. On a clean intent to release from current work:
    - Follow the `changelog` skill to clean and order Unreleased, then move that block under a new `## [X.Y.Z] - YYYY-MM-DD` heading (ISO date).
    - Leave `## [Unreleased]` empty above it.
@@ -52,14 +51,13 @@ Only stop on failure without retagging when the user explicitly says to watch on
    Watch it: `gh run watch <id> --exit-status`.
 7. On success: report the run URL and the GitHub Release URL (`gh release view vX.Y.Z --json url -q .url`).
    Confirm the release is not a draft (`gh release view vX.Y.Z --json isDraft -q .isDraft` is `false`).
-   If the user asked for a prerelease: `gh release edit vX.Y.Z --prerelease`, then confirm `isPrerelease` is `true`.
 8. On failure:
    - Report the run URL, which jobs failed, and the failing test or step from `gh run view <id> --log-failed`.
    - Fix the failure, commit, push `main`, retag (`git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, `git tag vX.Y.Z`, `git push origin vX.Y.Z`), and return to step 6.
    - Repeat until the run succeeds and the release is published.
    - Only skip retagging when the user explicitly asked to watch or report without fixing.
 
-Done when local verify passed, the tag is on `origin`, the release workflow conclusion is `success`, the GitHub Release exists and is not a draft, and prerelease was applied when requested.
+Done when local verify passed, the tag is on `origin`, the release workflow conclusion is `success`, and the GitHub Release exists and is not a draft.
 
 ## Rules
 
