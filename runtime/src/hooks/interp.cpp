@@ -69,8 +69,6 @@ void set_present_vsync(bool on) {
 }
 static const char* fps_name(int f) {
     switch (valid_fps(f)) {
-    case 30: return "30 fps";
-    case 90: return "90 fps";
     case 120: return "120 fps";
     case 144: return "144 fps";
     case 165: return "165 fps";
@@ -126,6 +124,8 @@ int g_step_n = 1;
 int g_frame_n = 1;
 int g_phase = 0;
 uint64_t g_record_passes = 0;
+uint64_t g_present_i = 0;
+float g_blend_t = 1.f;
 
 bool g_exact_step = false;
 
@@ -219,10 +219,19 @@ int frames_per_step() {
     return std::max(0, g_frame_n);
 }
 
+static void schedule_present() {
+    const int rate = output_fps();
+    if (!enabled() || rate <= 0 || rate % 60 == 0) {
+        g_blend_t = !enabled() || g_frame_n <= 1 ? 1.f : pacing::pass_fraction(g_hold ? g_phase : 0, g_step_n, g_exact_step);
+        return;
+    }
+    g_present_i++;
+    g_blend_t = g_exact_step || g_logic_steps == 0 ? 1.f : pacing::even_fraction(g_present_i, g_logic_steps, rate);
+}
+
 float pass_t() {
     if (!enabled()) return 1.0f;
-    if (g_frame_n <= 1) return 1.0f;
-    return pacing::pass_fraction(g_hold ? g_phase : 0, g_step_n, g_exact_step);
+    return g_blend_t;
 }
 
 bool record_pass() { return g_hold && g_phase >= g_step_n; }
@@ -556,6 +565,9 @@ void ss_reset() {
     g_frame_n = 1;
     g_cam = CamBox{};
     model_clear();
+    g_blend_t = 1.f;
+    const int rate = output_fps();
+    g_present_i = rate > 0 ? g_logic_steps * uint64_t(rate) / 60u : 0;
 }
 
 static const char* const g_env_paced = env::INTERP_PACED();
@@ -566,14 +578,20 @@ static std::atomic<bool> g_paced{[] {
     return g_env_paced && atoi(g_env_paced) != 0;
 #endif
 }()};
-static std::atomic<bool> g_paced_hi{!g_env_paced || atoi(g_env_paced) != 0};
-static std::atomic<bool>& paced_flag(int f) { return f > 60 ? g_paced_hi : g_paced; }
-static bool paced() { return paced_flag(fps()).load(std::memory_order_relaxed); }
+static bool paced() {
+    const int f = fps();
+    if (f > 60) return true;
+    return g_paced.load(std::memory_order_relaxed);
+}
 bool paced_interpolation() { return paced(); }
-bool paced_interpolation_at(int f) { return paced_flag(f).load(std::memory_order_relaxed); }
+bool paced_interpolation_at(int f) {
+    if (f > 60) return true;
+    return g_paced.load(std::memory_order_relaxed);
+}
 void set_paced_interpolation_at(int f, bool on) {
-    if (paced_flag(f).exchange(on) != on)
-        LOG("[interp] paced interpolation at %s %s", f > 60 ? "120/240 fps" : "60 fps", on ? "on (keeps the game's speed)" : "off");
+    if (f > 60) return;
+    if (g_paced.exchange(on) != on)
+        LOG("[interp] paced interpolation at 60 fps %s", on ? "on (keeps the game's speed)" : "off");
 }
 void set_paced_interpolation(bool on) { set_paced_interpolation_at(fps(), on); }
 
@@ -581,18 +599,18 @@ static std::atomic<float> g_paced_share{-1};
 float paced_drawn_share() { return paced() && interp_on() ? g_paced_share.load(std::memory_order_relaxed) : -1; }
 
 using pace_clock = std::chrono::steady_clock;
-static pace_clock::time_point g_last_logic{}, g_last_entry{};
+static pace_clock::time_point g_last_logic{}, g_work_start{};
+static int64_t g_step_work = 0;
 
-static pace_clock::duration g_slept{}, g_logic_avg = std::chrono::milliseconds(8), g_hold_avg = std::chrono::milliseconds(8);
+static pace_clock::duration g_logic_avg = std::chrono::milliseconds(8), g_hold_avg = std::chrono::milliseconds(8);
 static pace_clock::time_point g_last_hold{};
 constexpr auto kProbeAfter = std::chrono::seconds(10);
 
 static pace_clock::duration vsync_tick() {
     const int out = std::max(30, output_fps());
-    return std::chrono::nanoseconds(1'000'000'000LL * 60 / out);
+    return std::chrono::nanoseconds(16'683'333LL * 60 / out);
 }
 
-static bool g_pass_was_hold = false;
 static bool g_wait_step = false;
 static uint64_t g_paced_possible = 0, g_paced_holds = 0, g_paced_steps = 0, g_paced_planned = 0;
 constexpr auto kPacedStep = std::chrono::nanoseconds(16'666'667);
@@ -604,23 +622,25 @@ static void paced_pass_start() {
     if (!paced() || !interp_on()) { g_exact_step = false; previousRecord = false; return; }
     if (!g_hold_next) g_exact_step = !previousRecord;
     previousRecord = g_hold_next && g_phase + 1 >= g_step_n;
-    const auto now = pace_clock::now();
-    if (g_last_entry != pace_clock::time_point{}) {
-        const auto pass = now - g_last_entry - g_slept;
-        pace_clock::duration& avg = g_pass_was_hold ? g_hold_avg : g_logic_avg;
-
-        avg = pace_clock::duration(pacing::update_average(avg.count(), pass.count()));
-    }
-    g_pass_was_hold = g_hold_next;
-    g_last_entry = now;
-    g_slept = {};
     if (g_hold_next) return;
+    const auto now = pace_clock::now();
     if (g_wait_step && now < g_last_logic + kPacedStep) {
         threads::park_sleep_until(g_last_logic + kPacedStep);
-        g_slept = pace_clock::now() - now;
     }
     g_wait_step = false;
     g_last_logic = pace_clock::now();
+}
+
+static void work_begin() { g_work_start = pace_clock::now(); }
+
+static void work_end() {
+    if (g_work_start == pace_clock::time_point{}) return;
+    const int64_t sample = std::chrono::duration_cast<std::chrono::nanoseconds>(pace_clock::now() - g_work_start).count();
+    g_work_start = {};
+    g_step_work += sample;
+    if (!paced() || !interp_on()) return;
+    pace_clock::duration& avg = g_hold ? g_hold_avg : g_logic_avg;
+    avg = pace_clock::duration(pacing::update_average(avg.count(), sample));
 }
 
 static int g_step_holds = 0;
@@ -631,8 +651,11 @@ static int plan_step() {
     if (frames <= 0) return -1;
     int n = frames - 1;
     if (n > 0 && paced() && interp_on()) {
-        n = pacing::plan_in_between(n, kPacedBudget.count(), std::chrono::duration_cast<std::chrono::nanoseconds>(g_logic_avg).count(),
-                                    std::chrono::duration_cast<std::chrono::nanoseconds>(g_hold_avg).count());
+        const int64_t logic = std::chrono::duration_cast<std::chrono::nanoseconds>(g_logic_avg).count();
+        const int64_t hold = std::chrono::duration_cast<std::chrono::nanoseconds>(g_hold_avg).count();
+        const int64_t budget = kPacedBudget.count();
+        n = pacing::plan_in_between(n, budget, logic, hold);
+        if (pacing::next_pass(0, n, logic, hold, budget) != pacing::Next::kHold) n = 0;
         g_paced_planned += n;
     }
     return n;
@@ -676,11 +699,9 @@ static void after_pass(int phase) {
     if (!pacing) { g_hold_next = true; g_wait_step = false; return; }
     if (phase > 0) g_last_hold = pace_clock::now();
     const auto now = pace_clock::now();
-    const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - g_last_logic).count();
-
     const bool probe = phase == 0 && now - g_last_hold >= kProbeAfter;
     const auto pass = std::chrono::duration_cast<std::chrono::nanoseconds>(probe ? vsync_tick() : g_hold_avg).count();
-    switch (pacing::next_pass(phase, g_step_n, elapsed, pass, kPacedBudget.count())) {
+    switch (pacing::next_pass(phase, g_step_n, g_step_work, pass, kPacedBudget.count())) {
     case pacing::Next::kHold:
         g_hold_next = true;
         g_last_hold = now;
@@ -748,6 +769,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
             g_step_n = 1;
             g_frame_n = 1;
             g_granule.store(4, std::memory_order_relaxed);
+            g_step_work = 0;
             g_pass_valid = false;
             f_029C52CC_orig(c);
             return;
@@ -763,22 +785,30 @@ extern "C" void hook_029C52CC(Cpu* c) {
         g_hold = true;
         g_logic_pass = false;
         g_granule.store(pacing::granule_quarter(g_frame_n, g_phase), std::memory_order_relaxed);
+        schedule_present();
         if (record_pass()) g_record_passes++;
         apply_hold_camera(c);
         c->r[3] = self;
+        work_begin();
         f_029C5104(c);
+        work_end();
         return;
     }
     g_hold = false;
     g_logic_pass = true;
     g_phase = 0;
+    g_step_work = 0;
     g_step_n = plan_step();
     g_frame_n = std::max(0, g_step_n + 1);
-    g_granule.store(pacing::granule_quarter(std::max(1, g_frame_n), 0), std::memory_order_relaxed);
+    const int shown = g_step_n > 0 ? std::max(1, g_frame_n) : 1;
+    g_granule.store(pacing::granule_quarter(shown, 0), std::memory_order_relaxed);
     g_logic_steps++;
+    schedule_present();
     {
         PassTimer timer(0);
+        work_begin();
         f_029C52CC_orig(c);
+        work_end();
     }
     model_stats_report();
     static uint64_t n = 0, t0 = timebase::now(), f0 = 0;

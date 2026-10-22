@@ -718,6 +718,11 @@ static bool g_capped_vsync_last_wake_valid = false;
 static uint64_t g_paced_vsync = 0;
 static bool g_paced_vsync_valid = false;
 static std::chrono::nanoseconds capped_vsync_wait_period(uint64_t granule) {
+    if (interp::mode() == 1) {
+        const int fps = interp::output_fps();
+        if (fps > 0 && fps % 60 != 0)
+            return std::chrono::nanoseconds(1'000'000'000LL / fps);
+    }
     return std::chrono::nanoseconds(uint64_t(vsync_period_ns()) * granule / kTicksPerVsync);
 }
 static bool capped_vsync_same_frame(uint64_t granule, std::chrono::steady_clock::time_point now) {

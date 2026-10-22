@@ -602,9 +602,9 @@ void tab_graphics() {
             if (ImGui::Button("Restart now")) hostui::post([] { render::restart(); });
         }
     }
-    heading("Frame rate");
+    heading("Frame rate (experimental)");
     int m = interp::mode(), f = interp::fps();
-    static const int rates[] = {30, 60, 90, 120, 144, 165, 240};
+    static const int rates[] = {60, 120, 144, 165, 240};
     for (int r : rates) {
         if (r != rates[0]) ImGui::SameLine();
         char label[16];
@@ -615,8 +615,8 @@ void tab_graphics() {
             else { interp::set_fps(r); interp::set_mode(1); }
         });
     }
-    help("60 fps is the game rate. 30 fps draws one frame every other step: the game logic still runs at\n"
-         "60 steps a second. 90, 120, 144, 165 and 240 fps add in-between frames for the steps in between.\n"
+    help("60 fps is the game rate. 120, 144, 165 and 240 fps add in-between frames for the steps in between.\n"
+         "The game logic still runs at 60 steps a second.\n"
          "The display shows at most its refresh rate. Hotkeys: 6 = 60 fps, 7 = cycle rates,\n"
          "9 = toggle 60 fps and the last non-60 rate.");
 
@@ -631,26 +631,12 @@ void tab_graphics() {
     } else if (m == 1 && f > 60) {
         note("Display refresh rate unknown: %d fps are drawn; frames beyond the display's rate are not shown.", f);
     }
-    if (m == 1 && f > 60) {
-        bool paced;
-        if (check("Keep game speed (recommended)", interp::paced_interpolation(), &paced, !env::INTERP_PACED()))
-            post_changed([paced] { interp::set_paced_interpolation(paced); });
-        help("When the computer cannot draw all frames, skip in-between frames instead of slowing the\n"
-             "whole game down. The performance overlay shows how many are drawn.\n"
-             "Off: every logic step waits for all of its frames, so if the frame target is not reached\n"
-             "(e.g. 120/165/240 fps at a high internal resolution) the whole game runs in slow motion.\n"
-             "Saved for 120, 165 and 240 fps.");
-        if (!interp::paced_interpolation())
-            note("Off: if this computer cannot reach %d fps, the whole game slows down (the performance\n"
-                 "overlay then shows fewer than 30 logic steps/s). Turn it on to keep the game's speed.", interp::fps());
-    }
-
     bool unc;
     if (check("Uncapped (debug: the game runs too fast)", gx2::uncapped(), &unc)) hostui::post([unc] { gx2::set_uncapped(unc); });
     help("Debug only, to see how many frames a second this computer can draw: no frame limit and no\n"
          "vsync. The game counts frames, so it runs faster than normal. The frame rate is in the window\n"
-         "title and the performance overlay. Not saved. (With a higher frame rate and Keep game speed\n"
-         "on, the game logic still keeps 60 steps a second.)");
+         "title and the performance overlay. Not saved. (At frame targets above 60 fps the game logic\n"
+         "still keeps 60 steps a second.)");
 
     heading("Internal resolution");
     static const float scales[] = {1.0f, 1.5f, 2.0f, 3.0f};
@@ -1417,14 +1403,6 @@ void perf_window(bool menu_open) {
     if (ImGui::Begin("##perf", nullptr, fl)) {
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
         ImGui::Text("%.0f fps   %.1f ms (worst %.1f)", U.fps, sum / 120.0f, worst);
-        {
-
-            static double t0 = 0; static uint64_t s0 = 0; static double rate = 30;
-            if (t0 == 0 || t - t0 < 0) { t0 = t; s0 = interp::logic_steps(); }
-            else if (t - t0 >= 2.0) { rate = (double)(interp::logic_steps() - s0) / (t - t0); t0 = t; s0 = interp::logic_steps(); }
-            if (interp::mode() == 1 && !interp::paced_interpolation() && rate > 1 && rate < 26)
-                ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "Slow motion: %.0f of 30 logic steps/s. Turn on Keep game speed", rate);
-        }
 #ifdef __ANDROID__
         static AndroidTelemetry telemetry;
         static double next_read = 0;

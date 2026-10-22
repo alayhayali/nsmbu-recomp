@@ -39,8 +39,16 @@ inline float pass_fraction(int phase, int n, bool exact) {
     return phase < n ? float(phase + 1) / float(n + 1) : 1.0f;
 }
 
+inline float even_fraction(uint64_t present, uint64_t logic_step, int fps) {
+    if (fps <= 0 || logic_step == 0 || present == 0) return 1.f;
+    const double t = double(present) * 60.0 / double(fps) - double(logic_step - 1);
+    if (t <= 0.0) return 0.f;
+    if (t >= 1.0) return 1.f;
+    return float(t);
+}
+
 inline const int* fps_ladder(int& n) {
-    static const int rates[] = {30, 60, 90, 120, 144, 165, 240};
+    static const int rates[] = {60, 120, 144, 165, 240};
     n = int(sizeof rates / sizeof rates[0]);
     return rates;
 }
