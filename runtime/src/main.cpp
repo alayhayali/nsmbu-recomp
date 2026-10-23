@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #endif
+#include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include "guest_addr.h"
@@ -376,6 +378,8 @@ static bool valid_open_pack(const char* s) {
 }
 
 int main(int argc, char** argv) {
+    if (const char* warm = env::SHADER_WARM())
+        if (*warm && std::strcmp(warm, "0")) std::setvbuf(stderr, nullptr, _IONBF, 0);
     apply_portable_mode();
     default_vulkan_cpu_paths();
 #ifdef _WIN32

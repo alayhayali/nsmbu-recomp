@@ -153,6 +153,7 @@ One JSON object per line. Events on stdout all have `"event"`:
 | `plan` | `steps`: `[{id, title}]` of the installation that starts |
 | `step` | `n`, `total`, `title`, `id` (`keys`, `archive`, `folder`, `compiler`, `extract`, `copy`, `translate`, `compile`, `app`) |
 | `progress` | `label`, `done`, `total`, `detail` |
+| `shader` | `phase`, `done`, `total`, `detail` while `shaders` is running |
 | `reply` | `id` and `cmd` of the request, `ok`; on failure `problem` and `message` |
 | `fatal` | `message` (setup cannot run, e.g. the wrong release for this system) |
 
@@ -168,6 +169,7 @@ Requests on stdin: `{"cmd": ..., "id": n, ...}`
 | `remove_toolchain` | | `freed` bytes |
 | `shortcut` | | `path` of the created shortcut |
 | `launch` | | starts the installed game |
+| `shaders` | | runs the installed game in the background until the shaders it draws have compiled, streaming `shader` events (`phase`, `done`, `total`, `detail`) and then `compiled`; `shaders_cancel` on stdin during that run stops it and keeps shaders already compiled (`not_installed`, `missing_exe`, `missing_game`, `shaders`, `spawn`) |
 | `quit` | | |
 
 Keys: an image install uses the keys from the last successful `check_keys`; they stay in the

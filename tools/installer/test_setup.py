@@ -569,6 +569,28 @@ class BundledPython(unittest.TestCase):
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui", "console_setup_win.cpp")) as f:
             self.assertIn('"tools\\\\python\\\\python.exe"', f.read())
 
+class ShaderWarm(unittest.TestCase):
+    def test_progress_line(self):
+        self.assertIsNone(setup.parse_warm_progress("boot"))
+        self.assertIsNone(setup.parse_warm_progress("[warm] done"))
+        self.assertEqual(setup.parse_warm_progress("[warm] progress 12 0 12 shaders compiled\n"),
+                         (12, 0, "12 shaders compiled"))
+        self.assertEqual(setup.parse_warm_progress("[warm] progress 3 10 pixel"), (3, 10, "pixel"))
+
+    def test_cancel_line(self):
+        self.assertTrue(setup.shader_cancel_request('{"cmd":"shaders_cancel","id":0}\n'))
+        self.assertFalse(setup.shader_cancel_request('{"cmd":"shaders"}'))
+        self.assertFalse(setup.shader_cancel_request("not json"))
+
+    def test_failure_message(self):
+        text = setup.shader_warm_failure(1, 4, ["[warm] progress 4 0 4 shaders compiled", "FATAL: no device"])
+        self.assertIn("exit code 1", text)
+        self.assertIn("FATAL: no device", text)
+        self.assertNotIn("[warm] progress", text)
+        self.assertIn("play anyway", text)
+        none = setup.shader_warm_failure(0, 0, [])
+        self.assertIn("did not compile any shaders", none)
+
 class NonInteractive(unittest.TestCase):
     def test_ui_refuses_to_prompt(self):
         ui = setup.UI(False)

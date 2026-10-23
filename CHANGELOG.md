@@ -13,6 +13,8 @@ Use the `changelog` skill when editing.
 - Up to four controllers work as separate players, with per-player bindings and an option to keep one layout for every player.
 - Collision Viewer in the settings debug tab draws solid tiles and actor solids in blue and actor hitboxes in red.
 - The Power-up storage mod keeps the power-up you walk into while already powered and shows it in a reserve box. Press Minus to summon it with the red-coin ring reward animation.
+- Setup can precompile shaders before you play, with a progress bar.
+  You can skip it, and shaders still compile during play.
 - Mods can draw a HUD with `nsmbu.Gui` and read controller buttons.
 
 ### Changed
@@ -22,11 +24,15 @@ Use the `changelog` skill when editing.
   Luau mods with `.luau` files do not load until the scripts are converted.
 - The mod examples and the SDK ship TypeScript source compiled to Lua.
 - The install screen keeps the setup log on screen while the game is prepared.
+- Setup left-aligns its action buttons.
+  The installed menu puts Play next to Quit in the footer.
 
 ### Fixed
 
 - The Keys screen takes the disc key and the Wii U common key typed or pasted as 32 hex digits.
   A key file saved by Notepad or a Cemu `keys.txt` works too.
+- The game window title shows the game name.
+  A development build also shows the frame rate.
 
 ## [0.5.0] - 2026-10-19
 

@@ -33,7 +33,9 @@ import glob
 import hashlib
 import json
 import os
+import queue
 import re
+import select
 import shutil
 import subprocess
 import sys
@@ -2063,6 +2065,115 @@ def run(args, ui):
         launch(state, data_dir)
     return 0
 
+def parse_warm_progress(line):
+    prefix = "[warm] progress "
+    text = (line or "").strip()
+    if not text.startswith(prefix):
+        return None
+    parts = text[len(prefix):].split(None, 2)
+    if len(parts) < 2:
+        return None
+    try:
+        done, total = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    return done, total, parts[2] if len(parts) > 2 else ""
+
+def stdin_ready():
+    if IS_WIN:
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+        avail = wintypes.DWORD()
+        handle = msvcrt.get_osfhandle(sys.stdin.fileno())
+        ok = ctypes.windll.kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(avail), None)
+        return bool(ok) and avail.value > 0
+    ready, _, _ = select.select([sys.stdin], [], [], 0)
+    return bool(ready)
+
+def shader_cancel_request(line):
+    try:
+        req = json.loads(line)
+    except ValueError:
+        return False
+    return req.get("cmd") == "shaders_cancel"
+
+def shader_warm_failure(code, compiled, tail):
+    if code == 0 and compiled == 0:
+        head = "The game ran, but it did not compile any shaders."
+    else:
+        head = "The game stopped before shader precompile finished (exit code %d)." % code
+    lines = [ln for ln in tail if ln.strip() and not ln.startswith("[warm] progress ")][-8:]
+    body = "\n".join(lines)
+    hint = "You can play anyway. Shaders compile the first time a scene needs them."
+    return head + (("\n" + body) if body else "") + "\n" + hint
+
+def run_shader_warm(exe, game_dir, save_dir, stop_file, on_progress):
+    env = os.environ.copy()
+    for key in ("NSMBU_USER_DIR", "NSMBU_SHADER_CACHE", "NSMBU_VK_SHADER_CACHE",
+                "NSMBU_VK_PIPELINE_CACHE", "NSMBU_HEADSTART", "NSMBU_EXIT_AT_FRAME"):
+        env.pop(key, None)
+    env["NSMBU_SHADER_WARM"] = stop_file
+    env["NSMBU_HIDDEN_WINDOWS"] = "1"
+    env["NSMBU_NO_AUDIO"] = "1"
+    env["NSMBU_NO_HOST_INPUT"] = "1"
+    env["NSMBU_VK_PRESENT_MODE"] = "immediate"
+    proc = subprocess.Popen(
+        [exe, "--game", game_dir, "--save", save_dir],
+        cwd=os.path.dirname(exe) or None,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+        encoding="utf-8",
+        errors="replace",
+        start_new_session=not IS_WIN)
+    lines = queue.Queue()
+
+    def read_err():
+        try:
+            for raw in proc.stderr:
+                lines.put(raw)
+        finally:
+            lines.put(None)
+
+    threading.Thread(target=read_err, daemon=True).start()
+    compiled = 0
+    tail = []
+    cancelled = False
+    stdin_open = True
+    kill_at = None
+    code = None
+    while code is None:
+        if stdin_open and not cancelled and stdin_ready():
+            incoming = sys.stdin.readline()
+            if not incoming:
+                stdin_open = False
+            elif shader_cancel_request(incoming):
+                cancelled = True
+                open(stop_file, "w").close()
+                kill_at = time.time() + 8
+        try:
+            raw = lines.get(timeout=0.1)
+        except queue.Empty:
+            if cancelled and kill_at is not None and time.time() >= kill_at and proc.poll() is None:
+                proc.kill()
+            continue
+        if raw is None:
+            code = proc.wait()
+            break
+        text = raw.rstrip("\n")
+        tail.append(text)
+        del tail[:-40]
+        progress = parse_warm_progress(text)
+        if progress:
+            done, total, detail = progress
+            compiled = max(compiled, done)
+            if on_progress:
+                on_progress(done, total, detail)
+    return code, compiled, cancelled, tail
+
 def find_sidecar_disc_key(image):
     side = os.path.splitext(image)[0] + ".key"
     return side if os.path.isfile(side) and read_key_file(side, "disc") else None
@@ -2326,9 +2437,63 @@ def gui_main(args):
         launch(st, ctx.data_dir)
         reply(req)
 
+    def do_shaders(req):
+        st = ctx.state()
+        if not ctx.installed() or not st:
+            return fail(req, "not_installed",
+                        "Install the game first. Precompile shaders is available after setup finishes.")
+        if st.get("placeholder_code"):
+            return fail(req, "placeholder", "This build cannot run the game, so shaders cannot be compiled.")
+        exe = st.get("exe") or ""
+        game_dir = st.get("game_dir") or ctx.game_dir
+        if not exe or not os.path.isfile(exe):
+            return fail(req, "missing_exe",
+                        "The game program is missing.\nUse Repair, then try Precompile shaders again.")
+        if not valid_game_folder(game_dir):
+            return fail(req, "missing_game",
+                        "The game files are missing from %s.\nChoose the game again, then try Precompile shaders." % game_dir)
+        work = os.path.join(ctx.data_dir, "work", "shader-warm")
+        save = os.path.join(work, "save")
+        stop = os.path.join(work, "stop")
+        shutil.rmtree(work, ignore_errors=True)
+        os.makedirs(save)
+        say("  Precompiling shaders.")
+        GUI.emit({"event": "shader", "phase": "Starting the game", "done": 0, "total": 0,
+                  "detail": "Waiting for the game to draw."})
+        last = {"done": -1}
+
+        def on_progress(done, total, detail):
+            if done == last["done"]:
+                return
+            last["done"] = done
+            phase = "Compiling shaders" if done else "Starting the game"
+            GUI.emit({"event": "shader", "phase": phase, "done": done, "total": total,
+                      "detail": detail or "Waiting for the game to draw."})
+            if done:
+                say("  " + (detail or "%d shaders compiled" % done))
+
+        try:
+            code, compiled, cancelled, tail = run_shader_warm(exe, game_dir, save, stop, on_progress)
+        except OSError as e:
+            return fail(req, "spawn",
+                        "Could not start the game to compile shaders.\n%s\n"
+                        "You can play anyway. Shaders compile the first time a scene needs them." % e)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        if cancelled:
+            say("  Shader precompile stopped (%d shaders compiled)." % compiled)
+            return reply(req, cancelled=True, compiled=compiled)
+        if code != 0 or compiled == 0:
+            message = shader_warm_failure(code if code is not None else -1, compiled, tail)
+            say("  " + message.replace("\n", "\n  "))
+            return fail(req, "shaders", message)
+        say("  Shader precompile finished (%d shaders compiled)." % compiled)
+        reply(req, compiled=compiled)
+
     handlers = {"probe": probe, "check_keys": check, "install": do_install, "import_save": save,
                 "import_existing": do_import_existing, "remove_toolchain": do_remove_toolchain,
-                "shortcut": do_shortcut, "launch": do_launch, "hello": lambda req: hello()}
+                "shortcut": do_shortcut, "launch": do_launch, "shaders": do_shaders,
+                "hello": lambda req: hello()}
     hello()
     for line in sys.stdin:
         line = line.strip()
@@ -2341,6 +2506,8 @@ def gui_main(args):
             continue
         if req.get("cmd") == "quit":
             break
+        if req.get("cmd") == "shaders_cancel":
+            continue
         h = handlers.get(req.get("cmd"))
         if not h:
             fail(req, "bad_request", "unknown command")

@@ -21,6 +21,7 @@
 #include "gfx/vulkan/settings.h"
 #endif
 #include "core/runtime.h"
+#include "core/build_info.h"
 
 namespace gfx {
 bool drc_window_available();
@@ -114,8 +115,11 @@ static void save_prefs() {
 
 static void update_title() {
     save_prefs();
-    NSString* t = [NSString stringWithFormat:@"%.0f fps", g_fps];
-    if (gx2::uncapped()) t = [t stringByAppendingString:@" \u00b7 UNCAPPED (debug)"];
+    NSString* t = kTitle;
+    if (build::dev()) {
+        t = [NSString stringWithFormat:@"%@ \u2014 %.0f fps", kTitle, g_fps];
+        if (gx2::uncapped()) t = [t stringByAppendingString:@" \u00b7 UNCAPPED (debug)"];
+    }
     std::string msg = ss::last_message();
     if (!msg.empty()) t = [NSString stringWithFormat:@"%@ \u2014 %s", kTitle, msg.c_str()];
     if (env::LOG_TITLE() && ![t isEqualToString:g_tv.title]) {

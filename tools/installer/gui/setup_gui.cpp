@@ -16,6 +16,8 @@
 #include <vector>
 
 #include <cerrno>
+#include <cstdlib>
+#include <filesystem>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -346,7 +348,7 @@ static bool shift_held() {
 #endif
 }
 
-enum class Screen { Starting, NeedCLT, Menu, Welcome, Source, Keys, Installing, Error, Save, Done, Fatal };
+enum class Screen { Starting, NeedCLT, Menu, Welcome, Source, Keys, Installing, Error, Save, Done, Shaders, Fatal };
 
 static const char* screen_name(Screen s) {
     switch (s) {
@@ -360,6 +362,7 @@ static const char* screen_name(Screen s) {
     case Screen::Error: return "error";
     case Screen::Save: return "save";
     case Screen::Done: return "done";
+    case Screen::Shaders: return "shaders";
     case Screen::Fatal: return "fatal";
     }
     return "?";
@@ -422,6 +425,11 @@ struct App {
     std::string save_path, save_msg;
     bool confirm_replace = false;
 
+    Screen shader_back = Screen::Menu;
+    bool shader_running = false, shader_done = false;
+    double shader_done_n = 0, shader_total = 0, shader_started = 0;
+    std::string shader_phase, shader_detail, shader_error;
+
     std::vector<std::string> log;
     bool log_scroll = false;
     std::string toast;
@@ -457,6 +465,8 @@ static void addlog(const std::string& s) {
 static void go(Screen s) {
     A.screen = s;
 }
+
+static void start_shaders(Screen back);
 
 static void fail(const std::string& what, const std::string& todo, const std::string& folder = "");
 
@@ -601,6 +611,13 @@ static void muted(const std::string& t) {
     ImGui::PushStyleColor(ImGuiCol_Text, MUTED);
     ImGui::TextWrapped("%s", t.c_str());
     ImGui::PopStyleColor();
+}
+
+static void button_caption(const std::string& t) {
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 4.0f));
+    muted(t);
+    ImGui::PopStyleVar();
+    ImGui::Dummy(ImVec2(0, 12.0f));
 }
 
 static void colored(const ImVec4& col, const std::string& t) {
@@ -1063,6 +1080,20 @@ static void handle_reply(const J& ev) {
         }
     } else if (cmd == "remove_toolchain" || cmd == "shortcut") {
         if (!ok) addlog(ev.str("message"));
+    } else if (cmd == "shaders") {
+        A.shader_running = false;
+        if (ev.boolean("cancelled")) {
+            show_toast("Precompile stopped. Shaders compiled so far are kept.");
+            go(A.shader_back);
+            return;
+        }
+        if (!ok) {
+            A.shader_error = ev.str("message");
+            return;
+        }
+        A.shader_done = true;
+        A.shader_done_n = ev.num("compiled");
+        A.shader_detail = std::to_string((int)A.shader_done_n) + " shaders compiled";
     } else if (cmd == "import_save" || cmd == "import_existing") {
         if (ok) {
             A.save_msg = ev.str("message");
@@ -1117,6 +1148,11 @@ static void handle_event(const J& ev) {
         int i = step_index(ev.str("id"));
         for (int k = 0; k < i; k++) A.steps[k].state = 2;
         if (i >= 0) A.steps[i].state = 1, A.current = i;
+    } else if (e == "shader") {
+        A.shader_done_n = ev.num("done");
+        A.shader_total = ev.num("total");
+        A.shader_detail = ev.str("detail");
+        A.shader_phase = ev.str("phase");
     } else if (e == "progress") {
         if (A.current >= 0) {
             Step& s = A.steps[A.current];
@@ -1316,38 +1352,45 @@ static void screen_welcome() {
     if (b == 1) go(Screen::Source);
 }
 
-static float menu_button_w(std::initializer_list<const char*> labels) {
-    float w = 0;
-    for (const char* l : labels) w = std::max(w, button_w(l));
-    float avail = ImGui::GetContentRegionAvail().x;
-    return std::min(w, avail);
-}
-
 static void screen_menu() {
     bool update = A.installed_version != A.version;
     page_header(A.portable ? "NSMBU" : "NSMBU is installed",
                 update ? "Prepared with " + A.installed_version + ". This release: " + A.version + "."
                        : "Version " + A.version + ", in " + home_folder());
-    const char* change = "Change the game (disc image, Cemu archive or game folder)";
-    float w = menu_button_w({"Update to this release", "Play", "Repair", change, "Import saves or settings...",
-                             "Open the folder"});
+    const char* precompile = "Precompile shaders";
     if (update) {
-        centered_button_row(w);
-        if (button("Update to this release", ImVec2(w, 0), true)) start_install("installed");
-        muted("Rebuilds the game with this release. Your game files and saves are kept; no keys needed.");
+        float full_w = ImGui::GetContentRegionAvail().x;
+        float primary_h = ImGui::GetFrameHeight() + 12;
+        if (button("Update to this release", ImVec2(full_w, primary_h), true)) start_install("installed");
+        button_caption("Rebuilds the game with this release. Your game files and saves are kept; no keys needed.");
     }
-    centered_button_row(w);
-    if (button("Play", ImVec2(w, 0), !update)) A.after = "play";
-    centered_button_row(w);
-    if (button("Repair", ImVec2(w, 0))) start_install("installed");
-    muted("Rebuilds the game code from the installed game files.");
-    centered_button_row(w);
-    if (button(change, ImVec2(w, 0))) go(Screen::Source);
-    centered_button_row(w);
-    if (button("Import saves or settings...", ImVec2(w, 0))) go(Screen::Save);
-    centered_button_row(w);
-    if (button("Open the folder", ImVec2(w, 0))) open_folder(home_folder());
-    if (footer({"Quit"}) == 0) A.exit_code = 0;
+    if (button("Repair", ImVec2(button_w("Repair"), 0))) start_install("installed");
+    button_caption("Rebuilds the game code from the installed game files.");
+    if (update) {
+        ImGui::BeginDisabled();
+        button(precompile, ImVec2(button_w(precompile), 0));
+        ImGui::EndDisabled();
+        button_caption("Update to this release first, then precompile shaders.");
+    } else if (button(precompile, ImVec2(button_w(precompile), 0))) {
+        start_shaders(Screen::Menu);
+    } else {
+        button_caption("Compiles shaders now so play starts with less waiting. You can skip this and play.");
+    }
+    if (button("Change the game...", ImVec2(button_w("Change the game..."), 0))) go(Screen::Source);
+    if (button("Import saves or settings...", ImVec2(button_w("Import saves or settings..."), 0))) go(Screen::Save);
+    if (button("Open the folder", ImVec2(button_w("Open the folder"), 0))) open_folder(home_folder());
+    float h = ImGui::GetFrameHeight() + 8;
+    float pad = ImGui::GetStyle().WindowPadding.y;
+    float pad_x = ImGui::GetStyle().WindowPadding.x;
+    float y = ImGui::GetWindowHeight() - pad - h;
+    if (ImGui::GetCursorPosY() < y) ImGui::SetCursorPosY(y);
+    else ImGui::Dummy(ImVec2(0, ImGui::GetStyle().ItemSpacing.y));
+    ImGui::SetCursorPosX(pad_x);
+    if (button("Play", ImVec2((button_w("Play") + 56) * 2, h), !update)) A.after = "play";
+    float quit_w = button_w("Quit");
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - pad_x - quit_w);
+    if (button("Quit", ImVec2(quit_w, h))) A.exit_code = 0;
 }
 
 static void screen_source() {
@@ -1767,6 +1810,9 @@ static void screen_done() {
             &A.opt_shortcut);
         muted("Off by default: then nothing is written outside this folder.");
     }
+    ImGui::Spacing();
+    if (button("Precompile shaders", ImVec2(button_w("Precompile shaders"), 0)) && !busy()) start_shaders(Screen::Done);
+    muted("Optional. Compiles shaders now so the first time you play spends less time waiting.");
     int b = footer({"Quit", "Open folder", "Play"}, 2, busy() || !A.after.empty() ? 7 : 0);
     auto queue_options = [] {
         if (A.portable && A.toolchain_bytes > 0 && A.opt_remove_toolchain) A.queue.push_back({"remove_toolchain", ""});
@@ -1776,6 +1822,103 @@ static void screen_done() {
     if (b == 0) queue_options(), A.after = "quit";
     if (b == 1) open_folder(home_folder());
     if (b == 2) queue_options(), A.after = "play";
+}
+
+static std::string format_elapsed(double seconds) {
+    int t = seconds < 0 ? 0 : (int)seconds;
+    int m = t / 60, s = t % 60;
+    char b[40];
+    if (m >= 60) snprintf(b, sizeof b, "%d h %d min", m / 60, m % 60);
+    else if (m) snprintf(b, sizeof b, "%d min %d s", m, s);
+    else snprintf(b, sizeof b, "%d s", s);
+    return b;
+}
+
+static void start_shaders(Screen back) {
+    A.shader_back = back;
+    A.shader_running = true;
+    A.shader_done = false;
+    A.shader_done_n = 0;
+    A.shader_total = 0;
+    A.shader_started = ImGui::GetTime();
+    A.shader_phase = "Starting the game";
+    A.shader_detail = "Waiting for the game to draw.";
+    A.shader_error.clear();
+    request("shaders", "");
+    go(Screen::Shaders);
+}
+
+static void cancel_shaders() {
+    if (!A.child.send("{\"cmd\":\"shaders_cancel\",\"id\":0}"))
+        A.shader_error = "Could not ask the game to stop.\nClose this window if it stays on this screen.";
+}
+
+static void screen_shaders() {
+    if (!A.shader_error.empty()) {
+        page_header("Could not precompile shaders");
+        std::string head = A.shader_error, rest;
+        if (size_t nl = head.find('\n'); nl != std::string::npos) rest = head.substr(nl + 1), head = head.substr(0, nl);
+        if (!head.empty()) head[0] = (char)toupper((unsigned char)head[0]);
+        ImGui::PushStyleColor(ImGuiCol_Text, BAD);
+        ImGui::TextWrapped("%s", head.c_str());
+        ImGui::PopStyleColor();
+        if (!rest.empty()) {
+            ImGui::Spacing();
+            muted(rest);
+        }
+        ImGui::Spacing();
+        muted("Nothing else in the installation was changed.");
+        log_pane(std::max(0.0f, space_above_footer()));
+        int b = footer({"Back", "Copy log", "Report issue...", "Retry"}, 3, busy() ? 15 : 0);
+        if (b == 0) go(A.shader_back);
+        if (b == 1) copy_log();
+        if (b == 2) report_issue();
+        if (b == 3) start_shaders(A.shader_back);
+        return;
+    }
+    if (A.shader_done && !A.shader_running) {
+        page_header("Shaders are ready");
+        mark(2);
+        ImGui::TextWrapped("%d shaders were compiled.", (int)A.shader_done_n);
+        ImGui::Spacing();
+        muted("The next time you play, the game spends less time compiling those shaders. "
+              "Scenes you have not seen yet can still compile the first time you reach them.");
+        float bar_h = ImGui::GetFrameHeight() + 6;
+        ImGui::Spacing();
+        ImGui::ProgressBar(1.0f, ImVec2(-1, bar_h), "Done");
+        int b = footer({"Back", "Play"}, 1);
+        if (b == 0) go(A.shader_back);
+        if (b == 1) A.after = "play";
+        return;
+    }
+    page_header("Precompiling shaders",
+                "The game is running in the background. You can keep using your computer. This can take several minutes.");
+    heading(A.shader_phase.empty() ? "Starting the game" : A.shader_phase.c_str());
+    float bar_h = ImGui::GetFrameHeight() + 6;
+    float frac = A.shader_total > 0 ? (float)std::min(1.0, A.shader_done_n / A.shader_total) : -1.0f * (float)ImGui::GetTime();
+    char overlay[64];
+    overlay[0] = 0;
+    if (A.shader_total > 0) snprintf(overlay, sizeof overlay, "%d / %d", (int)A.shader_done_n, (int)A.shader_total);
+    ImGui::ProgressBar(frac, ImVec2(-1, bar_h), A.shader_total > 0 ? overlay : "");
+    if (!A.shader_detail.empty()) muted(A.shader_detail);
+    muted("Elapsed: " + format_elapsed(ImGui::GetTime() - A.shader_started));
+    ImGui::Spacing();
+    muted("Stop leaves the shaders already compiled in place. You can play without finishing this.");
+    if (footer({"Cancel"}, -1, A.shader_running ? 0 : 1) == 0) ImGui::OpenPopup("Stop precompiling?");
+    if (begin_confirm("Stop precompiling?")) {
+        ImGui::TextUnformatted("Stop compiling shaders now?");
+        muted("Shaders already compiled are kept. You can run this again later.");
+        ImGui::Spacing();
+        float gap = ImGui::GetStyle().ItemSpacing.x;
+        centered_button_row(180 + gap + 180);
+        if (button("Stop", ImVec2(180, 0), true)) {
+            cancel_shaders();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (button("Continue", ImVec2(180, 0))) ImGui::CloseCurrentPopup();
+        end_confirm();
+    }
 }
 
 static void screen_fatal() {
@@ -2196,6 +2339,36 @@ static bool game_ready(const std::string& pkg, const std::vector<std::string>& p
     return true;
 }
 
+#ifdef __linux__
+static bool dir_has_plugin(const std::string& dir) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(dir, ec)) return false;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
+        if (entry.path().extension() == ".so") return true;
+    return false;
+}
+
+static void use_user_libdecor_plugin() {
+    if (const char* e = std::getenv("LIBDECOR_PLUGIN_DIR"))
+        if (*e) return;
+    const char* system_dirs[] = {
+        "/usr/lib/x86_64-linux-gnu/libdecor/plugins-1",
+        "/usr/lib/aarch64-linux-gnu/libdecor/plugins-1",
+        "/usr/lib64/libdecor/plugins-1",
+        "/usr/lib/libdecor/plugins-1",
+    };
+    for (const char* dir : system_dirs)
+        if (dir_has_plugin(dir)) return;
+    const char* home = std::getenv("HOME");
+    if (!home || !*home) return;
+    std::string user = std::string(home) + "/.local/lib/libdecor/plugins-1";
+    if (!dir_has_plugin(user)) return;
+    setenv("LIBDECOR_PLUGIN_DIR", user.c_str(), 0);
+}
+#else
+static void use_user_libdecor_plugin() {}
+#endif
+
 int main(int argc, char** argv) {
 #ifdef _WIN32
     if (argc > 1 && !strcmp(argv[1], "--console-setup")) {
@@ -2229,6 +2402,7 @@ int main(int argc, char** argv) {
     }
 
     SDL_SetHint(SDL_HINT_APP_NAME, "NSMBU");
+    use_user_libdecor_plugin();
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init: %s", SDL_GetError());
         return 1;
@@ -2339,6 +2513,7 @@ int main(int argc, char** argv) {
         case Screen::Error: screen_error(); break;
         case Screen::Save: screen_save(); break;
         case Screen::Done: screen_done(); break;
+        case Screen::Shaders: screen_shaders(); break;
         case Screen::Fatal: screen_fatal(); break;
         }
         if (!A.toast.empty() && ImGui::GetTime() < A.toast_until) {
@@ -2348,6 +2523,7 @@ int main(int argc, char** argv) {
         }
         if (quit_requested) {
             if (A.screen == Screen::Installing) ImGui::OpenPopup("Stop setup?");
+            else if (A.screen == Screen::Shaders && A.shader_running) ImGui::OpenPopup("Stop precompiling?");
             else A.exit_code = 0;
             quit_requested = false;
         }
