@@ -11,6 +11,7 @@ The `nsmbu` cli is installed and can be used to interact with the game.
 ## Changelog
 
 When editing `CHANGELOG.md`, use the `changelog` skill.
+Notes for the example mods go in `modding/examples/CHANGELOG.md` and use that same form.
 
 ## Code style
 

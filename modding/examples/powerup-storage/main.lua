@@ -120,8 +120,10 @@ local PROFILE_FOR_MODE = {
     [7] = 598,
     [8] = 598
 }
-local RING_REWARD_SPAWN = 5
+local COLLECTABLE_SPAWN = 1
 local SPAWN_OFFSET_Y = 48
+local PICKUP_RANGE_X = 28
+local PICKUP_RANGE_Y = 48
 local SUMMON_TIMEOUT = 240
 local reserve = {}
 local prevMode = {}
@@ -410,7 +412,7 @@ local function deployStored(players, current, step)
                         pos.x,
                         spawnY,
                         pos.z,
-                        {param1 = RING_REWARD_SPAWN * 16777216}
+                        {param0 = COLLECTABLE_SPAWN * 16777216}
                     )
                     if ok == true then
                         reserve[i] = nil
@@ -478,6 +480,73 @@ local function trackSummoned(players, current, now, step)
                     __continue64 = true
                 until true
                 if not __continue64 then
+                    break
+                end
+            end
+            i = i + 1
+        end
+    end
+end
+local function grantSummoned(players, current, now, step)
+    do
+        local i = 0
+        while i < 4 do
+            do
+                local __continue75
+                repeat
+                    local summon = pending[i]
+                    if not summon then
+                        __continue75 = true
+                        break
+                    end
+                    local p = players[i]
+                    if not p then
+                        __continue75 = true
+                        break
+                    end
+                    local pos = p:pos()
+                    if not pos then
+                        __continue75 = true
+                        break
+                    end
+                    for ____, item in ipairs(now) do
+                        do
+                            local __continue79
+                            repeat
+                                if item.mode ~= summon.mode or not isSummoned(item.id) then
+                                    __continue79 = true
+                                    break
+                                end
+                                if math.abs(item.x - pos.x) > PICKUP_RANGE_X or math.abs(item.y - pos.y) > PICKUP_RANGE_Y then
+                                    __continue79 = true
+                                    break
+                                end
+                                for ____, actor in ipairs(nsmbu.Level.actors()) do
+                                    local id = actor:id()
+                                    if id == item.id then
+                                        actor:delete()
+                                        break
+                                    end
+                                end
+                                p:set_mode(item.mode)
+                                current[i] = item.mode
+                                markHandled(item.id, step)
+                                takeSummoned(item.id)
+                                pending[i] = nil
+                                clearSummonedFor(i)
+                                p:set_pickup_lock(item.mode > 0)
+                                nsmbu.log("collected " .. modeName(item.mode))
+                                nsmbu.status((("Player " .. tostring(i + 1)) .. " used ") .. modeName(item.mode))
+                                break
+                            until true
+                            if not __continue79 then
+                                break
+                            end
+                        end
+                    end
+                    __continue75 = true
+                until true
+                if not __continue75 then
                     break
                 end
             end
@@ -584,14 +653,14 @@ local function iconAcorn(cx, cy, scale, letter)
 end
 local function drawIcon(cx, cy, mode)
     repeat
-        local ____switch82 = mode
-        local ____cond82 = ____switch82 == 1
-        if ____cond82 then
+        local ____switch95 = mode
+        local ____cond95 = ____switch95 == 1
+        if ____cond95 then
             iconMushroom(cx, cy, 1, 3795532799)
             break
         end
-        ____cond82 = ____cond82 or ____switch82 == 2
-        if ____cond82 then
+        ____cond95 = ____cond95 or ____switch95 == 2
+        if ____cond95 then
             iconFlower(
                 cx,
                 cy,
@@ -601,23 +670,23 @@ local function drawIcon(cx, cy, mode)
             )
             break
         end
-        ____cond82 = ____cond82 or ____switch82 == 3
-        if ____cond82 then
+        ____cond95 = ____cond95 or ____switch95 == 3
+        if ____cond95 then
             iconMushroom(cx, cy, 0.62, 1250351359)
             break
         end
-        ____cond82 = ____cond82 or ____switch82 == 4
-        if ____cond82 then
+        ____cond95 = ____cond95 or ____switch95 == 4
+        if ____cond95 then
             iconPropeller(cx, cy, 1)
             break
         end
-        ____cond82 = ____cond82 or ____switch82 == 5
-        if ____cond82 then
+        ____cond95 = ____cond95 or ____switch95 == 5
+        if ____cond95 then
             iconPenguin(cx, cy, 1)
             break
         end
-        ____cond82 = ____cond82 or ____switch82 == 6
-        if ____cond82 then
+        ____cond95 = ____cond95 or ____switch95 == 6
+        if ____cond95 then
             iconFlower(
                 cx,
                 cy,
@@ -627,13 +696,13 @@ local function drawIcon(cx, cy, mode)
             )
             break
         end
-        ____cond82 = ____cond82 or ____switch82 == 7
-        if ____cond82 then
+        ____cond95 = ____cond95 or ____switch95 == 7
+        if ____cond95 then
             iconAcorn(cx, cy, 1, false)
             break
         end
-        ____cond82 = ____cond82 or ____switch82 == 8
-        if ____cond82 then
+        ____cond95 = ____cond95 or ____switch95 == 8
+        if ____cond95 then
             iconAcorn(cx, cy, 1, true)
             break
         end
@@ -742,7 +811,7 @@ nsmbu.Hooks.onLogicStep = function(step)
     tracked = now
     for ____, old in ipairs(previous) do
         do
-            local __continue101
+            local __continue114
             repeat
                 local alive = false
                 for ____, item in ipairs(now) do
@@ -766,20 +835,21 @@ nsmbu.Hooks.onLogicStep = function(step)
                             end
                             nsmbu.log("collected " .. modeName(old.mode))
                             nsmbu.status((("Player " .. tostring(index + 1)) .. " used ") .. modeName(old.mode))
-                            __continue101 = true
+                            __continue114 = true
                             break
                         end
                         handlePickup(index, old.mode, players, current)
                     end
                 end
-                __continue101 = true
+                __continue114 = true
             until true
-            if not __continue101 then
+            if not __continue114 then
                 break
             end
         end
     end
     detectUpgrades(players, current)
+    grantSummoned(players, current, now, step)
     do
         local i = 0
         while i < 4 do

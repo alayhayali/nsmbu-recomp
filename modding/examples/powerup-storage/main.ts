@@ -31,8 +31,10 @@ const PROFILE_FOR_MODE: Record<number, number | undefined> = {
     8: 598,
 };
 
-const RING_REWARD_SPAWN = 5;
+const COLLECTABLE_SPAWN = 1;
 const SPAWN_OFFSET_Y = 48;
+const PICKUP_RANGE_X = 28;
+const PICKUP_RANGE_Y = 48;
 const SUMMON_TIMEOUT = 240;
 
 interface TrackedItem {
@@ -292,7 +294,7 @@ function deployStored(
         }
         const spawnY = pos.y + SPAWN_OFFSET_Y;
         const [ok] = nsmbu.Level.spawn(profile, pos.x, spawnY, pos.z, {
-            param1: RING_REWARD_SPAWN * 16777216,
+            param0: COLLECTABLE_SPAWN * 16777216,
         });
         if (ok === true) {
             reserve[i] = undefined;
@@ -335,6 +337,53 @@ function trackSummoned(
                 continue;
             }
             summonedItems.push({ id: item.id, player: i });
+            break;
+        }
+    }
+}
+
+function grantSummoned(
+    players: Record<number, Player | undefined>,
+    current: Record<number, number | undefined>,
+    now: TrackedItem[],
+    step: number,
+): void {
+    for (let i = 0; i < 4; i++) {
+        const summon = pending[i];
+        if (!summon) {
+            continue;
+        }
+        const p = players[i];
+        if (!p) {
+            continue;
+        }
+        const [pos] = p.pos();
+        if (!pos) {
+            continue;
+        }
+        for (const item of now) {
+            if (item.mode !== summon.mode || !isSummoned(item.id)) {
+                continue;
+            }
+            if (Math.abs(item.x - pos.x) > PICKUP_RANGE_X || Math.abs(item.y - pos.y) > PICKUP_RANGE_Y) {
+                continue;
+            }
+            for (const actor of nsmbu.Level.actors()) {
+                const [id] = actor.id();
+                if (id === item.id) {
+                    actor.delete();
+                    break;
+                }
+            }
+            p.set_mode(item.mode);
+            current[i] = item.mode;
+            markHandled(item.id, step);
+            takeSummoned(item.id);
+            pending[i] = undefined;
+            clearSummonedFor(i);
+            p.set_pickup_lock(item.mode > 0);
+            nsmbu.log(`collected ${modeName(item.mode)}`);
+            nsmbu.status(`Player ${i + 1} used ${modeName(item.mode)}`);
             break;
         }
     }
@@ -525,6 +574,7 @@ nsmbu.Hooks.onLogicStep = (step) => {
         }
     }
     detectUpgrades(players, current);
+    grantSummoned(players, current, now, step);
 
     for (let i = 0; i < 4; i++) {
         prevMode[i] = current[i];
