@@ -85,7 +85,8 @@ The CLI exports `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout 
 | `nsmbu save <save.dat\|save.json> [output] [--output PATH]` | convert `rp_savedata.dat` to JSON and back |
 | `nsmbu record <course> [name]` / `replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name>` | env + launch (see [automation.md](automation.md)) |
 | `nsmbu profile` / `perf` | profiling helpers |
-| `nsmbu installer` / `lint` / `recomp` | installer, TypeScript mod build, recomp only |
+| `nsmbu installer [--version VERSION]` | builds this Linux host's GitHub Release folder (the zip contents) at `build/installer` with the release workflow's pinned zig toolchain, then opens that folder's setup window; does not publish |
+| `nsmbu lint` / `recomp` | TypeScript mod build, recomp only |
 | `nsmbu scripted <name>` | wraps `tools/run/scripted-run.sh` |
 
 Run `nsmbu` with no arguments (or `--help`) for the full list.

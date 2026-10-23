@@ -9,6 +9,7 @@
 /cemu/
 # generated / build output
 /build/
+/dist/
 out/
 __pycache__/
 node_modules/

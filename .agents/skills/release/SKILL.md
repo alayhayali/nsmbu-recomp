@@ -24,7 +24,7 @@ Only stop on failure without retagging when the user explicitly says to watch on
    - Fold any further commits meant for this version into the same `## [X.Y.Z]` block before tagging.
    - Commit that change with any other release-ready files the user asked to include.
 3. Local verify (required before push or tag).
-   Prefer a configure with `-DNSMBU_SETUP_GUI=ON` (`build/linux` from pre-push shape, or `build/release` after `nsmbu installer`).
+   Prefer a configure with `-DNSMBU_SETUP_GUI=ON` (`build/linux` from pre-push shape, or `build/release-upload` after `nsmbu installer`).
    Run the same post-`ctest` scripts as pre-push and CI:
 
    ```bash
@@ -39,7 +39,7 @@ Only stop on failure without retagging when the user explicitly says to watch on
    nsmbu installer
    ```
 
-   That configures `build/release`, builds `nsmbu`, `nsmbu-extract`, and `nsmbu-setup`, runs `tools/installer/dev_pkg.py` into `.tmp/installer-out/`, and opens the setup window.
+   That builds the Linux release package at `build/installer` (the folder the zip would contain) and opens `nsmbu-launcher --setup`.
    Smoke the setup window: welcome or home actions, Keys paste fields when a disc image is in play, and that controls fit without clipping.
    Quit the window when done.
    Stop the release if any command fails or the setup smoke looks wrong.

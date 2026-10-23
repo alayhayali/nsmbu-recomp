@@ -42,6 +42,7 @@ If `nsmbu open` refuses because a game is already running, run `nsmbu status` or
 | Uncapped course, stop at a frame | `replay --release --uncapped --exit-at N <course>` |
 | Scripted boot and frame PNGs | `scripted <name>` |
 | Convert save data to JSON or back | `save <save.dat\|save.json>` |
+| Local Linux release folder and setup window | `installer [--version VERSION]` |
 | Look and tap | `open` -> `status` / `screenshot` -> `press` / `stick` -> `wait` -> `close` |
 | Run Lua in the game | `eval 'return nsmbu.Player.get_player(0):pos()'` |
 

@@ -12,7 +12,7 @@ Usage:
   nsmbu replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name> […]
   nsmbu profile […]
   nsmbu perf […]
-  nsmbu installer [cmake args…]
+  nsmbu installer [--version VERSION]
   nsmbu lint
   nsmbu recomp
   nsmbu scripted <name> […]

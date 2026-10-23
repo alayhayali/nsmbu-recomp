@@ -19,25 +19,6 @@ function runPythonInherit(repo: string, script: string, args: string[], extraEnv
     }
 }
 
-function runPythonCapture(repo: string, script: string, args: string[]): string {
-    const r = spawnSync("python3", [join(repo, script), ...args], {
-        cwd: repo,
-        env: baseEnv(repo),
-        encoding: "utf8",
-    });
-    if (r.error) {
-        console.error(r.error.message);
-        process.exit(1);
-    }
-    if ((r.status ?? 1) !== 0) {
-        if (r.stderr) {
-            process.stderr.write(r.stderr);
-        }
-        process.exit(r.status ?? 1);
-    }
-    return (r.stdout ?? "").trim();
-}
-
 export function cmdBuild(repo: string, release: boolean, sanitizer: boolean, rest: string[]): void {
     const args: string[] = [];
     if (release) {
@@ -209,30 +190,7 @@ export function cmdPerf(repo: string, rest: string[]): void {
 }
 
 export function cmdInstaller(repo: string, rest: string[]): void {
-    const rel = "build/release";
-    const cmakeExtra = ["-G", "Ninja", "-DNSMBU_SETUP_GUI=ON"];
-    for (const target of ["nsmbu", "nsmbu-extract", "nsmbu-setup"]) {
-        runPythonInherit(repo, "tools/build/build.py", [
-            "--release",
-            "--target",
-            target,
-            "--",
-            ...cmakeExtra,
-            ...rest,
-        ]);
-    }
-    const pkg = runPythonCapture(repo, "tools/installer/dev_pkg.py", []);
-    const relAbs = join(repo, rel);
-    const env = {
-        NSMBU_INSTALLER_BUILD: relAbs,
-        NSMBU_SETUP_PKG: `${pkg}/`,
-    };
-    const launcher = join(pkg, "nsmbu-launcher");
-    if (existsSync(launcher)) {
-        runShell(repo, `"${launcher}" --setup`, env);
-        return;
-    }
-    runShell(repo, `"${join(relAbs, "nsmbu-setup")}" --setup`, env);
+    runPythonInherit(repo, "tools/release/host_artifacts.py", rest);
 }
 
 export function cmdLint(repo: string): void {

@@ -72,7 +72,7 @@ over its stdin/stdout. Screens: welcome (or, when installed: play / update / rep
 import saves or settings / open the folder), choose the disc image, Cemu archive or game folder (native file dialogs), keys
 (disc images only: disc key and common key typed or pasted as 32 hex digits, or taken from a key file next to the image
 or chosen), installation
-(a bar per step, an overall bar, the log under "Details"), optional save import (an NSMBU
+(a bar per step, an overall bar, and the setup log), optional save import (an NSMBU
 `rp_personal_savedata.dat`
 folder, or the saves and settings of an
 earlier installation or another release folder, copied), done (Play, Open folder, Quit; in a portable

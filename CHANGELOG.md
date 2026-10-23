@@ -21,6 +21,7 @@ Use the `changelog` skill when editing.
 - Mods run on LuaJIT and load `.lua` scripts.
   Luau mods with `.luau` files do not load until the scripts are converted.
 - The mod examples and the SDK ship TypeScript source compiled to Lua.
+- The install screen keeps the setup log on screen while the game is prepared.
 
 ### Fixed
 

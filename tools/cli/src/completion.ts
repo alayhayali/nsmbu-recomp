@@ -68,7 +68,11 @@ const COMMANDS: CommandSpec[] = [
     },
     { name: "profile", description: "Profiling helpers" },
     { name: "perf", description: "Perf helpers" },
-    { name: "installer", description: "Build the installer" },
+    {
+        name: "installer",
+        description: "Build the installer",
+        flags: [{ name: "version", description: "Release version string" }],
+    },
     { name: "lint", description: "Build TypeScript mods and format the Lua", noFiles: true },
     { name: "recomp", description: "Run recomp only", noFiles: true },
     { name: "scripted", description: "Headless scripted boot", noFiles: true },

@@ -1182,9 +1182,6 @@ static void pump_child() {
     }
 }
 
-static bool details_open = false;
-static bool details_force_open = false;
-
 static void centered_button_row(float w) {
     float x = ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - w) * 0.5f;
     if (x > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(x);
@@ -1207,16 +1204,6 @@ static bool begin_confirm(const char* title) {
 static void end_confirm() {
     ImGui::EndPopup();
     ImGui::PopStyleVar();
-}
-
-static bool details_header() {
-    if (details_force_open) {
-        ImGui::SetNextItemOpen(true);
-        details_force_open = false;
-    }
-    bool open = ImGui::CollapsingHeader("Details");
-    details_open = open;
-    return open;
 }
 
 static float space_above_footer() {
@@ -1619,15 +1606,9 @@ static void screen_installing() {
     }
     ImGui::Spacing();
     float gap = ImGui::GetStyle().ItemSpacing.y;
-    float line = ImGui::GetTextLineHeightWithSpacing();
-    float header_h = ImGui::GetFrameHeightWithSpacing() + gap;
-    float log_h = 0;
-    if (details_open) {
-        float avail = std::max(0.0f, space_above_footer() - header_h);
-        log_h = std::clamp(avail * 0.4f, line * 6, std::max(line * 6, avail * 0.5f));
-    }
-    float step_avail = std::max(80.0f, space_above_footer() - header_h - (log_h > 0 ? log_h + gap : 0));
-    ImGui::BeginChild("steps", ImVec2(0, step_avail), ImGuiChildFlags_Borders);
+    float avail = std::max(0.0f, ImGui::GetContentRegionAvail().y - gap);
+    float steps_h = avail * (2.0f / 3.0f);
+    ImGui::BeginChild("steps", ImVec2(0, steps_h), ImGuiChildFlags_Borders);
     float icon_pad = ImGui::GetFontSize() * 1.1f + ImGui::GetStyle().ItemSpacing.x;
     for (auto& s : A.steps) {
         mark(s.state);
@@ -1647,10 +1628,7 @@ static void screen_installing() {
     }
     ImGui::EndChild();
     ImGui::Spacing();
-    if (details_header()) {
-        if (log_h <= 0) log_h = std::max(line * 6, space_above_footer());
-        log_pane(log_h);
-    }
+    log_pane(std::max(0.0f, ImGui::GetContentRegionAvail().y));
 }
 
 static void screen_error() {
@@ -1673,7 +1651,7 @@ static void screen_error() {
     }
     ImGui::Spacing();
     muted("Nothing that was finished is lost. Copy log, then Report issue. The log contains no keys.");
-    if (details_header()) log_pane(log_pane_height(0.5f));
+    log_pane(std::max(0.0f, space_above_footer()));
     int b = footer({"Quit", "Copy log", "Report issue...", "Retry"}, 3);
     if (b == 0) A.exit_code = 1;
     if (b == 1) copy_log();
@@ -2167,7 +2145,6 @@ static void automation_frame() {
             else if (k == "save_kind")
                 set_save_kind(v == "hd" ? 1 : v == "legacy" ? 2 : v == "other" ? 3 : 0);
             else if (k == "save_path") set_save_path(v);
-            else if (k == "open_details") details_open = details_force_open = true;
         }
     }
     A.stable_frames++;
