@@ -59,6 +59,7 @@ bool present_vsync() { return g_present_vsync.load(std::memory_order_relaxed); }
 int output_fps() { return pacing::cap_fps(fps(), display_hz(), present_vsync()); }
 void set_display_hz(int hz) {
     if (hz < 0) hz = 0;
+    if (!hz) return;
     const int old = g_display_hz.exchange(hz);
     if (old == hz) return;
     if (g_env_hz >= 0) LOG("[interp] display refresh rate %d Hz (NSMBU_DISPLAY_HZ=%d is used)", hz, g_env_hz);

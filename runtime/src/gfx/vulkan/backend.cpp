@@ -2559,6 +2559,8 @@ void run_main_loop() {
               event.type == SDL_EVENT_WINDOW_OCCLUDED ||
               event.type == SDL_EVENT_WINDOW_HIDDEN)
             s->visible = false;
+          if (event.type == SDL_EVENT_WINDOW_SHOWN && s == &R.tv)
+            display_rate::poll(R.tv.window);
           if (event.type == SDL_EVENT_WINDOW_RESTORED ||
               event.type == SDL_EVENT_WINDOW_SHOWN ||
               event.type == SDL_EVENT_WINDOW_EXPOSED) {
@@ -2606,7 +2608,11 @@ void run_main_loop() {
           mode ? " | " : "", mode ? interp::mode_name() : "",
           double(requested_res_scale()), fxaa_enabled() ? " | FXAA" : "");
       if (gx2::uncapped()) std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
-      SDL_SetWindowTitle(R.tv.window, title);
+      static char lastTitle[160];
+      if (strcmp(title, lastTitle)) {
+        memcpy(lastTitle, title, sizeof lastTitle);
+        SDL_SetWindowTitle(R.tv.window, title);
+      }
       titleFrames = frames;
       titleTime = now;
     }

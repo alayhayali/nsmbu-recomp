@@ -770,6 +770,31 @@ static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void
     capped_vsync_note_wake(granule);
 }
 
+static void align_swap_after_wake() {
+    if (gx2::uncapped() || !g_capped_vsync_last_wake_valid) return;
+    static std::chrono::steady_clock::time_point seen_wake{};
+    static bool used = false;
+    if (seen_wake != g_capped_vsync_last_wake) {
+        seen_wake = g_capped_vsync_last_wake;
+        used = false;
+    }
+    if (used) return;
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsed = now - g_capped_vsync_last_wake;
+    const auto period = capped_vsync_wait_period(vsync_granule());
+    if (elapsed < std::chrono::nanoseconds(0) || elapsed > period / 2) return;
+    used = true;
+    using us = std::chrono::microseconds;
+    static us offset{2500};
+    const us want = std::chrono::duration_cast<us>(elapsed) + us{1800};
+    if (want > offset) offset = want;
+    const us cap = std::chrono::duration_cast<us>(period / 3);
+    if (offset < us{1500}) offset = us{1500};
+    if (cap > us{0} && offset > cap) offset = cap;
+    const auto deadline = g_capped_vsync_last_wake + offset;
+    if (now < deadline) threads::park_sleep_until(deadline, true, nullptr);
+}
+
 static uint64_t flip_due(const PendingFlip& f) {
     const uint64_t g = vsync_granule();
     return std::max((f.vsync / g + 1) * g, g_last_flip_vsync + interp::effective_swap_interval(g_swap_interval) * g);
@@ -944,6 +969,7 @@ HLE(gx2, GX2DrawDone) {
     ret(c, 1);
 }
 HLE(gx2, GX2SwapScanBuffers) {
+    align_swap_after_wake();
 
     static int trace = env::TRACE_SWAP.integer_or(0);
     if (trace > 0) {
