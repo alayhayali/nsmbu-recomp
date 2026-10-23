@@ -2600,13 +2600,7 @@ void run_main_loop() {
         SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);
       }
       char title[160];
-      int mode = interp::mode();
-      std::snprintf(title, sizeof title,
-          "%s - %.0f fps%s%s | %gx%s",
-          app_title::kVulkan,
-          double(frames - titleFrames) / elapsed,
-          mode ? " | " : "", mode ? interp::mode_name() : "",
-          double(requested_res_scale()), fxaa_enabled() ? " | FXAA" : "");
+      std::snprintf(title, sizeof title, "%.0f fps", double(frames - titleFrames) / elapsed);
       if (gx2::uncapped()) std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
       static char lastTitle[160];
       if (strcmp(title, lastTitle)) {
