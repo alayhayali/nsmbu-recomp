@@ -1319,7 +1319,7 @@ static void screen_welcome() {
     ImGui::TextUnformatted("You need:");
     ImGui::Bullet();
     ImGui::TextWrapped("your NSMBU (USA, Europe, or an NSMBU + NSLU pack): a disc image (.wud/.wux), a Cemu archive "
-                       "at that title version (USA 64, Europe 80, or combo 0), or an extracted folder (code, content, "
+                       "at that title version (USA 64 or 0, Europe 80 or 0, or combo 0), or an extracted folder (code, content, "
                        "meta);");
     ImGui::Bullet();
     ImGui::TextWrapped("for a disc image: its disc key and the Wii U common key (from your console). The matching "
@@ -1396,7 +1396,7 @@ static void screen_menu() {
 static void screen_source() {
     page_header("Choose your game",
                 "A Wii U disc image (.wux or .wud), optionally with the 1.3.0 update, a Cemu archive (.wua) at USA "
-                "title version 64, Europe 80, or combo version 0, or an already extracted game folder.");
+                "title version 64 or 0, Europe 80 or 0, or combo version 0, or an already extracted game folder.");
     static const SDL_DialogFileFilter filters[] = {{"Wii U disc image or Cemu archive (.wux, .wud, .wua)", "wux;wud;wua"},
                                                    {"Wii U disc image (.wux, .wud)", "wux;wud"},
                                                    {"Cemu Wii U archive (.wua)", "wua"},
@@ -1577,7 +1577,7 @@ static void screen_keys() {
     ImGui::BeginChild("update", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY);
     heading("1.3.0 update (optional)", 20);
     muted("Folder with code, content and meta (USA title version 64, or Europe 80). Mods need this update. The USA "
-          "base disc alone also works.");
+          "or Europe base disc alone also works.");
     std::string upd = chosen_update_dir();
     if (!upd.empty()) {
         mark(2);

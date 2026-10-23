@@ -10,6 +10,8 @@ Use the `changelog` skill when editing.
 
 ### Added
 
+- Europe v0 is supported.
+  Mods still need the 1.3.0 update.
 - Up to four controllers work as separate players, with per-player bindings and an option to keep one layout for every player.
 - Collision Viewer in the settings debug tab draws solid tiles and actor solids in blue and actor hitboxes in red.
 - The Power-up storage mod keeps the power-up you walk into while already powered and shows it in a reserve box. Press Minus to summon it with the red-coin ring reward animation.

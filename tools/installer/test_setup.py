@@ -248,8 +248,14 @@ class ArchiveTitles(unittest.TestCase):
 
     def test_european_wrong_version(self):
         eu = _title("0005000010101e00", 64)
-        with self.assertRaisesRegex(setup.SetupError, "version 64.*title version 80"):
+        with self.assertRaisesRegex(setup.SetupError, "version 64.*title version 0 or 80"):
             setup.archive_choice(self.info([eu], eu))
+
+    def test_european_base_disc(self):
+        eu = _title("0005000010101e00", 0)
+        folder, notes = setup.archive_choice(self.info([eu], eu))
+        self.assertEqual(folder, "0005000010101e00_v0")
+        self.assertEqual(notes, [])
 
     def test_other_region(self):
         with self.assertRaisesRegex(setup.SetupError, "archive contains the Japan version"):

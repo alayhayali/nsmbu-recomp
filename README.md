@@ -53,9 +53,9 @@ Default layout:
 ## Compatibility
 
 Addresses in the repo are USA 1.3.0.
-Europe, the USA base disc, and the NSMBU + NSLU packs use USA→build maps ([docs/builds.md](docs/builds.md)).
+Europe, the USA and Europe base discs, and the NSMBU + NSLU packs use USA→build maps ([docs/builds.md](docs/builds.md)).
 Standalone USA and Europe discs should use their matching 1.3.0 update for full support and mods.
-The USA base disc alone (title version 0) is playable; mods are not supported on that build.
+The USA and Europe base discs alone (title version 0) are playable; mods are not supported on those builds.
 Combo packs are title version 0 (no separate update folder) and support mods.
 
 | Region | Title ID | Title version | Status |
@@ -63,6 +63,7 @@ Combo packs are title version 0 (no separate update folder) and support mods.
 | USA | `00050000-10101d00` | 64 (1.3.0) | Supported and playtested |
 | USA base disc | `00050000-10101d00` | 0 | Supported; mods not supported |
 | Europe | `00050000-10101e00` | 80 (1.3.0) | Supported |
+| Europe base disc | `00050000-10101e00` | 0 | Supported; mods not supported |
 | USA combo (NSMBU + NSLU) | `00050000-1014b700` | 0 | Supported |
 | Europe combo (NSMBU + NSLU) | `00050000-1014b800` | 0 | Supported |
 | Japan | `00050000-10101c00` | — | Not supported yet |
@@ -87,22 +88,25 @@ Each later start launches the game.
 
 ### 2. Choose your game copy
 
-The installer accepts USA or Europe NSMBU at version 1.3.0, or either NSMBU + NSLU pack at version 0.
-USA is title `00050000-10101d00`, title version 64.
-Europe is title `00050000-10101e00`, title version 80.
+The installer accepts USA or Europe NSMBU at version 1.3.0, the matching base disc, or either NSMBU + NSLU pack at version 0.
+USA is title `00050000-10101d00`, title version 64, or base disc title version 0.
+Europe is title `00050000-10101e00`, title version 80, or base disc title version 0.
 The USA combo pack is title `00050000-1014b700`, title version 0.
 The Europe combo pack is title `00050000-1014b800`, title version 0.
 
 Choose one of these:
 
 1. **Disc image.**
-   Use a `.wux` or `.wud` file, its keys, and the matching **1.3.0** update folder.
+   Use a `.wux` or `.wud` file and its keys.
+   The matching **1.3.0** update folder is optional.
+   Mods need that update.
 2. **Cemu archive.**
    Use a `.wua` file that already has that title version.
    This option needs no keys.
 3. **Extracted folder.**
-   Use a game folder that already has the 1.3.0 update applied.
-   The folder must contain `code`, `content`, and `meta`.
+   Use a game folder with `code`, `content`, and `meta`.
+   A 1.3.0 update merged into that folder is optional.
+   Mods need that update.
 
 The installer opens a file window so you can pick that file or folder.
 macOS and Windows use the system file chooser.
@@ -118,7 +122,7 @@ A disc image also needs:
 
 - the disc key
 - the Wii U common key
-- the matching 1.3.0 update
+- an optional matching 1.3.0 update (mods need it)
 
 On the Keys screen, type or paste each key's 32 hex digits into its own field.
 The disc key belongs to that disc image.

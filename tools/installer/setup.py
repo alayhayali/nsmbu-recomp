@@ -896,10 +896,10 @@ def file_sha256(path):
             h.update(chunk)
     return h.hexdigest()
 
-GAME_VERSION_FIX = ("Use New Super Mario Bros. U USA (title version 64 or base disc 0), Europe (title version 80), "
-                    "or an NSMBU + NSLU pack (USA or Europe, title version 0): a disc image, optionally with the "
-                    "matching 1.3.0 update, a merged game folder, or a Cemu archive. Mods need USA/Europe 1.3.0 "
-                    "or a combo pack, not the standalone base disc.")
+GAME_VERSION_FIX = ("Use New Super Mario Bros. U USA (title version 64 or base disc 0), Europe (title version 80 "
+                    "or base disc 0), or an NSMBU + NSLU pack (USA or Europe, title version 0): a disc image, "
+                    "optionally with the matching 1.3.0 update, a merged game folder, or a Cemu archive. Mods need "
+                    "USA/Europe 1.3.0 or a combo pack, not the standalone base disc.")
 
 UPDATE_DIRNAME = "update"
 
@@ -998,7 +998,7 @@ def apply_update_to(dst, update_dir):
 
 def get_update_dir(image, ui, args):
     """Optional matching 1.3.0 update next to the disc image, --update-dir, chosen interactively,
-    or None to install the base disc alone (mods unsupported when that RPX is USA_V0)."""
+    or None to install the base disc alone (mods unsupported when that RPX is USA_V0 or EU_V0)."""
     path = getattr(args, "update_dir", None) or find_sidecar_update(image)
     if path:
         path = os.path.abspath(path)
@@ -2023,7 +2023,7 @@ def run(args, ui):
             say("")
             i = ui.choose("What do you have?", [
                 "a disc image (.wux or .wud) with its keys (1.3.0 update folder optional)",
-                "a Cemu Wii U archive (.wua; no keys needed; USA title version 64 or Europe 80)",
+                "a Cemu Wii U archive (.wua; no keys needed; USA 64 or 0, Europe 80 or 0, or a combo pack)",
                 "an already extracted game folder (code, content, meta; 1.3.0 update optional)",
             ])
             if i in (0, 1):
@@ -2296,10 +2296,10 @@ def gui_main(args):
             msg_bits.append("1.3.0 update RPX SHA-256 %s…" % ident["update_sha256"][:16])
         if msg_bits:
             message = ("Wii U disc image: %s. Setup extracts it. A 1.3.0 update folder is optional "
-                       "(recommended for mods; the USA base disc alone also works)." % "; ".join(msg_bits))
+                       "(recommended for mods; the USA or Europe base disc alone also works)." % "; ".join(msg_bits))
         else:
             message = ("Wii U disc image. Setup extracts it. A 1.3.0 update folder is optional "
-                       "(recommended for mods; the USA base disc alone also works).")
+                       "(recommended for mods; the USA or Europe base disc alone also works).")
         reply(req, kind="image", path=p, disc_key=disc_key, common_key=src, update_dir=upd or "",
               message=message, **ident)
 

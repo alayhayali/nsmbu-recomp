@@ -207,8 +207,9 @@ the GUI skips the key screen and the terminal setup asks for none.
 `nsmbu-extract --title 0005000010101d00 info GAME.wua` lists every title folder and the one selected;
 setup then decides (`archive_choice` in `setup.py`) and logs which title it uses and why:
 
-- a supported game title at the matching 1.3.0 version is used: USA `0005000010101d00_v64` or Europe
-  `0005000010101e00_v80` (a Cemu archive that already merged the update into the game folder);
+- a supported game title is used: USA `0005000010101d00_v64` or Europe `0005000010101e00_v80`
+  (a Cemu archive that already merged the update into the game folder), or a base disc at version 0
+  (`0005000010101d00_v0` or `0005000010101e00_v0`);
 - a lone update title (`0005000e…`) without the base game stops with an explanation.
   DLC or other titles are listed as not used.
 - an extracted folder that is only the update (update title id, or no base
@@ -226,8 +227,8 @@ archive written by the test) and `ArchiveTitles` in `test_setup.py`.
 ## Game version check
 
 The hooks (`tools/recomp/hooks*.txt`) use canonical USA addresses.
-Setup accepts `code/red-pro2.rpx` from New Super Mario Bros. U USA (`00050000-10101d00`, title version 64)
-or Europe (`00050000-10101e00`, title version 80).
+Setup accepts `code/red-pro2.rpx` from New Super Mario Bros. U USA (`00050000-10101d00`, title version 64
+or base disc 0) or Europe (`00050000-10101e00`, title version 80 or base disc 0).
 The build registry (`tools/recomp/builds.py` and `tools/recomp/builds/*.json`) keeps those SHA-256
 values (checksums only: they identify the file and contain nothing of it;
 `guard.py` flags 32-digit, key-shaped strings, not 64-digit sums) and `check_game_version` compares
@@ -242,7 +243,7 @@ Europe uses a USA→EU address map; see [docs/builds.md](../../docs/builds.md).
 A disc image is the base game.
 The matching 1.3.0 update is optional: an extracted folder (`code/`, `content/`, `meta/`).
 Setup looks for `update/` next to the disc image, accepts `--update-dir`, or asks (terminal / Keys screen).
-Without it, the USA base disc (title version 0) still works.
+Without it, the USA or Europe base disc (title version 0) still works.
 Mods need the update.
 `check_update_folder` checks the update RPX and that build's title version before extract.
 After the base extract, `apply_update_to` merges that folder when present, then `check_game_version` runs on the result.
