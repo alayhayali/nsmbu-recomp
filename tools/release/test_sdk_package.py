@@ -1,11 +1,13 @@
 """Exercise the real SDK payload with the unchanged release guard; no game files."""
 from pathlib import Path
 import ast
+import importlib.util
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 import guard
@@ -61,7 +63,15 @@ class SDKPackage(unittest.TestCase):
                         self.assertIn(sibling.relative_to(package.ROOT).as_posix(), shipped,
                                       relative + " imports " + name)
         self.assertIn("tools/recomp/names.py", shipped)
-        self.assertIn("tools/recomp/headers_names.txt", shipped)
+        self.assertNotIn("tools/recomp/headers_names.txt", shipped)
+
+    def test_names_load_without_data_file(self):
+        spec = importlib.util.spec_from_file_location(
+            "recomp_names", Path(package.ROOT) / "tools/recomp/names.py")
+        names = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(names)
+        with mock.patch.object(names, "DATA_FILE", "/nonexistent/headers_names.txt"):
+            self.assertEqual(names.load(), {})
 
     def test_packaged_recomp_imports_in_isolated_python(self):
         with tempfile.TemporaryDirectory() as tmp:

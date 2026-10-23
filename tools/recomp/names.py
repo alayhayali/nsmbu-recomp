@@ -3,8 +3,9 @@
 
 The names come from the [nsmbu/headers](https://github.com/nsmbu/headers) project (USA v1.3.0):
 `python3 tools/recomp/names.py` walks a `references/headers` checkout and writes the extracted
-`{address: name}` table to `tools/recomp/headers_names.txt`, which is in git. `recomp.py` and
-`stubgen.py` read that file, so they need no checkout of the headers.
+`{address: name}` table to `tools/recomp/headers_names.txt`, which is in git. Local `recomp.py` and
+`stubgen.py` read that file when present; if it is missing (release packages omit it), they use an
+empty table.
 
 usage:
     names.py path/to/headers...     extract into headers_names.txt
@@ -163,7 +164,7 @@ def extract(argv_paths):
 
 
 def load():
-    """{address int: name} from the committed headers_names.txt."""
+    """{address int: name} from headers_names.txt when present, else {}."""
     names = {}
     try:
         with open(DATA_FILE) as f:
@@ -174,8 +175,7 @@ def load():
                 if addr and name:
                     names[int(addr, 16)] = name
     except OSError:
-        sys.exit("%s is missing; extract it from a references/headers checkout: "
-                 "python3 tools/recomp/names.py references/headers" % DATA_FILE)
+        pass
     return names
 
 
