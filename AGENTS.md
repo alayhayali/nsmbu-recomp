@@ -2,7 +2,6 @@
 
 ## Rules
 
-All implementation work must be delegated to subagents.
 Assume that the Typescript to Lua watcher is already running.
 
 ## Verify
@@ -22,4 +21,4 @@ The `nsmbu` target compiles with `-Wall`.
 
 ## Decomp
 
-Any discoveries you find about the source code document and compile it into the `decomp/` repo.
+Any discoveries you find about the source code document and decompile it into the `decomp/` repo.
