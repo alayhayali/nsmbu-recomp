@@ -5,20 +5,21 @@ description: "Cut an NSMBU GitHub release: move CHANGELOG Unreleased to a versio
 
 # Release
 
-Ship a versioned GitHub Release by pushing a `v*` tag that points at `main`.
+Ship a versioned GitHub Release by pushing a `v*` tag that points at the version branch.
 The workflow is `.github/workflows/release.yml`.
+It publishes on the tag push.
+It does not care which branch the tag points at.
 Local pushes run `.git-hooks/pre-push`, which builds and runs the full `ctest` suite (path-alias tests such as `mod_content_startup` first), then `tools/installer/test_setup.py` and `tools/recomp/test_builds.py`.
 
 **Default:** keep fixing and retagging until the release workflow is green and the GitHub Release exists.
 Only stop on failure without retagging when the user explicitly says to watch only, report only, or not retag.
 
-`0.6.0` is the pattern.
-The version branch was `0.6.0`.
-The changelog heading was committed on that branch.
-The pull request was merged into `main` with a merge commit (`gh pr merge --merge`).
-The tag `v0.6.0` was that merge commit on `main`, not the branch tip.
-A tag on the version branch publishes that commit.
-Merging the pull request does not publish the release.
+The version branch is the release.
+Its name is the version without `v` (`0.6.2`).
+The changelog heading is committed on that branch.
+The tag is the tip of that branch.
+Do not open a pull request.
+Do not merge into `main` as part of the release.
 
 ## Steps
 
@@ -53,11 +54,8 @@ Merging the pull request does not publish the release.
    Quit the window when done.
    Stop the release if any command fails or the setup smoke looks wrong.
 4. Push the version branch.
-   Open the pull request into `main` when it is not already open.
-   Merge it with a merge commit: `gh pr merge --merge`.
-   The release commit is that merge on `main`.
-   Do not tag the version-branch tip.
-5. Create the tag on the `main` merge commit: `git tag vX.Y.Z <sha>`.
+   The release commit is that branch tip.
+5. Create the tag on that tip: `git tag vX.Y.Z`.
    Push only that tag: `git push origin vX.Y.Z`.
    If the tag already exists on `origin` from a failed attempt, retag as in step 8.
 6. Find the new `release` workflow run for the tag (`gh run list --workflow=release.yml --limit 3`).
@@ -66,7 +64,7 @@ Merging the pull request does not publish the release.
    Confirm the release is not a draft (`gh release view vX.Y.Z --json isDraft -q .isDraft` is `false`).
 8. On failure:
    - Report the run URL, which jobs failed, and the failing test or step from `gh run view <id> --log-failed`.
-   - Fix the failure on the version branch, merge that into `main` again, retag the new `main` commit (`git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, `git tag vX.Y.Z <sha>`, `git push origin vX.Y.Z`), and return to step 6.
+   - Fix the failure on the version branch, push that branch, retag its new tip (`git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, `git tag vX.Y.Z`, `git push origin vX.Y.Z`), and return to step 6.
    - Repeat until the run succeeds and the release is published.
    - Only skip retagging when the user explicitly asked to watch or report without fixing.
 
@@ -79,7 +77,8 @@ Done when local verify passed, the tag is on `origin`, the release workflow conc
   That heading must exist before the tag build publishes.
 - Do not create an empty version heading.
 - Do not push a tag that already exists on `origin` without retagging after a fix (the default loop) or an explicit retag request.
-- Do not push the version branch, merge it, or push the tag until step 3 local verify has passed on this tree.
+- Do not push the version branch or the tag until step 3 local verify has passed on this tree.
+- Do not open a pull request or merge into `main` to publish.
 - Dry run without publishing: `gh workflow run release.yml -f dry_run=true` (no tag required).
   Use that only when the user asks for a dry run.
 
