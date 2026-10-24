@@ -8,6 +8,8 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-24
+
 ### Fixed
 
 - The screen no longer freezes while the music keeps playing if a frame's pictures are different sizes.
@@ -186,7 +188,8 @@ Use the `changelog` skill when editing.
 
 - The TV and GamePad present together on one vsync.
 
-[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.4.2...v0.5.0
