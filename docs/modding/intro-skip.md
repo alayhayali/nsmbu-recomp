@@ -321,8 +321,9 @@ The green world–course number on the pre-level banner is not MSBT text.
 Course setup (`f_024BD86C`) copies `FieldGameData` and writes picture-pane glyph indices from bytes at the course-task entry `+0x10` (three slots; `0xFF` is blank).
 Entering from the world map fills those bytes via the save/map path (`f_024BADF4`).
 A direct `load_pack` / `load_story` skips that fill, so the glyph bytes stay `0xFF` and the number font shows garbage (often a comma).
-When the copied `FieldGameData` already matches the current world/course, setup skips `f_024BAD4C` entirely (`f_024BADCC` hit), so a hook only on that clear is not enough.
-The runtime site at `0x024BD96C` (and the `0x024BAD4C` hook) refill the three glyph bytes from `CourseInfo` course `+0x11` as 1-based decimal digits mapped to picture frames `0..4` (`'1'` → `0`, …, `'5'` → `4`), matching the map path clamp at `0x0250C65C`.
+When the copied `FieldGameData` already matches the current world/course, setup skips `f_024BAD4C` entirely (`f_024BADCC` hit).
+The port does not hook that path.
+A direct open can show a blank green number and the save's world name.
 
 ### Map return after directed open
 
@@ -336,6 +337,8 @@ Writing node floats there crashes in the map sound path (`ld` at `+0xC` off a nu
 Do not use the save `worldMapLocation` alone.
 The map camera copies its focus node at `0x0227CCF4` and `0x0227E2A8` from the path search, which still returns the world start after a directed open.
 Those sites replace that node with the opened course before the pose and position stores.
+They stay out of the opening cinematic and out of loading a save from the file select.
+Both of those set a course-exit type without going through course-out, and the map keeps its own camera until it gives you control.
 See [course-open.md](../nsmbu/course-open.md).
 
 ### Normal enter path

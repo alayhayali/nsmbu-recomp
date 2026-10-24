@@ -1000,6 +1000,8 @@ HLE(gx2, GX2SwapScanBuffers) {
         agent_ctl::guest_service();
         collision_wireframe::capture(c);
         course_hot_reload::tick();
+    } else {
+        agent_ctl::guest_observe();
     }
 
     static const char* captureCounter = env::TEST_CAPTURE_LOAD_COUNTER();

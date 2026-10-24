@@ -1,6 +1,6 @@
 ---
 name: nsmbu
-description: "nsmbu CLI, Lua eval, scripted headless boots, and NSMBU_* env vars. Use when driving the game, running Lua in the running game, measuring a Release replay, running a dev recipe, nsmbu scripted, scripted inputs or exit frames, or adding, renaming, or reading an NSMBU_* variable."
+description: "nsmbu CLI, status, Lua eval, scripted headless boots, and NSMBU_* env vars. Use when driving the game, reading nsmbu status, waiting for a scene, running Lua in the running game, measuring a Release replay, running a dev recipe, nsmbu scripted, scripted inputs or exit frames, or adding, renaming, or reading an NSMBU_* variable."
 ---
 
 # nsmbu
@@ -10,69 +10,60 @@ Run `nsmbu --help` for the command list.
 
 ## Docs
 
-Read `docs/cli.md` for the global `nsmbu` command, dev recipes, and agent control loop.
-Read `docs/automation.md` for `nsmbu scripted`, headless boots, and scripted inputs or exit frames.
-Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable (`runtime/src/core/env.h`: `env::NAME()`, `.name()`, typed reads, `env::unset`).
-
-## Install once
-
-Node 24 or newer.
-
-```bash
-cd tools/cli && npm link
-```
-
-After that, every command is the global `nsmbu` on `PATH`.
-
-Fish completions: `nsmbu completion fish --install` (then `source ~/.config/fish/completions/nsmbu.fish` in open shells).
+Read `docs/cli.md` for dev recipes and the agent control loop.
+Read `docs/automation.md` for `nsmbu scripted` and replay inputs.
+Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable.
 
 ## One game
 
 Only one game process is supported.
 If `nsmbu open` refuses because a game is already running, run `nsmbu status` or `nsmbu close`.
 
-## Which command
+## Observe
 
-| Goal | Command |
-| --- | --- |
-| Compile or start a checkout | `build`, `launch`, `run`, `wine` |
-| Test the Report crash dialog | `crash` |
-| Full course input log | `record <course> [name]` / `replay <name>` |
-| Measured Release course | `replay --release <course>` |
-| Uncapped course, stop at a frame | `replay --release --uncapped --exit-at N <course>` |
-| Scripted boot and frame PNGs | `scripted <name>` |
-| Convert save data to JSON or back | `save <save.dat\|save.json>` |
-| Local Linux release folder and setup window | `installer [--version VERSION]` |
-| Look and tap | `open` -> `status` / `screenshot` -> `press` / `stick` -> `wait` -> `close` |
-| Run Lua in the game | `eval 'return nsmbu.Player.get_player(0):pos()'` |
+Read `nsmbu status` before any `eval`.
+The line names the scene, whether the world map or a course is up, the course pack, and the player position.
 
-`open`, `press`, `stick`, `screenshot`, `eval`, and `wait` block until their work is done.
-Do not sleep between control commands; use `wait --step N` when the next action needs guest progress.
-| Open a course file | `open game/content/Common/course_res_pack/1-27.szs` |
+```text
+frame=120 step=80 pid=1 scene=CourseSelect map=1 course=0 pack=1-1 entering=1-5 file=0 cp=-1 node=4 world=0 player=none
+```
 
-The loading card for `open 1-5` is in `docs/nsmbu/course-open.md`.
+`scene` is `Boot`, `Flow`, `FileSelect`, `SaveSelect`, `Title`, `Menu`, `Map`, `CourseTask`, or `CourseSelect`.
+`map=1` means the world-map select task is alive.
+`course=1` means a course task is alive.
+`pack` is the current course as `world-number`.
+`entering` is the course being loaded when it differs from `pack`.
+`cp` is the map checkpoint index.
+`world` and `node` are the map position when `map=1`.
+`player=none` means there is no course player snapshot.
+Fields that are not ready are left off the line.
 
-`screenshot [path]` blocks until the PNG exists and prints the path.
+Take a screenshot when the question is what is on screen.
+`nsmbu screenshot [path]` blocks until the PNG exists and prints the path.
+
+## Move
+
+Change scenes with one `nsmbu eval` call, then wait.
+
+```bash
+nsmbu eval 'return nsmbu.Scene.load_pack("1-5")'
+nsmbu wait --scene CourseTask
+```
+
+`open_first_save` and `open_title` are the other transitions.
+`nsmbu wait --scene NAME` polls status until `scene` matches.
+`--timeout` is seconds.
+A timeout prints the last status line.
+
+`open`, `press`, `stick`, `screenshot`, `eval`, `status`, and `wait` block until their work is done.
+Use `wait --step N` or `wait --scene NAME` when the next action needs guest progress.
+
+## Lua
+
+`nsmbu eval` runs on the guest thread and keeps state between calls.
+The global `nsmbu` is the mod SDK.
+Use `Guest.read` only for a field the status line does not name.
+Take the offset from the port or `docs/`, not from an earlier session.
+
 A long pad timeline stays on `record` and `replay`.
-
-## Lua eval
-
-`nsmbu eval '<code>'` runs Lua on the guest thread of the running game, at the same point as mod logic.
-The global `nsmbu` is the same SDK that mods use.
-The state persists, so globals set by one call are visible to the next.
-Use `--file PATH` to run a file, or pipe code on stdin.
-`--timeout MS` (default 5000) stops a runaway loop with an error instead of freezing the game.
-
-## Replay measure
-
-`replay` starts `build/debug/nsmbu`.
-`replay --release` starts `build/release/nsmbu`.
-Both set `NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, and `NSMBU_CRASH_RECOVERY` when those variables are unset.
-The command prints `[replay] log <path>` before the game starts.
-The default path is `nsmbu/logs/nsmbu.log`.
-`--log PATH` writes that file instead.
-`--uncapped` sets `NSMBU_UNCAPPED=1`.
-`--no-exit-on-input` sets `NSMBU_REPLAY_EXIT=none` so the game keeps running on live input after the recording ends.
-`--exit-at N` sets `NSMBU_EXIT_AT_FRAME`.
-`launch --no-debug` leaves the profile variables unset.
 Use `replay --release` for a measured course.

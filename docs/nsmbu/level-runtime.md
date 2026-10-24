@@ -110,6 +110,10 @@ existing safe transition:
 7. `Scene.load_pack` leaves the live course to the title screen and re-enters
    the course.
 
+While that leave is pending, course setup `f_024BD86C` is skipped.
+TitleScene bring-up then does not run setup against a torn-down `InputMgr`.
+The course HUD (`f_0252F900`, `f_025CF020`) returns when `AreaTask` is null.
+
 The reload does not patch live guest state.
 The course restarts at its entrance.
 The watcher runs on game logic steps, so it does not poll while the game is
@@ -136,8 +140,8 @@ The debug tab shows the active pack, resolved file, and current status.
   heap.
 - Resources on persistent heaps outside the course heap.
 - Edits to files that were not opened again by the course transition.
-- In-place patching of the running course. Actors, tiles, collision, and
-  models are rebuilt only by the course transition.
+- In-place patching of the running course.
+  Actors, tiles, collision, and models are rebuilt only by the course transition.
 
 ## Verification
 

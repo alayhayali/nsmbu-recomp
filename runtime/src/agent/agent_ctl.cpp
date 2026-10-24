@@ -32,6 +32,7 @@
 #include "hooks/interp.h"
 #include "mods/lua_eval.h"
 #include "mods/mod_json.h"
+#include "mods/sdk/nsmbu.h"
 #include "overlay/hostui.h"
 #include "core/runtime.h"
 
@@ -71,12 +72,13 @@ std::deque<ShotWait> g_shots;
 std::deque<std::string> g_out_lines;
 std::atomic<bool> g_quit{false};
 
-struct EvalJob {
+struct GuestJob {
     int id = 0;
+    bool status = false;
     std::string code;
     int timeout_ms = 5000;
 };
-std::deque<EvalJob> g_evals;
+std::deque<GuestJob> g_jobs;
 thread_local bool g_servicing = false;
 
 struct ServiceGuard {
@@ -141,6 +143,17 @@ std::string handle_status(int id) {
         v.object["player"] = std::move(p);
     } else
         v.object["player"].type = mods::json::Value::Null;
+    mods::lua_sdk::SceneReport scene;
+    mods::lua_sdk::scene_report(scene);
+    if (!scene.scene.empty()) v.object["scene"] = scene.scene;
+    if (scene.map_known) v.object["map"] = scene.map;
+    if (scene.course_known) v.object["course"] = scene.course;
+    if (!scene.pack.empty()) v.object["pack"] = scene.pack;
+    if (!scene.entering.empty()) v.object["entering"] = scene.entering;
+    if (scene.file_known) v.object["file"] = scene.file;
+    if (scene.cp_known) v.object["cp"] = scene.cp;
+    if (scene.node_known) v.object["node"] = scene.node;
+    if (scene.world_known) v.object["world"] = scene.world;
     return mods::json::dump(v);
 }
 
@@ -173,7 +186,8 @@ void handle_request(const mods::json::Value& req) {
     if (id < 0) return;
     const std::string cmd = req.get("cmd").string();
     if (cmd == "status") {
-        queue_line(handle_status(id));
+        std::lock_guard<std::mutex> lk(g_mu);
+        g_jobs.push_back(GuestJob{id, true, {}, 0});
         return;
     }
     if (cmd == "press") {
@@ -216,13 +230,11 @@ void handle_request(const mods::json::Value& req) {
             queue_line(response_err(id, "missing code"));
             return;
         }
-        EvalJob job;
-        job.id = id;
-        job.code = cv.text;
+        int timeout_ms = 5000;
         const auto& tv = req.get("timeout");
-        if (tv.type == mods::json::Value::Number && tv.number > 0) job.timeout_ms = int(tv.number);
+        if (tv.type == mods::json::Value::Number && tv.number > 0) timeout_ms = int(tv.number);
         std::lock_guard<std::mutex> lk(g_mu);
-        g_evals.push_back(std::move(job));
+        g_jobs.push_back(GuestJob{id, false, cv.text, timeout_ms});
         return;
     }
     if (cmd == "quit") {
@@ -449,33 +461,72 @@ void service() {
 #endif
 }
 
+namespace {
+
+bool take_job(GuestJob& job, bool status_only) {
+    std::lock_guard<std::mutex> lk(g_mu);
+    if (status_only) {
+        for (auto it = g_jobs.begin(); it != g_jobs.end(); ++it) {
+            if (!it->status) continue;
+            job = std::move(*it);
+            g_jobs.erase(it);
+            return true;
+        }
+        return false;
+    }
+    if (g_jobs.empty()) return false;
+    for (auto it = g_jobs.begin(); it != g_jobs.end(); ++it) {
+        if (!it->status) continue;
+        job = std::move(*it);
+        g_jobs.erase(it);
+        return true;
+    }
+    job = std::move(g_jobs.front());
+    g_jobs.pop_front();
+    return true;
+}
+
+void run_eval(const GuestJob& job) {
+    mods::lua_eval::Result result;
+    try {
+        result = mods::lua_eval::run(job.code, job.timeout_ms);
+    } catch (const std::exception& e) {
+        result.ok = false;
+        result.output = e.what();
+    }
+    mods::json::Value v;
+    v.type = mods::json::Value::Object;
+    v.object["id"] = job.id;
+    v.object["ok"] = result.ok;
+    if (result.ok)
+        v.object["output"] = result.output;
+    else
+        v.object["error"] = result.output;
+    queue_line(mods::json::dump(v));
+}
+
+}
+
 void guest_service() {
     if (!g_active.load() || g_servicing) return;
     ServiceGuard guard;
     for (;;) {
-        EvalJob job;
-        {
-            std::lock_guard<std::mutex> lk(g_mu);
-            if (g_evals.empty()) return;
-            job = std::move(g_evals.front());
-            g_evals.pop_front();
-        }
-        mods::lua_eval::Result result;
-        try {
-            result = mods::lua_eval::run(job.code, job.timeout_ms);
-        } catch (const std::exception& e) {
-            result.ok = false;
-            result.output = e.what();
-        }
-        mods::json::Value v;
-        v.type = mods::json::Value::Object;
-        v.object["id"] = job.id;
-        v.object["ok"] = result.ok;
-        if (result.ok)
-            v.object["output"] = result.output;
+        GuestJob job;
+        if (!take_job(job, false)) return;
+        if (job.status)
+            queue_line(handle_status(job.id));
         else
-            v.object["error"] = result.output;
-        queue_line(mods::json::dump(v));
+            run_eval(job);
+    }
+}
+
+void guest_observe() {
+    if (!g_active.load() || g_servicing) return;
+    ServiceGuard guard;
+    for (;;) {
+        GuestJob job;
+        if (!take_job(job, true)) return;
+        queue_line(handle_status(job.id));
     }
 }
 

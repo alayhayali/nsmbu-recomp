@@ -22,4 +22,24 @@ bool story_leave_pending();
 uint64_t story_load_generation();
 void native_intro_skip_tick(uint64_t step);
 
+struct SceneReport {
+    std::string scene;
+    bool map_known = false;
+    bool map = false;
+    bool course_known = false;
+    bool course = false;
+    std::string pack;
+    std::string entering;
+    bool file_known = false;
+    int file = 0;
+    bool cp_known = false;
+    int32_t cp = 0;
+    bool world_known = false;
+    int32_t world = 0;
+    bool node_known = false;
+    int32_t node = 0;
+};
+
+void scene_report(SceneReport& out);
+
 }

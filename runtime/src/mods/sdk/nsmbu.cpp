@@ -2604,6 +2604,109 @@ void native_intro_skip_tick(uint64_t step) {
     native_intro_skip_tick_impl(step);
 }
 
+namespace {
+
+bool pack_bytes(uint8_t world, uint8_t course) {
+    return world <= 8 && course <= 255;
+}
+
+void format_pack(uint8_t world, uint8_t course, std::string& out) {
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "%u-%u", unsigned(world) + 1u, unsigned(course) + 1u);
+    out = buf;
+}
+
+}
+
+void scene_report(SceneReport& out) {
+    out = {};
+    std::string err;
+    uint32_t creator = 0;
+    if (scene_now_creator(creator, err)) {
+        if (creator == kCreatorBoot) out.scene = "Boot";
+        else if (creator == kCreatorFlow) out.scene = "Flow";
+        else if (creator == kCreatorFileSelect) out.scene = "FileSelect";
+        else if (creator == kCreatorSaveSelect) out.scene = "SaveSelect";
+        else if (creator == kCreatorTitle) out.scene = "Title";
+        else if (creator == kCreatorMenu) out.scene = "Menu";
+        else if (creator == kCreatorMap) out.scene = "Map";
+        else if (creator == kCreatorCourseTask) out.scene = "CourseTask";
+        else if (creator == kCreatorCourseSelect) out.scene = "CourseSelect";
+    }
+
+    uint32_t map = 0;
+    err.clear();
+    if (lua_guest::read_u32(kCourseSelectInstance, map, err)) {
+        out.map_known = true;
+        out.map = map != 0;
+    }
+    uint32_t course = 0;
+    err.clear();
+    if (lua_guest::read_u32(kCourseTaskInstance, course, err)) {
+        out.course_known = true;
+        out.course = course != 0;
+    }
+
+    uint32_t info = 0;
+    err.clear();
+    if (lua_guest::read_u32(kCourseInfo, info, err) && info != 0) {
+        uint8_t now_w = 0, now_c = 0, next_w = 0, next_c = 0;
+        err.clear();
+        const bool now_ok = lua_guest::read_u8(info + 0x10u, now_w, err) && lua_guest::read_u8(info + 0x11u, now_c, err);
+        err.clear();
+        const bool next_ok = lua_guest::read_u8(info + kCourseInfoNextWorldOff, next_w, err) &&
+                             lua_guest::read_u8(info + kCourseInfoNextCourseOff, next_c, err);
+        const bool now_pack = now_ok && pack_bytes(now_w, now_c);
+        const bool next_pack = next_ok && pack_bytes(next_w, next_c);
+        if (now_pack) format_pack(now_w, now_c, out.pack);
+        if (now_pack && next_pack && (next_w != now_w || next_c != now_c))
+            format_pack(next_w, next_c, out.entering);
+    }
+
+    uint32_t mgr = 0;
+    err.clear();
+    if (lua_guest::read_u32(kSubjectMgr, mgr, err) && mgr != 0) {
+        uint8_t mode = 0;
+        uint8_t file = 0;
+        err.clear();
+        if (lua_guest::read_u8(mgr + kSubjectModeOff, mode, err) && mode == kSubjectModeActive &&
+            lua_guest::read_u8(mgr + kSubjectFileOff, file, err)) {
+            out.file_known = true;
+            out.file = file;
+        }
+    }
+
+    uint32_t field = 0;
+    err.clear();
+    if (lua_guest::read_u32(kFieldGameSingleton, field, err) && field != 0) {
+        int32_t cp = 0;
+        err.clear();
+        if (lua_guest::read_s32(field + 0x10u, cp, err)) {
+            out.cp_known = true;
+            out.cp = cp;
+        }
+    }
+
+    if (out.map) {
+        uint32_t game = 0;
+        err.clear();
+        if (lua_guest::read_u32(kMainGame, game, err) && game != 0) {
+            int32_t world = 0;
+            int32_t node = 0;
+            err.clear();
+            if (lua_guest::read_s32(game + 0x19Cu, world, err)) {
+                out.world_known = true;
+                out.world = world;
+            }
+            err.clear();
+            if (lua_guest::read_s32(game + 0x1A4u, node, err)) {
+                out.node_known = true;
+                out.node = node;
+            }
+        }
+    }
+}
+
 void request_load_story(int world, int course) {
     if (world < 0 || world > 8 || course < 0 || course > 255) return;
     {

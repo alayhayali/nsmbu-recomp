@@ -86,7 +86,8 @@ A digit above 5 has no frame in this map, so that glyph stays blank.
 The bytes live on the course-task entry and on the copied `FieldGameData`.
 Entering from the world map fills them on the save path (`f_024BADF4`).
 A direct `load_pack` skips that fill.
-The runtime sites `0x024BD96C` and `0x024BAD4C` write the digits from the course being entered.
+The port does not refill those bytes.
+A direct open can leave the green number blank.
 
 ### WorldCourse text
 
@@ -95,7 +96,8 @@ The message tags read `MainGame` (`0x101E7D7C`) at `+0x19C` (world) and `+0x1A8`
 `f_0267CB3C` prints `course + 1`.
 Course byte 0 prints 1.
 World byte 0 selects Acorn Plains.
-Those two words must be the course being entered before the text expands (`f_02681BFC`, `f_02672C90`).
+The port does not rewrite those tags on a direct open.
+The card can still name the save's world.
 
 ## State a direct open needs
 
@@ -119,4 +121,8 @@ Those two words must be the course being entered before the text expands (`f_026
    After spawn write `+0x50/+0x54/+0x58` only.
    The map camera copies its focus node at `0x0227CCF4` and `0x0227E2A8`.
    Those sites replace the node with the opened course so the camera and title follow that node.
+   Applying a save (`f_029D7648`) calls `f_029CF2D0`, which stores exit type `1`, so that value is also a fresh file load.
+   The pose seed and the camera replace run only after course-out (`0x024B8324`).
+   Opening the first save and the opening cinematic never take that path, so the map keeps the save's checkpoint and its own camera.
+   If the replacement node's `+0x50` is negative, the site leaves the game's node in place.
    The runtime also writes the save slot `worldMapLocation` (world byte is 1-based) and checkpoint byte `+0x43` to that node index.

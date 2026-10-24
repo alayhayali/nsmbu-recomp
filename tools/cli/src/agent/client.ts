@@ -9,7 +9,16 @@ type AgentResponse = {
     frame?: number;
     step?: number;
     pid?: number;
-    player?: { x: number; y: number; z: number };
+    scene?: string;
+    map?: boolean;
+    course?: boolean;
+    pack?: string;
+    entering?: string;
+    file?: number;
+    cp?: number;
+    node?: number;
+    world?: number;
+    player?: { x: number; y: number; z: number } | null;
     path?: string;
     output?: string;
 };
