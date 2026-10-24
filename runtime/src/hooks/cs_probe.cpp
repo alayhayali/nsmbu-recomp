@@ -242,8 +242,12 @@ extern "C" void hook_0252F900(Cpu* c) {
     f_0252F900_orig(c);
 }
 
-extern "C" void site_024B8324(Cpu* c) {
+extern "C" void nsmbu_mark_course_left(void) {
     g_left_course = true;
+}
+
+extern "C" void site_024B8324(Cpu* c) {
+    nsmbu_mark_course_left();
     seed_map_return_pose(0, false);
 }
 

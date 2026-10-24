@@ -24,6 +24,7 @@ extern "C" {
 
 extern "C" void nsmbu_fill_course_banner_digits(void);
 extern "C" void nsmbu_banner_entry_arm(void);
+extern "C" void nsmbu_mark_course_left(void);
 
 namespace mods::lua_sdk {
 std::atomic<bool> g_story_leave_queued{false};
@@ -685,6 +686,7 @@ const uint32_t kFaderBusy = GC(0x02983B28);
 const uint32_t kSubjectMgr = GD(0x101D1874);
 
 const uint32_t kAreaTaskInstance = GD(0x101D1598);
+const uint32_t kRequestCourseOut = GC(0x024B77DC);
 const uint32_t kFlowVtbl = GD(0x10177E4C);
 const uint32_t kMenuVtbl = GD(0x10175F88);
 constexpr uint32_t kSceneNowCreatorOff = 0x58u;
@@ -2112,6 +2114,18 @@ int l_scene_open_course_select(lua_State* L) {
     return 1;
 }
 
+int l_scene_leave_course(lua_State* L) {
+    if (!t_guest_cpu) return fail(L, "no guest cpu");
+    std::string err;
+    uint32_t area = 0;
+    if (!lua_guest::read_u32(kAreaTaskInstance, area, err)) return fail(L, err.c_str());
+    if (area == 0) return fail(L, "no course");
+    guest_call(t_guest_cpu, kRequestCourseOut, {area});
+    nsmbu_mark_course_left();
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 int l_scene_confirm_file(lua_State* L) {
     std::string err;
     if (!scene_change_open(err)) return fail(L, err.c_str());
@@ -2433,6 +2447,7 @@ void install_game(lua_State* L) {
     bind_guest(L, "open_first_save", l_scene_open_first_save);
     bind_guest(L, "open_file_select", l_scene_open_file_select);
     bind_guest(L, "open_course_select", l_scene_open_course_select);
+    bind_guest(L, "leave_course", l_scene_leave_course);
     bind_guest(L, "confirm_file", l_scene_confirm_file);
     bind_guest(L, "load_story", l_scene_load_story);
     bind_guest(L, "load_pack", l_scene_load_pack);

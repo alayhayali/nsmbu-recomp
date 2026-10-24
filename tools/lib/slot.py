@@ -30,7 +30,19 @@ def take_args(args):
     slot = None
     pack = None
     rest = []
+    skip_value = False
     for arg in args:
+        if skip_value:
+            rest.append(arg)
+            skip_value = False
+            continue
+        if arg == "--save":
+            rest.append(arg)
+            skip_value = True
+            continue
+        if arg.startswith("--save="):
+            rest.append(arg)
+            continue
         if arg.lower().endswith(".szs") or "/" in arg or "\\" in arg:
             found = course_file_pack(arg)
             if pack is not None:

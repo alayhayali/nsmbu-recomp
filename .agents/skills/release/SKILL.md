@@ -1,6 +1,6 @@
 ---
 name: release
-description: "Cut an NSMBU GitHub release: move CHANGELOG Unreleased to a version, local verify (ctest, installer test_setup, test_builds, nsmbu installer smoke), commit, push tag v*, and watch the release workflow. Use when the user asks to release, prepare a release, cut a version, push a release tag, watch release CI, or rerun a release until it is published and green."
+description: "Cut an NSMBU GitHub release: move CHANGELOG Unreleased to a version, local verify (ctest, installer test_setup, test_builds, nsmbu test, nsmbu installer smoke), commit, push tag v*, and watch the release workflow. Use when the user asks to release, prepare a release, cut a version, push a release tag, watch release CI, or rerun a release until it is published and green."
 ---
 
 # Release
@@ -42,6 +42,14 @@ Do not merge into `main` as part of the release.
    python3 tools/installer/test_setup.py
    python3 tools/recomp/test_builds.py
    ```
+
+   Then run the playtests when `game/` and a debug build are on this machine:
+
+   ```bash
+   nsmbu test
+   ```
+
+   That boots the course-open and opening-cinematic cases from `docs/automation.md`.
 
    Then build a release-shaped installer package and open setup:
 

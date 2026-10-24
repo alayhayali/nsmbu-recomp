@@ -16,6 +16,7 @@ Usage:
   nsmbu lint
   nsmbu recomp
   nsmbu scripted <name> […]
+  nsmbu test [name…] [--list]
   nsmbu completion fish [--install]
 
 Agent control (single game instance):

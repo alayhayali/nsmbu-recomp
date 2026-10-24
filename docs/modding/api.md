@@ -375,6 +375,7 @@ game's own menus do.
 | `open_first_save(file?)` | Writes `file` to `SaveData.header.last_file` on `SaveMgr` (`0x101E7DA4`), applies that save file with guest `0x029D7648`, then calls guest `0x029872BC`. `file` is `0`, `1`, or `2`. A missing argument uses `0`. A value outside that range returns `nil` and `"bad file"`. That function requests `CourseSelectTask` (`Factory.CourseSelect`) when the file has a record, and factory `0x0202B570` when the file is empty. After the call, `MainGame.mIsSinglePlayerDRC` (`0x101E7D7C` + `0x14`) is `1` for the GamePad and `0` for the Pro Controller, so the map reads the same device as the host. Returns `nil` and `"scene busy"` or `"file not ready"` when it cannot run. Returns true after the call. |
 | `open_file_select()` | Selects save file 0 through `SubjectMgr::selectSaveFile` on an existing menu task, then enters menu state `0x1022C0E4` (`0x0297D268`). It does not create the menu factory and does not enter the challenge-select state (`0x0297D58C`). Returns `nil` and `"scene busy"`, `"menu missing"`, `"state not ready"`, or `"file not ready"` when it cannot run. Returns true when the file select runs. |
 | `open_course_select()` | Requests the world map select task. Returns `nil` and `"scene busy"` while a scene change is queued or the fader is busy. |
+| `leave_course()` | Quits the live course through `AreaTask::requestCourseOut_Normal`, the same call the pause menu uses, and returns `nil` and `"no course"` when no course is running. |
 | `confirm_file()` | Confirms the save select. The routine sets the file and story gates on the flow object and tells the app to confirm, the way the save select does after a file is chosen. Returns `nil` and `"scene busy"` while a scene change is queued or the fader is busy, and does not write the gates in that case. |
 | `load_story(world_no, course_no)` | Sets the next story location on `CourseInfo` and requests the game scene task, the way the save select does. `world_no` is 0-indexed (world 1 = 0). `course_no` is 0–255 and is `pack_id - 1` (pack `1-23` is world 0, course 22). Returns `nil` and `"scene busy"` while a scene change is queued or the fader is busy. |
 | `load_pack(name)` | `name` is `world-pack` with world 1–9 and pack 1–256 (for example `1-23`). It calls the same `setCourse_Story` path as `load_story`. Returns `nil` and `"bad pack"` on a bad name. Returns `nil` and `"scene busy"` while a scene change is queued or the fader is busy. |
@@ -733,8 +734,10 @@ end
 - Changing the content file map without a restart.
 - A guest function pointer that enters Lua.
 - Loading a `.so`, `.dll`, or `.dylib`.
-- Shader or resolution overrides. Those stay in Cemu packages.
-- Named C parameters generated from header signatures. Hooks use registers.
+- Shader or resolution overrides.
+  Those stay in Cemu packages.
+- Named C parameters generated from header signatures.
+  Hooks use registers.
 - Filled enemy, boss, blocks, and env helpers (modules exist as empty stubs).
 
 ## Errors

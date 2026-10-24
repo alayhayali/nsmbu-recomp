@@ -63,6 +63,12 @@ class TakeArgs(unittest.TestCase):
         with self.assertRaises(SystemExit):
             slot.take_args(["game/nope/1-27.szs"])
 
+    def test_save_dir_is_not_a_course(self):
+        s, p, rest = slot.take_args(["--save", ".tmp/playtest/opened-course/save", "1-5"])
+        self.assertIsNone(s)
+        self.assertEqual(p, "1-5")
+        self.assertEqual(rest, ["--save", ".tmp/playtest/opened-course/save"])
+
     def test_bad_course_file_name(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "nope.szs")

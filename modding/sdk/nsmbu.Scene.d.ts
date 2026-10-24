@@ -32,6 +32,7 @@ interface Scene {
     open_first_save(this: void, file?: number): Result<boolean>;
     open_file_select(this: void): Result<boolean>;
     open_course_select(this: void): Result<boolean>;
+    leave_course(this: void): Result<boolean>;
     confirm_file(this: void): Result<boolean>;
     load_story(this: void, world_no: number, course_no: number): Result<boolean>;
     load_pack(this: void, name: string): Result<boolean>;

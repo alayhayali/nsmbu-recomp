@@ -92,6 +92,24 @@ tools/run/scripted-run.sh w11
 Frame 7000 is the course.
 The picture is the big tree, the bricks, and Mario on the ground.
 
+## Playtests
+
+`nsmbu test` boots the debug game once per case and checks the flows that broke in 0.6.0 and 0.6.1.
+
+`nsmbu test --list` prints the case names.
+`nsmbu test opened-course` runs one case.
+Each case copies or creates a save under `.tmp/playtest/<name>/save`, so `nsmbu/save` stays unread.
+
+The cases are:
+
+- `opened-course` opens `1-5` directly, checks the loading card was not rewritten to level 5, loads `1-2` from inside that course, then quits to the world map on node `W102` with Mario and a checkpoint.
+- `opening-cinematic` starts a new file and checks that the map accepts the stick and still has a course number after the opening cinematic.
+
+Map reads use the USA v1.3.0 addresses in `docs/nsmbu/course-open.md` and `vendor/decomp/include/course_select/NOTES_map_spawn.md`.
+The run needs `game/` and a debug build.
+It is not part of `ctest`.
+Run it before a release when this machine has a dump.
+
 ## Mute
 
 The script sets `NSMBU_NO_AUDIO=1` so no output device is opened.

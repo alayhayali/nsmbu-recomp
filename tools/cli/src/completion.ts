@@ -76,6 +76,12 @@ const COMMANDS: CommandSpec[] = [
     { name: "lint", description: "Build TypeScript mods and format the Lua", noFiles: true },
     { name: "recomp", description: "Run recomp only", noFiles: true },
     { name: "scripted", description: "Headless scripted boot", noFiles: true },
+    {
+        name: "test",
+        description: "Run playtests",
+        noFiles: true,
+        flags: [{ name: "list", description: "List playtests" }],
+    },
     { name: "open", description: "Open agent-controlled game" },
     { name: "status", description: "Agent status", noFiles: true },
     { name: "press", description: "Pulse a button", noFiles: true },

@@ -88,6 +88,7 @@ The CLI exports `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout 
 | `nsmbu installer [--version VERSION]` | builds this Linux host's GitHub Release folder (the zip contents) at `build/installer` with the release workflow's pinned zig toolchain, then opens that folder's setup window; does not publish |
 | `nsmbu lint` / `recomp` | TypeScript mod build, recomp only |
 | `nsmbu scripted <name>` | wraps `tools/run/scripted-run.sh` |
+| `nsmbu test [name…]` | boots the game and runs the playtests in [automation.md](automation.md) |
 
 Run `nsmbu` with no arguments (or `--help`) for the full list.
 

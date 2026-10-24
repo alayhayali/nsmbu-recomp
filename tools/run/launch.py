@@ -70,6 +70,7 @@ def main():
     parser.add_argument("--lldb", action="store_true")
     parser.add_argument("--wine", action="store_true", help="run the Windows build under Wine")
     parser.add_argument("--trace", action="store_true", help="pass --trace to the game (HLE trace)")
+    parser.add_argument("--save", help="save directory passed to the game")
     parser.add_argument("run_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.wine and (args.gdb or args.lldb):
@@ -89,6 +90,8 @@ def main():
         sys.exit("missing game/; run: nsmbu extract")
     env = os.environ.copy()
     _, save = devdata.apply_env(env, ROOT)
+    if args.save:
+        save = os.path.abspath(args.save)
     if slot_num is not None:
         slot.apply_slot(env, slot_num)
     if use_debug_env:

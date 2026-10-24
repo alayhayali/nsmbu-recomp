@@ -30,6 +30,7 @@ import {
 } from "../src/agent/commands.ts";
 import { cmdCompletion } from "../src/completion.ts";
 import { cmdSave } from "../src/save.ts";
+import { cmdTest } from "../src/playtest/cmd.ts";
 
 async function main(): Promise<void> {
     const argv = process.argv.slice(2);
@@ -173,6 +174,9 @@ async function main(): Promise<void> {
                 cmdScripted(repo, name, scriptRest);
                 break;
             }
+            case "test":
+                await cmdTest(repo, rest);
+                break;
             case "open":
                 await cmdOpen(repo, rest);
                 break;

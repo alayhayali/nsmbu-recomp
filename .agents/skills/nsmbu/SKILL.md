@@ -1,6 +1,6 @@
 ---
 name: nsmbu
-description: "nsmbu CLI, status, Lua eval, scripted headless boots, and NSMBU_* env vars. Use when driving the game, reading nsmbu status, waiting for a scene, running Lua in the running game, measuring a Release replay, running a dev recipe, nsmbu scripted, scripted inputs or exit frames, or adding, renaming, or reading an NSMBU_* variable."
+description: "nsmbu CLI, status, Lua eval, scripted headless boots, playtests, and NSMBU_* env vars. Use when driving the game, reading nsmbu status, waiting for a scene, running Lua in the running game, measuring a Release replay, running a dev recipe, nsmbu scripted, nsmbu test, scripted inputs or exit frames, or adding, renaming, or reading an NSMBU_* variable."
 ---
 
 # nsmbu
@@ -11,7 +11,7 @@ Run `nsmbu --help` for the command list.
 ## Docs
 
 Read `docs/cli.md` for dev recipes and the agent control loop.
-Read `docs/automation.md` for `nsmbu scripted` and replay inputs.
+Read `docs/automation.md` for `nsmbu scripted`, `nsmbu test`, and replay inputs.
 Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable.
 
 ## One game
