@@ -1,33 +1,35 @@
 ---
 name: release
-description: "Cut an NSMBU GitHub release: move CHANGELOG Unreleased to a version, local verify (ctest, installer test_setup, test_builds, nsmbu test, nsmbu installer smoke), commit, push tag v*, and watch the release workflow. Use when the user asks to release, prepare a release, cut a version, push a release tag, watch release CI, or rerun a release until it is published and green."
+description: "Cut an NSMBU GitHub release: merge the version branch into main, move CHANGELOG Unreleased to a version, local verify (ctest, installer test_setup, test_builds, nsmbu test, nsmbu installer smoke), commit on main, push tag v*, and watch the release workflow. Use when the user asks to release, prepare a release, cut a version, push a release tag, watch release CI, or rerun a release until it is published and green."
 ---
 
 # Release
 
-Ship a versioned GitHub Release by pushing a `v*` tag that points at the version branch.
+Ship a versioned GitHub Release by pushing a `v*` tag that points at `main` after the version branch is merged.
 The workflow is `.github/workflows/release.yml`.
 It publishes on the tag push.
-It does not care which branch the tag points at.
+It does not care which branch the tag points at, but this project tags the tip of `main`.
 Local pushes run `.git-hooks/pre-push`, which builds and runs the full `ctest` suite (path-alias tests such as `mod_content_startup` first), then `tools/installer/test_setup.py` and `tools/recomp/test_builds.py`.
 
 **Default:** keep fixing and retagging until the release workflow is green and the GitHub Release exists.
 Only stop on failure without retagging when the user explicitly says to watch only, report only, or not retag.
 
-The version branch is the release.
-Its name is the version without `v` (`0.6.2`).
-The changelog heading is committed on that branch.
-The tag is the tip of that branch.
-Do not open a pull request.
-Do not merge into `main` as part of the release.
+The version branch holds release work until it lands on `main` (name is the version without `v`, e.g. `0.6.2`).
+Do not start changelog cleanup, local verify, or tagging until that branch is merged into `main` and you are on an up-to-date `main`.
+The changelog heading and release commit live on `main`.
+The tag is the tip of `main`.
 
 ## Steps
 
+0. Merge the version branch into `main` before any release step below.
+   Open a pull request from the version branch into `main` and merge it, or merge locally and push `main`.
+   If `/release` was invoked on the version branch only, stop and complete this merge first.
+   Check out `main`, pull, and confirm it contains the intended release code.
 1. Confirm the version string with the user if they did not name one (example `0.4.0`).
    The git tag is `v` plus that string (`v0.4.0`).
    The CHANGELOG heading is Keep a Changelog form without `v` (`## [0.4.0] - YYYY-MM-DD`).
-   The version branch is named the same string without `v` (`0.4.0`).
-2. On that version branch:
+   The version branch name is the same string without `v` (`0.4.0`).
+2. On `main`:
    - Follow the `changelog` skill to clean and order Unreleased, then move that block under a new `## [X.Y.Z] - YYYY-MM-DD` heading (ISO date).
    - Leave `## [Unreleased]` empty above it.
    - Update the compare links at the bottom of `CHANGELOG.md`.
@@ -61,8 +63,8 @@ Do not merge into `main` as part of the release.
    Smoke the setup window: welcome or home actions, Keys paste fields when a disc image is in play, and that controls fit without clipping.
    Quit the window when done.
    Stop the release if any command fails or the setup smoke looks wrong.
-4. Push the version branch.
-   The release commit is that branch tip.
+4. Push `main`.
+   The release commit is the tip of `main`.
 5. Create the tag on that tip: `git tag vX.Y.Z`.
    Push only that tag: `git push origin vX.Y.Z`.
    If the tag already exists on `origin` from a failed attempt, retag as in step 8.
@@ -72,11 +74,11 @@ Do not merge into `main` as part of the release.
    Confirm the release is not a draft (`gh release view vX.Y.Z --json isDraft -q .isDraft` is `false`).
 8. On failure:
    - Report the run URL, which jobs failed, and the failing test or step from `gh run view <id> --log-failed`.
-   - Fix the failure on the version branch, push that branch, retag its new tip (`git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, `git tag vX.Y.Z`, `git push origin vX.Y.Z`), and return to step 6.
+   - Fix the failure on `main`, push `main`, retag its new tip (`git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, `git tag vX.Y.Z`, `git push origin vX.Y.Z`), and return to step 6.
    - Repeat until the run succeeds and the release is published.
    - Only skip retagging when the user explicitly asked to watch or report without fixing.
 
-Done when local verify passed, the tag is on `origin`, the release workflow conclusion is `success`, and the GitHub Release exists and is not a draft.
+Done when the version branch is merged into `main`, local verify passed on `main`, the tag is on `origin`, the release workflow conclusion is `success`, and the GitHub Release exists and is not a draft.
 
 ## Rules
 
@@ -85,8 +87,7 @@ Done when local verify passed, the tag is on `origin`, the release workflow conc
   That heading must exist before the tag build publishes.
 - Do not create an empty version heading.
 - Do not push a tag that already exists on `origin` without retagging after a fix (the default loop) or an explicit retag request.
-- Do not push the version branch or the tag until step 3 local verify has passed on this tree.
-- Do not open a pull request or merge into `main` to publish.
+- Do not push `main` or the tag until step 0 (merge into `main`) is done and step 3 local verify has passed on `main`.
 - Dry run without publishing: `gh workflow run release.yml -f dry_run=true` (no tag required).
   Use that only when the user asks for a dry run.
 
