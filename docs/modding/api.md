@@ -287,7 +287,6 @@ The module is callable: `nsmbu.Player(index)` is the same as `nsmbu.Player.get(i
 | `entered()` | `true` when that slot has an entered player. |
 | `lives()` / `set_lives(n)` | Field lives. Fails with `"not entered"` when the slot is empty. |
 | `mode()` / `set_mode(n)` | Power-up mode `0` .. `8`. `mode` prefers the actor value when it is valid. `set_mode` writes field data and the actor when present. |
-| `set_pickup_lock(locked)` | While `true`, the player consumes power-up items without applying them. Use `nsmbu.Player.set_pickup_lock(index, locked)` when you do not hold a handle. This is what the reserve mod uses to keep the current power-up. |
 | `coins()` / `set_coins(n)` | Field coin count for that player. |
 | `pos()` | Actor position as `{ x, y, z }`. Fails with `"no player actor"` when the actor is missing. |
 | `set_pos(x, y, z)` | Writes actor position. You may also pass one table `{ x, y, z }`. |

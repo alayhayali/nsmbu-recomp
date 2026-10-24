@@ -83,9 +83,13 @@ Writers emit names while every set bit matches an action in the table, and fall 
 
 The optional `x y z` fields are witness positions.
 At that step the replay compares the live player position with the recorded position.
-The tolerance is 0.05 per axis.
-When the first mismatch occurs, the replay logs `[input] replay diverged at step <n>` and stops.
-With `exit=none`, the same mismatch hands control to live input instead of quitting.
+The game reads the pad more than once during a step.
+A later read is after that step's movement.
+The check uses the first read, which is the position stored when the pad state was recorded.
+A difference of 0.05 or less on each axis matches.
+A larger difference up to 4 on each axis is logged, and the replay keeps playing.
+A difference above 4 on any axis logs `[input] replay diverged at step <n>` and stops.
+With `exit=none`, that same large gap hands control to live input instead of quitting.
 
 When the last line has played, the replay logs a match or a mismatch count and quits, unless `exit=none` is set.
 The counts cover start-snapshot misses and witness misses.

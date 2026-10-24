@@ -8,6 +8,6 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
-### Fixed
+### Removed
 
-- A power-up summoned from storage is collected when you touch it.
+- The Power-up storage example is gone.

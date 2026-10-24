@@ -239,13 +239,25 @@ int main(){
   g_logic_steps=10;
   auto played=input::read();
   assert(played.buttons==(input::kA|input::kY)&&played.lx==0.5f&&played.ly==-1.f&&played.touch&&played.tx==0.25f&&played.ty==0.5f);
+  g_snapshot.x=600.1f;
+  auto again=input::read();
+  assert(again.buttons==(input::kA|input::kY)&&again.lx==0.5f);
+  g_snapshot.x=600;
+  for(SDL_Event pending;SDL_PollEvent(&pending);) assert(pending.type!=SDL_EVENT_QUIT);
   g_logic_steps=11;
   assert(input::read().buttons==(input::kA|input::kY));
+  g_snapshot.y=-847.f;
   g_logic_steps=12;
   assert(input::read().buttons==input::kA);
+  g_snapshot.y=-848.f;
+  for(SDL_Event pending;SDL_PollEvent(&pending);) assert(pending.type!=SDL_EVENT_QUIT);
+  g_snapshot.y=-800.f;
   g_logic_steps=20;
   auto done=input::read();
   assert(done.buttons==0&&done.lx==0);
+  bool quit=false;
+  for(SDL_Event pending;SDL_PollEvent(&pending);) if(pending.type==SDL_EVENT_QUIT) quit=true;
+  assert(quit);
   remove(rep);
  }
  SDL_DestroyWindow(controls);SDL_DestroyWindow(game);input::set_prompt_window(nullptr);

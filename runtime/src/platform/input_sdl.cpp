@@ -659,6 +659,7 @@ static uint64_t g_replay_start_wait_from = 0;
 static uint64_t g_replay_wait_ticks = 0;
 static bool g_clock_from_control = false;
 static bool g_replay_mode_applied = false;
+static uint64_t g_witness_checked = ~0ull;
 
 static bool replay_course_clock_ready();
 
@@ -668,6 +669,7 @@ static void reset_course_input_clock() {
     g_replay_start_wait = false;
     g_replay_start_wait_from = 0;
     g_replay_mode_applied = false;
+    g_witness_checked = ~0ull;
 }
 
 static void trace_clock(uint64_t now, bool armed) {
@@ -691,6 +693,7 @@ static bool course_relative_step(uint64_t& step) {
     if (!active) {
         g_course_clock_armed = false;
         g_replay_start_wait = false;
+        g_witness_checked = ~0ull;
         return false;
     }
     const uint64_t now = interp::logic_steps();
@@ -907,7 +910,10 @@ static bool parse_start_field_line(const char* line, ReplayStart& start) {
     return true;
 }
 
-static bool pos_near(float a, float b) { return std::fabs(a - b) <= 0.05f; }
+static float pos_gap(float a, float b) { return std::fabs(a - b); }
+static bool pos_near(float a, float b) { return pos_gap(a, b) <= 0.05f; }
+static constexpr float kReplayStopGap = 4.f;
+static bool pos_stops(float a, float b) { return pos_gap(a, b) > kReplayStopGap; }
 
 static FILE* open_record_file(const char* path) {
     FILE* f = fopen(path, "w");
@@ -1235,17 +1241,19 @@ static bool apply_replay(PadState& s) {
     while (g_replay_index + 1 < samples.size() && samples[g_replay_index + 1].step <= step) g_replay_index++;
     const ReplaySample& cur = samples[g_replay_index];
     if (cur.step <= step) s = cur.pad;
-    if (cur.step == step && cur.witness) {
+    if (cur.step == step && cur.witness && g_witness_checked != step) {
         interp::PlayerSnapshot now;
         if (interp::player_snapshot(now, 0)) {
+            g_witness_checked = step;
             if (!pos_near(now.x, cur.wx) || !pos_near(now.y, cur.wy) || !pos_near(now.z, cur.wz)) {
+                const bool stop = pos_stops(now.x, cur.wx) || pos_stops(now.y, cur.wy) || pos_stops(now.z, cur.wz);
                 const bool first = g_witness_miss == 0;
-                if (first)
+                if (first || stop)
                     LOG("[input] replay diverged at step %llu: recorded %.3f %.3f %.3f now %.3f %.3f %.3f",
                         (unsigned long long)step, cur.wx, cur.wy, cur.wz, now.x, now.y, now.z);
                 if (!g_witness_first) g_witness_first = step;
                 g_witness_miss++;
-                if (first) replay_finished(step);
+                if (stop) replay_finished(step);
             }
         }
     }

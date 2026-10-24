@@ -28,7 +28,6 @@ extern "C" void nsmbu_banner_entry_arm(void);
 namespace mods::lua_sdk {
 std::atomic<bool> g_story_leave_queued{false};
 std::atomic<uint64_t> g_story_load_generation{0};
-std::atomic<uint32_t> g_pickup_lock_mask{0};
 namespace {
 using lua_mod::Instance;
 using json::Value;
@@ -1032,15 +1031,6 @@ int l_players(lua_State* L) {
     return 1;
 }
 
-int l_player_pickup_lock(lua_State* L) {
-    if (!lua_isnumber(L, 1)) return fail(L, "bad type");
-    int index = (int)lua_tointeger(L, 1);
-    if (index < 0 || index >= kPlayerCount) return fail(L, "bad player index");
-    set_pickup_lock(index, lua_toboolean(L, 2) != 0);
-    lua_pushboolean(L, 1);
-    return 1;
-}
-
 int l_player_entered(lua_State* L) {
     int index = player_index(L);
     bool entered = false;
@@ -1117,13 +1107,6 @@ int l_player_set_mode(lua_State* L) {
     if (actor_addr(index, actor, err)) {
         if (!lua_guest::write_s32(actor + kActorMode, mode, err)) return fail(L, err.c_str());
     }
-    lua_pushboolean(L, 1);
-    return 1;
-}
-
-int l_player_set_pickup_lock(lua_State* L) {
-    int index = player_index(L);
-    set_pickup_lock(index, lua_toboolean(L, 2) != 0);
     lua_pushboolean(L, 1);
     return 1;
 }
@@ -1625,7 +1608,6 @@ void install_player_meta(lua_State* L) {
         bind_guest(L, "set_lives", l_player_set_lives);
         bind_guest(L, "mode", l_player_mode);
         bind_guest(L, "set_mode", l_player_set_mode);
-        bind_guest(L, "set_pickup_lock", l_player_set_pickup_lock);
         bind_guest(L, "coins", l_player_coins);
         bind_guest(L, "set_coins", l_player_set_coins);
         bind_guest(L, "speed_y", l_player_speed_y);
@@ -2433,7 +2415,6 @@ void install_game(lua_State* L) {
     lua_newtable(L);
     bind_guest(L, "get_player", l_player);
     bind_guest(L, "get_players", l_players);
-    bind_guest(L, "set_pickup_lock", l_player_pickup_lock);
     set_loaded(L, "nsmbu.Player");
 
     lua_newtable(L);
@@ -2593,30 +2574,6 @@ void install_modules(lua_State* L, Instance* inst) {
 
     install_game(L);
 }
-}
-
-bool pickup_locked(uint32_t actor, int32_t mode) {
-    if (mode < 1 || mode > 8) return false;
-    uint32_t mask = g_pickup_lock_mask.load(std::memory_order_relaxed);
-    if (mask == 0) return false;
-    for (int i = 0; i < kPlayerCount; ++i) {
-        if ((mask & (1u << i)) == 0) continue;
-        uint32_t slot_actor = 0;
-        std::string err;
-        if (actor_addr(i, slot_actor, err) && slot_actor == actor) return true;
-    }
-    return false;
-}
-
-void set_pickup_lock(int index, bool locked) {
-    if (index < 0 || index >= kPlayerCount) return;
-    uint32_t mask = g_pickup_lock_mask.load(std::memory_order_relaxed);
-    if (locked) {
-        mask |= 1u << index;
-    } else {
-        mask &= ~(1u << index);
-    }
-    g_pickup_lock_mask.store(mask, std::memory_order_relaxed);
 }
 
 void forget(Instance* inst) {

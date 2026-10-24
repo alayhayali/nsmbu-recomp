@@ -104,3 +104,19 @@ Those two words must be the course being entered before the text expands (`f_026
 3. `MainGame+0x19C` and `MainGame+0x1A8` hold that same pair before the `WorldCourse` text expands.
 4. The three glyph bytes hold the 1-based digits of `course + 1`.
 5. After `f_024D29A4`, now matches next, and `course_res_pack/1-5.szs` is the file that loads.
+6. On return to the world map, map checkpoint and pose must match that pack.
+   Direct open skips the map enter path that calls `FieldGameData::setCheckPoint` (`0x024BADF4`).
+   Without a resolvable pose, `CourseSelectPlayer` never appears on the node.
+   The runtime seeds checkpoint and `MainGame+0x19C/+0x1A0/+0x1A4` from `CourseInfo` world/course when the checkpoint is still missing.
+   Checkpoint `index` is the path node index (`W101` is 1).
+   Course slot (`node+0x58`, 0 for `W101`) is a different field.
+   Hooks run on course-out and CourseSelectPlayer setup.
+   Resolution walks `CourseSelectMgr` paths for a node named like `W101` (pack `1-1`).
+   Do not match on path node `+0x50/+0x54` alone; those fields are often `0,0` for many nodes (including the world start).
+   Do not use the save file `worldMapLocation` alone; the template save is not the opened course.
+   Live `CourseSelectPlayer+0x110` is an object pointer (used after `NMSndObject::calc`), not world position.
+   Only write node floats into `+0x110/+0x114/+0x118` during createLater packing.
+   After spawn write `+0x50/+0x54/+0x58` only.
+   The map camera copies its focus node at `0x0227CCF4` and `0x0227E2A8`.
+   Those sites replace the node with the opened course so the camera and title follow that node.
+   The runtime also writes the save slot `worldMapLocation` (world byte is 1-based) and checkpoint byte `+0x43` to that node index.

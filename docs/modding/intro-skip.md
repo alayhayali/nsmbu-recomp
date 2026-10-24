@@ -184,7 +184,8 @@ A delegate thread at `+0x10` runs a state machine; the kickers only run when `mS
 
 State 2 (`saveSavedata`) chains a challenge replay write when `SaveMgr._30 != -1`:
 after the file write it calls `startWriteChallengeReplay(_30)` (`0x029D8E88`, state 4), which consumes the
-pending request and resets `_30 = -1`. That pending-request field is what `isSaving()` checks.
+pending request and resets `_30 = -1`.
+That pending-request field is what `isSaving()` checks.
 
 After a successful main load the state normalizes counters
 (`0x029D8FDC` header, `0x029D9020` map block at `+0x1840`, `0x029D90C4` replay block at `+0x4E4C`,
@@ -322,6 +323,20 @@ Entering from the world map fills those bytes via the save/map path (`f_024BADF4
 A direct `load_pack` / `load_story` skips that fill, so the glyph bytes stay `0xFF` and the number font shows garbage (often a comma).
 When the copied `FieldGameData` already matches the current world/course, setup skips `f_024BAD4C` entirely (`f_024BADCC` hit), so a hook only on that clear is not enough.
 The runtime site at `0x024BD96C` (and the `0x024BAD4C` hook) refill the three glyph bytes from `CourseInfo` course `+0x11` as 1-based decimal digits mapped to picture frames `0..4` (`'1'` → `0`, …, `'5'` → `4`), matching the map path clamp at `0x0250C65C`.
+
+### Map return after directed open
+
+The same skip means `FieldGameData::setCheckPoint` never runs before the course.
+Quitting back to `CourseSelectTask` then has `mCheckPoint.index == -1` and `MainGame` map pose `+0x19C/+0x1A0/+0x1A4` cleared, so `CourseSelectPlayer` fails to spawn on the opened node.
+The runtime seeds that checkpoint and pose from `CourseInfo` world/course when the checkpoint is still missing (course-out site `0x024B8324`, CourseSelectPlayer setup `0x0226FBC4` / `0x0226FD14`).
+Node lookup uses `CourseSelectMgr` path entries by name (`W101` for pack `1-1`).
+Path node `+0x50/+0x54` are not a reliable world/course pair (many nodes share `0,0`), so name match is required.
+Live `CourseSelectPlayer+0x110` is a pointer after spawn.
+Writing node floats there crashes in the map sound path (`ld` at `+0xC` off a null vtable).
+Do not use the save `worldMapLocation` alone.
+The map camera copies its focus node at `0x0227CCF4` and `0x0227E2A8` from the path search, which still returns the world start after a directed open.
+Those sites replace that node with the opened course before the pose and position stores.
+See [course-open.md](../nsmbu/course-open.md).
 
 ### Normal enter path
 

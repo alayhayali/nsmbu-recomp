@@ -15,6 +15,7 @@ Use the `changelog` skill when editing.
 - Up to four controllers work as separate players, with per-player bindings and an option to keep one layout for every player.
 - Setup can precompile shaders before you play, with a progress bar.
   You can skip it, and shaders still compile during play which may cause stutters.
+- Experimental higher frame rate options.
 
 ### Changed
 
@@ -25,6 +26,7 @@ Use the `changelog` skill when editing.
 
 ### Fixed
 
+- After opening a course with `nsmbu run` or `nsmbu open`, quitting to the world map puts Mario on that course’s node.
 - The Keys screen takes the disc key and the Wii U common key typed or pasted as 32 hex digits.
   A key file saved by Notepad or a Cemu `keys.txt` works too.
 - Frame stuttering should be improved.

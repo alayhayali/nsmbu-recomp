@@ -77,10 +77,13 @@ class CoverageTests(unittest.TestCase):
             [(site, canon) for site, canon, _, _ in entries],
             [(False, 0x02ACD218), (False, 0x024D752C), (True, 0x022A79C4),
              (False, 0x02994164), (False, 0x029CBBB4), (False, 0x024BAD4C),
-             (False, 0x024BD86C), (True, 0x024BD96C), (True, 0x024BE280),
+             (False, 0x024BD86C), (True, 0x024B8324), (False, 0x0226FBC4),
+             (True, 0x0226FD14), (True, 0x0226FECC), (True, 0x02270310),
+             (True, 0x022703A4), (True, 0x0227CCF4), (True, 0x0227E2A8),
+             (True, 0x024BD96C), (True, 0x024BE280),
              (False, 0x025D8B28), (False, 0x02672C90), (False, 0x02681BFC),
              (False, 0x0267CB3C), (False, 0x0252F900), (False, 0x025CF020),
-             (False, 0x02931C1C), (False, 0x029C52CC), (False, 0x024FBF6C),
+             (False, 0x029C52CC), (False, 0x024FBF6C),
              (False, 0x029C4FE4), (False, 0x024F30DC)],
         )
         for site, canon, native, where in entries:

@@ -5,7 +5,6 @@ interface Player {
     set_lives(lives: number): Result<boolean>;
     mode(): Result<number>;
     set_mode(mode: number): Result<boolean>;
-    set_pickup_lock(locked: boolean): Result<boolean>;
     coins(): Result<number>;
     set_coins(coins: number): Result<boolean>;
     speed_y(): Result<number>;
@@ -21,5 +20,4 @@ interface Player {
 interface Players {
     get_player(this: void, index: number): Result<Player>;
     get_players(this: void): Player[];
-    set_pickup_lock(this: void, index: number, locked: boolean): Result<boolean>;
 }
