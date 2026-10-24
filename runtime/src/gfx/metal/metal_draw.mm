@@ -241,6 +241,9 @@ static bool retry_due(T* x, bool now = false) {
 static std::unordered_map<uint64_t, Shader*> g_shaders;
 
 static std::atomic<int> g_compiles_in_flight{0};
+static std::atomic<uint64_t> g_warm_activity{0};
+static void note_warm() { g_warm_activity.fetch_add(1, std::memory_order_relaxed); }
+uint64_t shader_warm_activity() { return g_warm_activity.load(std::memory_order_relaxed); }
 
 static double g_t_decompile, g_t_msl, g_t_pipeline;
 static double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
@@ -338,9 +341,10 @@ static void compile_msl(Shader* sh, const char* rawSrc, uint64_t key) {
         NSError* err = nil;
         id<MTLLibrary> lib = injectFailure ? nil : [R.device newLibraryWithSource:source options:opt error:&err];
         id<MTLFunction> fn = lib ? [lib newFunctionWithName:entry] : nil;
-        if (!fn) { report_compile_error(src, key, err, attempt, lib != nil); sh->state = CS_FAILED; return; }
+        if (!fn) { report_compile_error(src, key, err, attempt, lib != nil); sh->state = CS_FAILED; note_warm(); return; }
         sh->fn = fn;
         sh->state = CS_READY;
+        note_warm();
         return;
     }
     std::string copy = src;
@@ -349,9 +353,10 @@ static void compile_msl(Shader* sh, const char* rawSrc, uint64_t key) {
         g_compiles_in_flight--;
         if (injectFailure) lib = nil;
         id<MTLFunction> fn = lib ? [lib newFunctionWithName:entry] : nil;
-        if (!fn) { report_compile_error(copy.c_str(), key, err, attempt, lib != nil); compile_done(sh->state, CS_FAILED); return; }
+        if (!fn) { report_compile_error(copy.c_str(), key, err, attempt, lib != nil); compile_done(sh->state, CS_FAILED); note_warm(); return; }
         sh->fn = fn;
         compile_done(sh->state, CS_READY);
+        note_warm();
     }];
 }
 
@@ -707,6 +712,7 @@ static id<MTLRenderPipelineState> get_pipeline(const uint32_t* regs, Shader* vs,
         g_t_pipeline += now_ms() - t0;
         if (!pl->state) pipelineFailed(err);
         pl->status = pl->state ? CS_READY : CS_FAILED;
+        note_warm();
         return pl->state;
     }
     g_compiles_in_flight++;
@@ -716,6 +722,7 @@ static id<MTLRenderPipelineState> get_pipeline(const uint32_t* regs, Shader* vs,
         if (!p) pipelineFailed(err);
         pl->state = p;
         compile_done(pl->status, p ? CS_READY : CS_FAILED);
+        note_warm();
     }];
     return wait_compiled(pl->status) ? pl->state : nil;
 }

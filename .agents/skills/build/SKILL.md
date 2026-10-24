@@ -12,7 +12,7 @@ See `.agents/skills/nsmbu/SKILL.md` and `docs/cli.md`.
 
 Generated C uses `musttail`, so the build uses Clang.
 
-On Linux, `tools/build.py` adds the `libstdc++` path when it finds `libstdc++.so` under `/usr/lib/gcc/`.
+On Linux, `tools/build/build.py` adds the `libstdc++` path when it finds `libstdc++.so` under `/usr/lib/gcc/`.
 
 `nsmbu build` runs the recompiler when `game/code/red-pro2.rpx` is newer than `build/gen`.
 

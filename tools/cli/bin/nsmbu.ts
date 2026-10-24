@@ -19,6 +19,7 @@ import {
     cmdWine,
 } from "../src/dev.ts";
 import {
+    cmdEval,
     cmdOpen,
     cmdPress,
     cmdQuit,
@@ -28,6 +29,7 @@ import {
     cmdWait,
 } from "../src/agent/commands.ts";
 import { cmdCompletion } from "../src/completion.ts";
+import { cmdSave } from "../src/save.ts";
 
 async function main(): Promise<void> {
     const argv = process.argv.slice(2);
@@ -92,20 +94,38 @@ async function main(): Promise<void> {
             case "extract":
                 cmdExtract(repo, rest);
                 break;
-            case "record": {
-                const [course, ...launchRest] = rest;
-                if (!course) {
-                    throw new Error("usage: nsmbu record <course> […]");
+            case "save": {
+                const { flags, positional } = parseArgv(rest, ["output"], ["output"]);
+                const [input, output] = positional;
+                if (!input) {
+                    throw new Error("usage: nsmbu save <save.dat|save.json> [output] [--output PATH]");
                 }
-                cmdRecord(repo, course, launchRest);
+                if (positional.length > 2) {
+                    throw new Error("usage: nsmbu save <save.dat|save.json> [output] [--output PATH]");
+                }
+                cmdSave(input, flagString(flags, "output") ?? output);
+                break;
+            }
+            case "record": {
+                const [course, ...tail] = rest;
+                if (!course) {
+                    throw new Error("usage: nsmbu record <course> [name] […]");
+                }
+                const named = tail.length > 0 && !tail[0].startsWith("-");
+                const name = named ? tail[0] : course;
+                cmdRecord(repo, course, name, named ? tail.slice(1) : tail);
                 break;
             }
             case "replay": {
-                const { flags, positional } = parseArgv(rest, ["release", "uncapped", "exit-at", "log"], ["exit-at", "log"]);
-                const [course, ...launchRest] = positional;
-                if (!course) {
+                const { flags, positional } = parseArgv(
+                    rest,
+                    ["release", "uncapped", "exit-at", "log", "no-exit-on-input"],
+                    ["exit-at", "log"],
+                );
+                const [name, ...launchRest] = positional;
+                if (!name) {
                     throw new Error(
-                        "usage: nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course> […]",
+                        "usage: nsmbu replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name> […]",
                     );
                 }
                 const exitAt = flagString(flags, "exit-at");
@@ -118,10 +138,11 @@ async function main(): Promise<void> {
                 }
                 cmdReplay(
                     repo,
-                    course,
+                    name,
                     {
                         release: hasFlag(flags, "release"),
                         uncapped: hasFlag(flags, "uncapped"),
+                        noExitOnInput: hasFlag(flags, "no-exit-on-input"),
                         exitAt,
                         log,
                     },
@@ -169,6 +190,9 @@ async function main(): Promise<void> {
                 break;
             case "screenshot":
                 await cmdScreenshot(repo, rest);
+                break;
+            case "eval":
+                await cmdEval(repo, rest);
                 break;
             case "wait":
                 await cmdWait(repo, rest);

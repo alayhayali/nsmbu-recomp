@@ -41,12 +41,15 @@ namespace gfxvk { bool buffer_cache_enabled(); }
 #include "input/input_map.h"
 #include "../mods/mods.h"
 #include "../mods/sdk/nsmbu.h"
+#include "../mods/lua_gui.h"
 #include "../mods/packages.h"
 #include "../input/motion/motion.h"
 #include "../platform/keycodes.h"
 #include "audio/audio_out.h"
 #include "input/rumble.h"
 #include "hooks/interp.h"
+#include "hooks/collision_wireframe.h"
+#include "hooks/course_hot_reload.h"
 #include "core/runtime.h"
 #include "save/savestate.h"
 #include "gfx/screenshot.h"
@@ -140,7 +143,7 @@ struct Ui {
     double options_since = -1;
     bool options_latched = false;
 
-    int cap_action = -1, cap_col = 0;
+    int cap_action = -1, cap_col = 0, cap_player = 0;
     bool cap_pad_released = false;
     double cap_started = 0;
     std::string cap_note;
@@ -161,6 +164,7 @@ struct Ui {
     bool just_opened = false;
     bool list_view = false;
     int hover_action = -1;
+    int control_player = 0;
 };
 Ui U;
 
@@ -191,12 +195,13 @@ void setup_style() {
     s.WindowTitleAlign = ImVec2(0.5f, 0.5f);
     ImVec4* c = s.Colors;
 
-    c[ImGuiCol_WindowBg] = ImVec4(0.03f, 0.07f, 0.12f, 0.975f);
+    c[ImGuiCol_WindowBg] = ImVec4(0.03f, 0.07f, 0.12f, 1.0f);
     c[ImGuiCol_ChildBg] = ImVec4(0.06f, 0.13f, 0.20f, 0.35f);
     c[ImGuiCol_PopupBg] = ImVec4(0.05f, 0.11f, 0.18f, 0.98f);
     c[ImGuiCol_Border] = ImVec4(0.30f, 0.62f, 0.70f, 0.45f);
-    c[ImGuiCol_TitleBg] = ImVec4(0.05f, 0.20f, 0.30f, 1.0f);
-    c[ImGuiCol_TitleBgActive] = ImVec4(0.06f, 0.27f, 0.38f, 1.0f);
+    c[ImGuiCol_TitleBg] = c[ImGuiCol_WindowBg];
+    c[ImGuiCol_TitleBgActive] = c[ImGuiCol_WindowBg];
+    c[ImGuiCol_TitleBgCollapsed] = c[ImGuiCol_WindowBg];
     c[ImGuiCol_FrameBg] = ImVec4(0.10f, 0.22f, 0.32f, 0.85f);
     c[ImGuiCol_FrameBgHovered] = ImVec4(0.14f, 0.34f, 0.46f, 0.90f);
     c[ImGuiCol_FrameBgActive] = ImVec4(0.17f, 0.42f, 0.54f, 1.0f);
@@ -380,8 +385,15 @@ void feed_gamepad(ImGuiIO& io, bool enabled) {
     key(ImGuiKey_GamepadStart, kPadMenu);
 }
 
+void wrapped_tooltip(const char* text) {
+    ImGui::BeginTooltip();
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
+    ImGui::TextUnformatted(text);
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+}
 void help(const char* text) {
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", text);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_ForTooltip)) wrapped_tooltip(text);
 }
 void heading(const char* text) {
     ImGui::Spacing();
@@ -465,9 +477,9 @@ void tab_saves() {
                 if (s.older_other && s.portable) {
 
                     ImGui::TextDisabled("also holds an older full state (slot%d.bin, %.0f MB)", i, s.older_bytes / 1048576.0);
-                    if (ImGui::IsItemHovered())
-                        ImGui::SetTooltip("Kept on disk, not loaded: the newer portable state is. It contains game data: "
-                                          "don't share it. Delete it in the states folder if you no longer need it.");
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_ForTooltip))
+                        wrapped_tooltip("Kept on disk, not loaded: the newer portable state is. It contains game data: "
+                                        "don't share it. Delete it in the states folder if you no longer need it.");
                 } else if (s.older_other) {
                     ImGui::TextDisabled("also holds an older portable state (slot%d.nsstate)", i);
                 }
@@ -505,9 +517,9 @@ void tab_saves() {
     bool fs;
     if (check("Full save states (large, contain game data, don't share) - for debugging", full, &fs, !ss::full_states_forced()))
         ss::set_full_states(fs);
-    help("This game writes a full save state. "
-         "The small portable state is unused. "
-         "These files contain game code and data: never attach them to a bug report.");
+    help(ss::full_states_forced() ? "Set by NSMBU_FULL_SAVE_STATES or a test variable for this start."
+                                  : "Saves the whole running game instead (about 300 MB per slot), exactly as it is. "
+                                    "These files contain game code and data: never attach them to a bug report.");
     heading("Screenshots");
     {
 
@@ -591,23 +603,23 @@ void tab_graphics() {
             if (ImGui::Button("Restart now")) hostui::post([] { render::restart(); });
         }
     }
-    heading("Frame rate");
+    heading("Frame rate (experimental)");
     int m = interp::mode(), f = interp::fps();
-    for (int r : {60, 120, 165, 240}) {
-        if (r != 60) ImGui::SameLine();
+    static const int rates[] = {60, 120, 144, 165, 240};
+    for (int r : rates) {
+        if (r != rates[0]) ImGui::SameLine();
         char label[16];
-        if (r != 60) ImGui::BeginDisabled();
         snprintf(label, sizeof label, "%d fps", r);
         const bool on = r == 60 ? m != 1 : m == 1 && f == r;
         if (radio(label, on)) post_changed([r] {
             if (r == 60) interp::set_mode(0);
             else { interp::set_fps(r); interp::set_mode(1); }
         });
-        if (r != 60) ImGui::EndDisabled();
     }
-    help("60 fps is the game rate.\n"
-         "120, 165 and 240 fps are the higher rates. The game logic stays at 60 steps a second.\n"
-         "The display shows at most its refresh rate.");
+    help("60 fps is the game rate. 120, 144, 165 and 240 fps add in-between frames for the steps in between.\n"
+         "The game logic still runs at 60 steps a second.\n"
+         "The display shows at most its refresh rate. Hotkeys: 6 = 60 fps, 7 = cycle rates,\n"
+         "9 = toggle 60 fps and the last non-60 rate.");
 
     if (const int hz = interp::display_hz(); hz > 0) {
         const int out = interp::output_fps();
@@ -620,26 +632,12 @@ void tab_graphics() {
     } else if (m == 1 && f > 60) {
         note("Display refresh rate unknown: %d fps are drawn; frames beyond the display's rate are not shown.", f);
     }
-    if (m == 1) {
-        bool paced;
-        if (check("Keep game speed (recommended)", interp::paced_interpolation(), &paced, !env::INTERP_PACED()))
-            post_changed([paced] { interp::set_paced_interpolation(paced); });
-        help("When the computer cannot draw all frames, skip in-between frames instead of slowing the\n"
-             "whole game down. The performance overlay shows how many are drawn.\n"
-             "Off: every logic step waits for all of its frames, so if the frame target is not reached\n"
-             "(e.g. 120/165/240 fps at a high internal resolution) the whole game runs in slow motion.\n"
-             "Saved for 120, 165 and 240 fps.");
-        if (!interp::paced_interpolation())
-            note("Off: if this computer cannot reach %d fps, the whole game slows down (the performance\n"
-                 "overlay then shows fewer than 30 logic steps/s). Turn it on to keep the game's speed.", interp::fps());
-    }
-
     bool unc;
     if (check("Uncapped (debug: the game runs too fast)", gx2::uncapped(), &unc)) hostui::post([unc] { gx2::set_uncapped(unc); });
     help("Debug only, to see how many frames a second this computer can draw: no frame limit and no\n"
          "vsync. The game counts frames, so it runs faster than normal. The frame rate is in the window\n"
-         "title and the performance overlay. Not saved. (With a higher frame rate and Keep game speed\n"
-         "on, the game logic still keeps 60 steps a second.)");
+         "title and the performance overlay. Not saved. (At frame targets above 60 fps the game logic\n"
+         "still keeps 60 steps a second.)");
 
     heading("Internal resolution");
     static const float scales[] = {1.0f, 1.5f, 2.0f, 3.0f};
@@ -945,7 +943,8 @@ void package_controls() {
                     if (ImGui::InputText(option.name.c_str(), value, sizeof value, ImGuiInputTextFlags_EnterReturnsTrue))
                         configure(mod.id, option.id, std::string(value), error);
                 }
-                if (!option.description.empty() && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", option.description.c_str());
+                if (!option.description.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort | ImGuiHoveredFlags_ForTooltip))
+                    wrapped_tooltip(option.description.c_str());
                 ImGui::PopID();
             }
             if(mod.restart_required) note("Changes apply on the next game start. Active files stay loaded until exit.");
@@ -974,8 +973,10 @@ void tab_mods() {
 }
 
 void start_capture(int a, int col) {
+    if (U.control_player > 0 && col != kColPad) col = kColPad;
     U.cap_action = a;
     U.cap_col = col;
+    U.cap_player = U.control_player;
     U.cap_pad_released = false;
     U.cap_started = now_s();
     U.cap_note.clear();
@@ -984,16 +985,16 @@ void start_capture(int a, int col) {
 }
 
 void clear_binding(int a, int col) {
-    input_map::Mapping m = input_map::current();
+    input_map::Mapping m = input_map::player(U.control_player);
     if (col == kColPad) m.pad[a] = input_map::kPadNone;
     else m.keys[a][col] = input_map::kNoKey;
-    input_map::set_current(m);
+    input_map::set_player(U.control_player, m);
 }
 
 void apply_capture() {
     if (U.cap_action < 0) return;
     using namespace input_map;
-    input_map::Mapping m = input_map::current();
+    input_map::Mapping m = input_map::player(U.cap_player);
     const int a = U.cap_action, colm = U.cap_col;
     int code = g_capture_key.exchange(-2);
     bool done = false;
@@ -1001,29 +1002,31 @@ void apply_capture() {
     else if (code == -3) {
         if (colm == kColPad) m.pad[a] = kPadNone;
         else m.keys[a][colm == kColAny ? 0 : colm] = kNoKey;
-        input_map::set_current(m);
+        input_map::set_player(U.cap_player, m);
         done = true;
     } else if (code >= 0 && colm != kColPad) {
         if (const char* r = input_map::reserved_key(code)) U.cap_note = std::string("That key is used for ") + r;
         else {
             m.keys[a][colm == kColAny ? 0 : colm] = code;
-            input_map::set_current(m);
+            input_map::set_player(U.cap_player, m);
             done = true;
         }
     }
     if (!done) {
 
+        float values[kPadCount] = {};
+        input::controller_values(U.cap_player, values);
         int pressed = -1;
         bool any = false;
         for (int p = 1; p < kPadCount; p++) {
-            any |= U.values[p] > 0.3f;
-            if (U.values[p] > 0.6f && pressed < 0) pressed = p;
+            any |= values[p] > 0.3f;
+            if (values[p] > 0.6f && pressed < 0) pressed = p;
         }
         if (!U.cap_pad_released) U.cap_pad_released = !any;
         else if (pressed > 0) {
             if (colm == kColPad || colm == kColAny) {
                 m.pad[a] = pressed;
-                input_map::set_current(m);
+                input_map::set_player(U.cap_player, m);
             }
             done = true;
         }
@@ -1044,13 +1047,22 @@ std::string summary(const input_map::Mapping& m, int a) {
     return out.empty() ? "not bound" : out;
 }
 
-void controls_list(input_map::Mapping& m, float h) {
-    if (ImGui::BeginTable("map", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchSame,
+std::string summary(const input_map::Mapping& m, int a, bool keys) {
+    if (keys) return summary(m, a);
+    if (m.pad[a] == input_map::kPadNone) return "not bound";
+    return std::string("controller ") + input_map::pad_label(m.pad[a]);
+}
+
+void controls_list(input_map::Mapping& m, float h, bool keys) {
+    if (ImGui::BeginTable("map", keys ? 4 : 2,
+                          ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchSame,
                           ImVec2(0, h))) {
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Wii U input", ImGuiTableColumnFlags_WidthStretch, 1.6f);
-        ImGui::TableSetupColumn("Key");
-        ImGui::TableSetupColumn("Key 2");
+        if (keys) {
+            ImGui::TableSetupColumn("Key");
+            ImGui::TableSetupColumn("Key 2");
+        }
         ImGui::TableSetupColumn("Controller");
         ImGui::TableHeadersRow();
         for (int a = 0; a < input_map::kActionCount; a++) {
@@ -1058,11 +1070,12 @@ void controls_list(input_map::Mapping& m, float h) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             ImGui::AlignTextToFramePadding();
-            const bool conflict = input_map::has_conflict(m, a);
+            const bool conflict = keys ? input_map::has_conflict(m, a)
+                                       : m.pad[a] != input_map::kPadNone && !input_map::pad_users(m, m.pad[a], a).empty();
             if (conflict) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.62f, 0.20f, 1.0f));
             ImGui::TextUnformatted(input_map::action_label(a));
             if (conflict) ImGui::PopStyleColor();
-            for (int col = 0; col < 3; col++) {
+            for (int col = keys ? 0 : kColPad; col < 3; col++) {
                 ImGui::TableNextColumn();
                 std::string label;
                 if (U.cap_action == a && (U.cap_col == col || (U.cap_col == kColAny && col != kColKey1))) label = "...";
@@ -1081,12 +1094,6 @@ void controls_list(input_map::Mapping& m, float h) {
     }
 }
 
-void save_gyro(const motion::Settings& g) {
-    hostui::post([g] {
-        motion::set_settings(g);
-        for (const char* k : motion::kKeys) hostui::set(k, motion::value_of(g, k));
-    });
-}
 void load_gyro() {
     motion::Settings g;
     std::string v;
@@ -1101,104 +1108,51 @@ void load_gyro() {
     motion::set_settings(g);
 }
 
-void gyro_window(bool& open) {
-    const char* title = "Gyro aiming##gyro";
-    if (open) { ImGui::OpenPopup(title); open = false; }
-    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) return;
-    motion::Settings g = motion::settings(), before = g;
-    bool v;
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 34);
-    note("Moving the GamePad looks around in first person. "
-         "This works with the GamePad and the Pro Controller choice alike. The game's own "
-         "Options > Gyro switch still decides whether it uses the motion, and it ignores the motion while the right "
-         "stick is pushed.");
-    for (int i = 0; i < motion::kSourceCount; i++)
-        if (radio(motion::source_label(i), g.source == i)) g.source = i;
-    if (motion::env_override()) note("NSMBU_GYRO=%s overrides the saved source.", env::GYRO());
-    if (g.source == motion::kOff && motion::gyro_controllers() > 0) note("A controller with a gyro is connected: choose Controller gyro to use it.");
-    if (g.source == motion::kController || g.source == motion::kCemuhook) {
-        ImGui::TextUnformatted("Turn left/right by");
-        for (int a = 0; a < motion::kAxisModeCount; a++) {
-            ImGui::SameLine();
-            if (radio(motion::axis_label(a), g.tuning.axis == a)) g.tuning.axis = a;
-        }
-        help("Player space: turning the controller left or right about the real vertical, however you hold it "
-             "(recommended). Yaw: turning it about its own vertical axis (as if it lay flat). Roll: tilting it to "
-             "the side like a steering wheel. Tilting its top up or down always looks up or down.");
-    }
-    const float lo = motion::Tuning::kMinSensitivity, hi = motion::Tuning::kMaxSensitivity;
-    ImGui::SetNextItemWidth(220);
-    ImGui::SliderFloat("Sensitivity left/right", &g.tuning.sensitivity_x, lo, hi, "%.2fx", ImGuiSliderFlags_Logarithmic);
-    ImGui::SameLine(0, 16);
-    if (check("Invert##x", g.tuning.invert_x, &v)) g.tuning.invert_x = v;
-    ImGui::SetNextItemWidth(220);
-    ImGui::SliderFloat("Sensitivity up/down", &g.tuning.sensitivity_y, lo, hi, "%.2fx", ImGuiSliderFlags_Logarithmic);
-    ImGui::SameLine(0, 16);
-    if (check("Invert##y", g.tuning.invert_y, &v)) g.tuning.invert_y = v;
-    if (ImGui::Button("Default sensitivity"))
-        g.tuning.sensitivity_x = g.tuning.sensitivity_y = motion::Tuning::kDefaultSensitivity;
-    help("1.0 turns the view as far as moving a real Wii U GamePad by the same angle would (about twice the "
-         "controller's turn); the default 0.5 lets the view follow the controller about one to one.");
-    if (g.source == motion::kMouse) {
-        ImGui::SetNextItemWidth(220);
-        ImGui::SliderFloat("Mouse: degrees per point", &g.mouse_degrees, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
-        help("How far one point of mouse movement turns the GamePad (before the sensitivity above). With Steam "
-             "Input's gyro to mouse, tune this and Steam's own sensitivity together.");
-        note("While the game aims, the pointer is captured and the mouse turns the GamePad.");
-    }
-    if (g.source == motion::kCemuhook) {
-        static char host[256] = "";
-        static int port = 0;
-        static bool init = false;
-        if (!init || ImGui::IsWindowAppearing()) { snprintf(host, sizeof host, "%s", g.dsu_host.c_str()); port = g.dsu_port; init = true; }
-        ImGui::SetNextItemWidth(220);
-        if (ImGui::InputText("Server", host, sizeof host, ImGuiInputTextFlags_EnterReturnsTrue) || ImGui::IsItemDeactivatedAfterEdit())
-            g.dsu_host = host[0] ? host : "127.0.0.1";
-        ImGui::SetNextItemWidth(120);
-        if (ImGui::InputInt("Port", &port, 0, 0, ImGuiInputTextFlags_EnterReturnsTrue) || ImGui::IsItemDeactivatedAfterEdit())
-            g.dsu_port = std::clamp(port, 1, 65535);
-        ImGui::SetNextItemWidth(120);
-        int slot = g.dsu_slot + 1;
-        if (ImGui::SliderInt("Controller slot", &slot, 1, 4)) g.dsu_slot = slot - 1;
-        note("A Cemuhook (DSU) server: DS4Windows, BetterJoy, SteamDeckGyroDSU or a phone app; default 127.0.0.1, port 26760.");
-    }
-
-    const char* pad_name = g.recenter_pad > 0 ? input_map::pad_label(g.recenter_pad) : "None";
-    ImGui::SetNextItemWidth(220);
-    if (ImGui::BeginCombo("Recalibrate: controller", pad_name)) {
-        for (int p = 0; p < input_map::kPadCount; p++)
-            if (ImGui::Selectable(p ? input_map::pad_label(p) : "None", g.recenter_pad == p)) g.recenter_pad = p;
-        ImGui::EndCombo();
-    }
-    std::string key_name = g.recenter_key >= 0 ? input_map::key_label(g.recenter_key) : "None";
-    ImGui::SetNextItemWidth(220);
-    if (ImGui::BeginCombo("Recalibrate: key", key_name.c_str())) {
-        if (ImGui::Selectable("None", g.recenter_key < 0)) g.recenter_key = -1;
-        for (int k = 0; k < 256; k++) {
-            std::string id = input_map::key_id(k);
-            if (id.rfind("Key", 0) == 0) continue;
-            if (ImGui::Selectable(input_map::key_label(k).c_str(), g.recenter_key == k)) g.recenter_key = k;
-        }
-        ImGui::EndCombo();
-    }
-    help("If the view drifts while the controller rests, recalibrate and put the controller down for a second: "
-         "the gyro's offset is learnt anew. The button or key also reaches the game if the controls use it; pick "
-         "a free one.");
-    if (ImGui::Button("Recalibrate now")) motion::recalibrate();
-    ImGui::SameLine();
-    ImGui::TextUnformatted(motion::status().c_str());
-    ImGui::PopTextWrapPos();
-    if (!(g == before)) save_gyro(g);
-    if (ImGui::Button("Close") || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false)) ImGui::CloseCurrentPopup();
-    ImGui::EndPopup();
-}
-
 void tab_controls() {
     bool v;
-    input_map::Mapping m = input_map::current();
-
     const bool pro = input::pro_controller();
+    const bool sync = input_map::sync_players();
+    const int p = sync ? 0 : std::clamp(U.control_player, 0, input_map::kPlayers - 1);
+    input_map::Mapping m = input_map::player(p);
+
+    if (check("Same controls for every player", sync, &v)) {
+        input_map::set_sync_players(v, p);
+        if (v) U.control_player = 0;
+    }
+    help("On: binding a controller button changes it for every player, so all controllers keep the same layout. "
+         "Off: bind buttons for one player at a time. The keyboard always drives Player 1. "
+         "Each extra controller joins as the next player.");
+    ImGui::SameLine(0, 24);
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Player");
+    for (int i = 0; i < input_map::kPlayers; i++) {
+        ImGui::SameLine();
+        if (radio(std::to_string(i + 1).c_str(), p == i, !sync)) U.control_player = i;
+        if (i == 0) help("Player 1 uses the keyboard and the first controller.");
+    }
+    if (sync) {
+        std::string list;
+        for (int i = 0; i < input_map::kPlayers; i++) {
+            if (!input::controller_connected(i)) continue;
+            if (!list.empty()) list += ", ";
+            list += "Player " + std::to_string(i + 1) + ": " + input::controller_name(i);
+        }
+        if (list.empty()) note("No controllers connected. Player 1 uses the keyboard.");
+        else note("Connected: %s", list.c_str());
+    } else {
+        const std::string name = input::controller_name(p);
+        if (p == 0) {
+            if (pro)
+                note("Player 1: Wii U Pro Controller%s", name.empty() ? " (keyboard only)" : (" (" + name + " and the keyboard)").c_str());
+            else
+                note("Player 1: Wii U GamePad%s", name.empty() ? " (keyboard only)" : (" (" + name + " and the keyboard)").c_str());
+        } else if (input::controller_connected(p)) {
+            note("Player %d: %s", p + 1, name.c_str());
+        } else {
+            note("Player %d: no controller connected. Each extra controller joins as the next player.", p + 1);
+        }
+    }
+
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Keyboard and controllers act as");
     ImGui::SameLine();
@@ -1219,12 +1173,12 @@ void tab_controls() {
     ImGui::SameLine();
     if (radio(input_map::face_layout_label(input_map::FaceLayout::kPosition), fl == input_map::FaceLayout::kPosition)) {
         input_map::apply_face_layout(m, input_map::FaceLayout::kPosition);
-        input_map::set_current(m);
+        input_map::set_player(p, m);
     }
     ImGui::SameLine();
     if (radio(input_map::face_layout_label(input_map::FaceLayout::kLabels), fl == input_map::FaceLayout::kLabels)) {
         input_map::apply_face_layout(m, input_map::FaceLayout::kLabels);
-        input_map::set_current(m);
+        input_map::set_player(p, m);
     }
     help("How the controller's face buttons drive the Wii U's A/B/X/Y. By position: the bottom "
          "button is B (Nintendo layout). By label: the button named A is A — on an Xbox pad that "
@@ -1246,46 +1200,57 @@ void tab_controls() {
     } else if (!U.cap_note.empty()) {
         status = U.cap_note;
     } else if (U.hover_action >= 0) {
-        status = std::string(input_map::action_label(U.hover_action)) + "  -  " + summary(m, U.hover_action) +
+        status = std::string(input_map::action_label(U.hover_action)) + "  -  " + summary(m, U.hover_action, p == 0) +
                  ".  A / Enter / click: rebind; X / Delete / right-click: clear.";
-    } else if (int n = input_map::conflict_count(m)) {
-        sc = ImVec4(1.0f, 0.62f, 0.20f, 1.0f);
-        status = std::to_string(n) + " input(s) are bound to more than one action (orange).";
     } else {
-        status = "Select a button on the controller or a chip to rebind it. Changes are saved to controls.json.";
+        int conflicts = 0;
+        if (p == 0) {
+            conflicts = input_map::conflict_count(m);
+        } else {
+            for (int q = 1; q < input_map::kPadCount; q++)
+                if (input_map::pad_users(m, q).size() > 1) conflicts++;
+        }
+        if (conflicts) {
+            sc = ImVec4(1.0f, 0.62f, 0.20f, 1.0f);
+            status = std::to_string(conflicts) + " input(s) are bound to more than one action (orange).";
+        } else {
+            status = "Select a button on the controller or a chip to rebind it. Changes are saved to controls.json.";
+        }
     }
     const float bottom = ImGui::GetFrameHeightWithSpacing() * 2 + 4;
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float h = std::max(160.0f, avail.y - bottom);
     U.hover_action = -1;
     if (U.list_view) {
-        controls_list(m, h);
+        controls_list(m, h, p == 0);
     } else {
         ControlsView cv;
         cv.m = m;
         cv.pro = pro;
         cv.cap_action = U.cap_action;
         cv.cap_col = U.cap_col;
+        cv.keys_enabled = p == 0;
         static float live[input_map::kPadCount];
-        std::copy(std::begin(U.values), std::end(U.values), live);
+        input::controller_values(p, live);
         test_pad(live);
         cv.pad = live;
         cv.t = now_s();
 
         static bool keys[256];
-        for (int i = 0; i < 256; i++) keys[i] = g_held_keys[i].load(std::memory_order_relaxed);
-        cv.keys = keys;
+        for (int i = 0; i < 256; i++) keys[i] = p == 0 && g_held_keys[i].load(std::memory_order_relaxed);
+        cv.keys = p == 0 ? keys : nullptr;
         for (int a = 0; a < input_map::kActionCount; a++) {
             float x = 0;
-            for (int key : m.keys[a])
-                if (key != input_map::kNoKey && keys[key]) x = 1;
-            if (int p = m.pad[a]; p != input_map::kPadNone) x = std::max(x, live[p]);
+            if (p == 0)
+                for (int key : m.keys[a])
+                    if (key != input_map::kNoKey && keys[key]) x = 1;
+            if (int q = m.pad[a]; q != input_map::kPadNone) x = std::max(x, live[q]);
             cv.act[a] = x;
         }
         input_map::Mapping mm = m;
         mm.invert_camera_y = false;
         input::PadState ks = input_map::keyboard_state(mm, keys), cs = input_map::controller_state(mm, live);
-        const bool kl = ks.lx || ks.ly, kr = ks.rx || ks.ry;
+        const bool kl = p == 0 && (ks.lx || ks.ly), kr = p == 0 && (ks.rx || ks.ry);
         cv.stick[0][0] = kl ? ks.lx : cs.lx;
         cv.stick[0][1] = kl ? ks.ly : cs.ly;
         cv.stick[1][0] = kr ? ks.rx : cs.rx;
@@ -1302,12 +1267,12 @@ void tab_controls() {
     ImGui::SetNextItemWidth(200);
     if (ImGui::SliderFloat("Stick dead zone", &dz, 0.0f, 90.0f, "%.0f%%")) {
         m.deadzone = std::clamp(dz / 100.0f, 0.0f, 0.9f);
-        input_map::set_current(m);
+        input_map::set_player(p, m);
     }
     ImGui::SameLine(0, 24);
     if (check("Invert camera up/down", m.invert_camera_y, &v)) {
         m.invert_camera_y = v;
-        input_map::set_current(m);
+        input_map::set_player(p, m);
     }
     ImGui::SameLine(0, 24);
 
@@ -1318,16 +1283,7 @@ void tab_controls() {
     help(input::has_rumble() ? "Controller vibration when the game asks for it. Off keeps the motors still."
                              : "Controller vibration: this host does not drive controller motors yet.");
     ImGui::SameLine(0, 24);
-    static bool gyro_open = false;
-    {
-        const motion::Settings g = motion::settings();
-        std::string label = std::string("Gyro: ") + (g.source == motion::kOff ? "off" : motion::source_label(g.source)) + "...";
-        if (ImGui::Button(label.c_str())) gyro_open = true;
-        help("Aim in first person by moving a controller with a gyro, a Cemuhook (DSU) source or the mouse (Steam Input)");
-    }
-    gyro_window(gyro_open);
-    ImGui::SameLine(0, 24);
-    if (ImGui::Button("Reset to defaults")) input_map::set_current(input_map::Mapping::defaults());
+    if (ImGui::Button("Reset to defaults")) input_map::set_player(p, input_map::Mapping::defaults());
 }
 
 int saved_language() {
@@ -1345,6 +1301,34 @@ void choose_language(int language) {
 }
 
 void tab_debug() {
+    heading("Course debug");
+    bool v;
+    const bool env_locked = env::COLLISION_VIEWER.present();
+    if (check("Collision Viewer", collision_wireframe::enabled(), &v, !env_locked)) {
+        collision_wireframe::set_enabled(v);
+        hostui::post([v] { hostui::set("collisionViewer", v ? "1" : "0"); });
+    }
+    if (env_locked) help("NSMBU_COLLISION_VIEWER is set for this start and takes precedence.");
+    else help("Draw solid tiles in blue and actor hitboxes in red over the course.");
+
+    heading("Course hot reload");
+    const bool reload_locked = course_hot_reload::env_locked();
+    if (check("Reload the active course when its .szs changes", course_hot_reload::enabled(), &v, !reload_locked)) {
+        course_hot_reload::set_enabled(v);
+        hostui::post([v] { hostui::set("hotReloadCourses", v ? "1" : "0"); });
+    }
+    if (reload_locked) help("NSMBU_HOT_RELOAD_COURSES is set for this start and takes precedence.");
+    else help("Leaves to the title screen and re-enters the course when the active pack changes on disk.");
+    const course_hot_reload::Info reload = course_hot_reload::info();
+    if (reload.pack.empty()) {
+        note("No course is active.");
+    } else {
+        note("Pack: %s", reload.pack.c_str());
+        note("File: %s", reload.path.c_str());
+        note("Status: %s", reload.status.c_str());
+        if (ImGui::Button("Reload now")) course_hot_reload::request_reload();
+        help("Rebuilds the active course from disk and restarts it at the course entrance.");
+    }
 }
 
 void tab_about() {
@@ -1420,14 +1404,6 @@ void perf_window(bool menu_open) {
     if (ImGui::Begin("##perf", nullptr, fl)) {
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
         ImGui::Text("%.0f fps   %.1f ms (worst %.1f)", U.fps, sum / 120.0f, worst);
-        {
-
-            static double t0 = 0; static uint64_t s0 = 0; static double rate = 30;
-            if (t0 == 0 || t - t0 < 0) { t0 = t; s0 = interp::logic_steps(); }
-            else if (t - t0 >= 2.0) { rate = (double)(interp::logic_steps() - s0) / (t - t0); t0 = t; s0 = interp::logic_steps(); }
-            if (interp::mode() == 1 && !interp::paced_interpolation() && rate > 1 && rate < 26)
-                ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "Slow motion: %.0f of 30 logic steps/s. Turn on Keep game speed", rate);
-        }
 #ifdef __ANDROID__
         static AndroidTelemetry telemetry;
         static double next_read = 0;
@@ -1437,9 +1413,7 @@ void perf_window(bool menu_open) {
             ImGui::Text("%s %.1f C", name.c_str(), value);
 #endif
         ImGui::PlotLines("##ft", U.frame_ms, 120, U.frame_i, nullptr, 0.0f, 50.0f, ImVec2(220, 36));
-        ImGui::TextDisabled("%s  %gx  %s", render::api_name(render::active()), hostui::res_scale(), interp::mode_name());
-        if (float share = interp::paced_drawn_share(); share >= 0)
-            ImGui::TextDisabled("in-between frames drawn: %.0f%%", share * 100.0f);
+        ImGui::TextDisabled("%.0f fps", U.fps);
         rprof::Breakdown b;
         if (perf_detail_shown() && rprof::latest_breakdown(b)) {
             ImGui::SeparatorText("Lag breakdown");
@@ -1475,7 +1449,7 @@ void perf_window(bool menu_open) {
 void settings_window() {
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 ds = io.DisplaySize;
-    const ImVec2 size(std::min(860.0f, ds.x * 0.94f), std::min(620.0f, ds.y * 0.92f));
+    const ImVec2 size(std::min(1040.0f, ds.x * 0.96f), std::min(620.0f, ds.y * 0.92f));
     ImGui::SetNextWindowPos(ImVec2(ds.x * 0.5f, ds.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
     ImGuiWindowFlags fl = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -1485,7 +1459,15 @@ void settings_window() {
         ImGui::SetNextWindowFocus();
         U.just_opened = false;
     }
-    if (ImGui::Begin(app_title::kSettings, &open, fl)) {
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+    const bool begun = ImGui::Begin(app_title::kSettings, &open, fl);
+    ImGui::PopStyleVar();
+    if (begun) {
+        const ImVec2 wp = ImGui::GetWindowPos();
+        const float th = ImGui::GetFrameHeight();
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(wp.x, wp.y + th - 2),
+                                                 ImVec2(wp.x + ImGui::GetWindowWidth(), wp.y + th + 2),
+                                                 ImGui::GetColorU32(ImGuiCol_WindowBg));
 
         if (U.cap_action < 0 && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) {
             if (controller_pressed(input_map::kPadLB)) U.select_tab = (U.tab + kTabs - 1) % kTabs;
@@ -1614,6 +1596,10 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         std::string v;
         if (hostui::get("perfOverlay", v)) g_perf = v == "1";
         if (hostui::get("perfDetail", v)) g_perf_detail = v == "1";
+        if (!env::COLLISION_VIEWER.present() && hostui::get("collisionViewer", v))
+            collision_wireframe::set_enabled(v == "1");
+        if (!env::HOT_RELOAD_COURSES.present() && hostui::get("hotReloadCourses", v))
+            course_hot_reload::set_enabled(v == "1");
 
         if (!env::PRO_CONTROLLER() && hostui::get("proController", v))
             hostui::post([pro = v == "1"] { hostui::set_pro_controller(pro); });
@@ -1680,10 +1666,12 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
     read_controller();
 
     const bool open = is_open(), perf = perf_shown(), text = !open && text_entry::active();
+    const bool coll = collision_wireframe::enabled();
+    const bool gui = mods::lua_gui::active();
 
     const std::string toast = open ? std::string() : ss::last_message();
     U.linearized = false;
-    if (!open && !perf && !text && toast.empty()) {
+    if (!open && !perf && !text && toast.empty() && !coll && !gui) {
         if (U.init) {
             std::lock_guard<std::mutex> lk(g_mu);
             g_events.clear();
@@ -1737,6 +1725,11 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         }
     }
     if (perf) perf_window(open);
+    if (coll || gui) {
+        ImGui::GetBackgroundDrawList()->AddRectFilled(ImVec2(0, 0), ImVec2(1, 1), IM_COL32(0, 0, 0, 1));
+        if (coll) collision_wireframe::draw(ImGui::GetForegroundDrawList(), io.DisplaySize.x, io.DisplaySize.y);
+        if (gui) mods::lua_gui::draw(ImGui::GetForegroundDrawList(), io.DisplaySize.x, io.DisplaySize.y);
+    }
     if (!toast.empty()) {
         ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y - 24), ImGuiCond_Always, ImVec2(0.5f, 1.0f));
         ImGui::SetNextWindowBgAlpha(0.7f);

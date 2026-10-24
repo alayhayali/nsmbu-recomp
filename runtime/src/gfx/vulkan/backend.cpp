@@ -11,6 +11,7 @@
 #define VK_USE_PLATFORM_METAL_EXT
 #endif
 #include "app_title.h"
+#include "core/build_info.h"
 #include "backend.h"
 #include "bc_decode.h"
 #include "android_driver.h"
@@ -63,6 +64,7 @@
 #include <vulkan/vulkan_beta.h>
 
 namespace gx2 { uint64_t flips_presented(); void checkpoint_vulkan_caches(); }
+namespace render { bool shader_warm_tick(uint64_t activity); }
 #include "hooks/interp.h"
 
 namespace gfxvk {
@@ -2162,6 +2164,36 @@ static void init_device(std::vector<const char *> extensions,
 }
 
 #ifdef NSMBU_SDL_HOST
+#ifdef __linux__
+static bool dir_has_plugin(const std::string& dir) {
+  std::error_code ec;
+  if (!std::filesystem::is_directory(dir, ec)) return false;
+  for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
+    if (entry.path().extension() == ".so") return true;
+  return false;
+}
+
+static void use_user_libdecor_plugin() {
+  if (const char* e = std::getenv("LIBDECOR_PLUGIN_DIR"))
+    if (*e) return;
+  const char* system_dirs[] = {
+    "/usr/lib/x86_64-linux-gnu/libdecor/plugins-1",
+    "/usr/lib/aarch64-linux-gnu/libdecor/plugins-1",
+    "/usr/lib64/libdecor/plugins-1",
+    "/usr/lib/libdecor/plugins-1",
+  };
+  for (const char* dir : system_dirs)
+    if (dir_has_plugin(dir)) return;
+  const char* home = std::getenv("HOME");
+  if (!home || !*home) return;
+  std::string user = std::string(home) + "/.local/lib/libdecor/plugins-1";
+  if (!dir_has_plugin(user)) return;
+  setenv("LIBDECOR_PLUGIN_DIR", user.c_str(), 0);
+}
+#else
+static void use_user_libdecor_plugin() {}
+#endif
+
 static bool hidden_windows() {
   static const bool hidden = [] { const char* e = env::HIDDEN_WINDOWS(); return e && *e && strcmp(e, "0"); }();
   return hidden;
@@ -2201,6 +2233,7 @@ void init() {
 
   if (hidden_windows())
     SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
+  use_user_libdecor_plugin();
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO))
     throw std::runtime_error(SDL_GetError());
 
@@ -2227,7 +2260,7 @@ void init() {
 #ifndef __ANDROID__
   ::hostui::window_size(windowW, windowH);
 #endif
-  R.tv.window = SDL_CreateWindow(app_title::kVulkan, windowW, windowH, windowFlags);
+  R.tv.window = SDL_CreateWindow(app_title::kName, windowW, windowH, windowFlags);
   if (!R.tv.window)
     throw std::runtime_error(SDL_GetError());
 #ifdef __ANDROID__
@@ -2559,6 +2592,8 @@ void run_main_loop() {
               event.type == SDL_EVENT_WINDOW_OCCLUDED ||
               event.type == SDL_EVENT_WINDOW_HIDDEN)
             s->visible = false;
+          if (event.type == SDL_EVENT_WINDOW_SHOWN && s == &R.tv)
+            display_rate::poll(R.tv.window);
           if (event.type == SDL_EVENT_WINDOW_RESTORED ||
               event.type == SDL_EVENT_WINDOW_SHOWN ||
               event.type == SDL_EVENT_WINDOW_EXPOSED) {
@@ -2598,17 +2633,23 @@ void run_main_loop() {
         SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);
       }
       char title[160];
-      int mode = interp::mode();
-      std::snprintf(title, sizeof title,
-          "%s - %.0f fps%s%s | %gx%s",
-          app_title::kVulkan,
-          double(frames - titleFrames) / elapsed,
-          mode ? " | " : "", mode ? interp::mode_name() : "",
-          double(requested_res_scale()), fxaa_enabled() ? " | FXAA" : "");
-      if (gx2::uncapped()) std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
-      SDL_SetWindowTitle(R.tv.window, title);
+      if (build::dev()) {
+        std::snprintf(title, sizeof title, "%s - %.0f fps", app_title::kName, double(frames - titleFrames) / elapsed);
+        if (gx2::uncapped()) std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
+      } else {
+        std::snprintf(title, sizeof title, "%s", app_title::kName);
+      }
+      static char lastTitle[160];
+      if (strcmp(title, lastTitle)) {
+        memcpy(lastTitle, title, sizeof lastTitle);
+        SDL_SetWindowTitle(R.tv.window, title);
+      }
       titleFrames = frames;
       titleTime = now;
+    }
+    if (render::shader_warm_tick(vk::shader_stats().spirvCompiles + R.pipelineCreates)) {
+      LOG("[warm] done");
+      quit_game();
     }
     SDL_Delay(1);
   }

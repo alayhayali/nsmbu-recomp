@@ -183,7 +183,7 @@ void on_auto_saved(int n) {
     update_note(n, when);
 }
 
-input::PadState read(int pad) {
+input::PadState read(int pad, int player) {
     if (g_replay) {
         std::lock_guard<std::mutex> lk(g_mu);
         if (g_play && ss::last_load_frame() != 0) {
@@ -205,9 +205,9 @@ input::PadState read(int pad) {
             }
         }
         if (g_play) return input::PadState{};
-        return input::read();
+        return input::read(player);
     }
-    input::PadState p = input::read();
+    input::PadState p = input::read(player);
     if (g_rec && enabled()) {
         std::lock_guard<std::mutex> lk(g_mu);
         if (g_rec) {

@@ -38,6 +38,7 @@ int pad_from_id(const std::string& id);
 
 constexpr int kNoKey = -1;
 constexpr int kKeysPerAction = 2;
+constexpr int kPlayers = input::kMaxPlayers;
 std::string key_id(int code);
 std::string key_label(int code);
 int key_from_id(const std::string& id);
@@ -51,6 +52,13 @@ struct Mapping {
     bool invert_camera_y = false;
     static Mapping defaults();
     bool operator==(const Mapping&) const = default;
+};
+
+struct Config {
+    std::array<Mapping, kPlayers> players;
+    bool sync = true;
+    static Config defaults();
+    bool operator==(const Config&) const = default;
 };
 
 enum class FaceLayout { kPosition, kLabels, kCustom };
@@ -74,13 +82,23 @@ void deadzone_values(const Mapping& m, float values[kPadCount]);
 
 std::string to_json(const Mapping& m);
 bool from_json(const std::string& text, Mapping& out, std::string* error = nullptr);
+std::string config_to_json(const Config& c);
+bool config_from_json(const std::string& text, Config& out, std::string* error = nullptr);
 bool load_file(const std::string& path, Mapping& out, std::string* error = nullptr);
 bool save_file(const std::string& path, const Mapping& m);
+bool load_config_file(const std::string& path, Config& out, std::string* error = nullptr);
+bool save_config_file(const std::string& path, const Config& c);
 std::string default_path();
 
 void load_startup();
 Mapping current();
 void set_current(const Mapping& m, bool save = true);
+Mapping player(int index);
+void set_player(int index, const Mapping& m, bool save = true);
+bool sync_players();
+void set_sync_players(bool on, int source = 0, bool save = true);
+Config config();
+void set_config(const Config& c, bool save = true);
 uint32_t generation();
 
 }

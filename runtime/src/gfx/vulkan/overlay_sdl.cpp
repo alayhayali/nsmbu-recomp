@@ -197,7 +197,6 @@ void graphics_changed() {
 
     put("interpFps", {env::INTERP_FPS}, std::to_string(interp::fps()));
     put("fps60Paced", {env::INTERP_PACED}, interp::paced_interpolation_at(60) ? "1" : "0");
-    put("fpsHighPaced", {env::INTERP_PACED}, interp::paced_interpolation_at(120) ? "1" : "0");
     put("scaleFilter", {env::SCALE_FILTER}, std::to_string(gfxvk::scale_filter()));
     if (!env_set({env::VK_PRESENT_MODE}) && gfxvk::present_mode_user_set()) {
         g_values["vkPresentMode"] = std::to_string(gfxvk::present_mode());
@@ -221,7 +220,6 @@ void load_saved_options() {
     if (saved("interpFps", {env::INTERP_FPS})) interp::set_fps((int)num("interpFps"));
     if (saved("fps60", {env::INTERP, env::INTERP_FPS})) interp::set_mode((int)num("fps60"));
     if (saved("fps60Paced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(60, num("fps60Paced") != 0);
-    if (saved("fpsHighPaced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(120, num("fpsHighPaced") != 0);
     if (saved("scaleFilter", {env::SCALE_FILTER})) gfxvk::set_scale_filter((int)num("scaleFilter"));
     if (saved("vkPresentMode", {env::VK_PRESENT_MODE})) {
         const int mode = (int)num("vkPresentMode");

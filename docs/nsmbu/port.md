@@ -57,14 +57,17 @@ User files live under `game/`:
 - `game/game.key` — title key next to the image
 - `game/common.key` — common key (or `WIIU_COMMON_KEY`)
 - `game/update/` — optional matching 1.3.0 update (USA title version 64, or Europe 80), with `code/`, `content/`, `meta/`.
-  Without it, a known USA base-disc RPX (title version 0) is allowed; mods are unsupported on that build.
+  Without it, a known USA or Europe base-disc RPX (title version 0) is allowed.
+  Mods are unsupported on that build.
 - `game/code/`, `game/content/`, `game/meta/` — output of `nsmbu extract` (base disc plus update)
+
+In the setup window you can also type or paste each key as 32 hex digits instead of a key file.
 
 `.gitignore` ignores all of `game/` except `game/README.md` (layout and steps for this folder).
 
 `nsmbu extract` starts by checking `game/update/` is a known 1.3.0 build.
 It then extracts `game/game.wux` into `game/code`, `game/content`, and `game/meta`.
-It applies `game/update/` over those folders and checks the merged RPX matches a known USA or Europe 1.3.0 hash.
+It applies `game/update/` over those folders when present, then checks that `code/red-pro2.rpx` is a known build.
 See [docs/builds.md](../builds.md) for the address map between those builds.
 
 `nsmbu build` configures `build/` in **Debug** and builds `nsmbu`.
@@ -78,7 +81,7 @@ Otherwise it runs `stubgen.py` so the tree links without your RPX.
 `nsmbu build --sanitizer` adds AddressSanitizer and UBSan.
 
 Clang needs a GNU `libstdc++` (for example `libstdc++-14-dev` on Ubuntu).
-`tools/build.py` adds the matching `-L` path when it finds `libstdc++.so` under `/usr/lib/gcc/`.
+`tools/build/build.py` adds the matching `-L` path when it finds `libstdc++.so` under `/usr/lib/gcc/`.
 
 The `nsmbu` CLI exports `NSMBU_USER_DIR` to the gitignored `nsmbu/` folder on dev commands.
 `nsmbu launch` starts `build/debug/nsmbu` with `--game` set to `game/` and `--save nsmbu/save`.
@@ -99,7 +102,7 @@ The setup importer can also read `<repo>/nsmbu` from a source checkout.
 `nsmbu run --release` runs `nsmbu build --release` then `nsmbu launch --no-debug`.
 This is the configuration the released installs use.
 
-`nsmbu launch` / `nsmbu run` symlink each `modding/examples/` package into `nsmbu/mods/<id>/` before start.
+`nsmbu launch` / `nsmbu run` symlink each `modding/examples/` package into `nsmbu/mods/` under its folder name before start.
 Real folders already in mods are not replaced.
 Enable packages in Mods.
 Set `NSMBU_NO_EXAMPLE_MODS=1` to skip those links.
@@ -110,7 +113,8 @@ Slots are 1 through 5.
 The load starts at TV frame 200 and waits until the boot threads exist.
 
 `nsmbu run 1-1` does not load a save state.
-It enables the `example.intro-skip` mod and sets its course pack option to `1-1`.
+It passes `--open 1-1` to the native boot skip.
+The native skip applies save file 1 and enters the pack.
 Any `N-M` token with that shape works the same way.
 A `course_res_pack` file works the same way.
 `nsmbu open game/content/Common/course_res_pack/1-27.szs` starts course `1-27`.

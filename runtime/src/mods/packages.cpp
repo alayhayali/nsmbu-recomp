@@ -39,6 +39,7 @@ struct Record {Manifest manifest;fs::path path;bool active=false,loading=false;s
 std::mutex mutex;
 std::map<std::string,Record> records;
 Value database;
+std::string open_pack;
 fs::path root;
 bool ready=false;
 std::string last_problem;
@@ -300,6 +301,8 @@ std::string unsupported_reason(){
     return std::string("Mods are not supported on this game build (")+g_guest_build_name
         +"). Use the 1.3.0 update (USA title version 64 or Europe 80), or an NSMBU+NSLU pack.";
 }
+void set_open_pack(std::string pack){std::lock_guard guard(mutex);open_pack=std::move(pack);}
+std::string open_pack_value(){std::lock_guard guard(mutex);return open_pack;}
 void initialize(){
     std::lock_guard guard(mutex);if(ready)return;const char* override=env::MOD_MANAGER_DIR();if(env::NO_HOST_INPUT()&&!override)return;
     root=override?fs::path(override):fs::path(host::config_dir());
@@ -309,7 +312,8 @@ void initialize(){
         return;
     }
     ready=true;defaults();
-    try{fs::create_directories(root);auto path=root/"mods.json";if(!fs::exists(path)&&fs::exists(root/"profiles.json"))path=root/"profiles.json";if(fs::exists(path)){database=json::parse(read_text(path));normalize_database();}scan();
+    try{fs::create_directories(root);auto path=root/"mods.json";if(!fs::exists(path)&&fs::exists(root/"profiles.json"))path=root/"profiles.json";if(fs::exists(path)){database=json::parse(read_text(path));normalize_database();}
+        scan();
         try { auto enabled=enabled_set();auto sequence=order(enabled);validate_conflicts(enabled);
             content::Files files;
             for(const auto& id:sequence){auto& record=records.at(id);if(record.manifest.kind=="content"||(record.manifest.kind=="lua"&&has_content_files(record.manifest))){

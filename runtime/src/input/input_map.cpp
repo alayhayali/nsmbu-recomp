@@ -156,6 +156,12 @@ const char* reserved_key(int code) {
     }
 }
 
+Config Config::defaults() {
+    Config c;
+    for (auto& m : c.players) m = Mapping::defaults();
+    return c;
+}
+
 Mapping Mapping::defaults() {
     Mapping m;
     for (auto& k : m.keys) k.fill(kNoKey);
@@ -488,16 +494,19 @@ std::string to_json(const Mapping& m) {
     return o + opt;
 }
 
-bool from_json(const std::string& text, Mapping& out, std::string* error) {
+namespace {
+bool parse_json(const std::string& text, Json& root, std::string* error) {
     auto bad = [&](const std::string& e) { if (error) *error = e; return false; };
     Parser ps{text.data(), text.data() + text.size(), {}};
-    Json root;
     if (!ps.value(root)) return bad("JSON: " + ps.err);
     ps.ws();
     if (ps.p != ps.end) return bad("JSON: trailing characters");
     if (root.type != Json::Obj) return bad("JSON: expected an object");
+    return true;
+}
+
+void mapping_from_json(const Json& root, Mapping& out, std::string& warn) {
     Mapping m = Mapping::defaults();
-    std::string warn;
     if (const Json* kb = root.get("keyboard"); kb && kb->type == Json::Obj) {
         for (auto& [id, v] : kb->obj) {
             int a = action_from_id(id);
@@ -533,40 +542,109 @@ bool from_json(const std::string& text, Mapping& out, std::string* error) {
         if (const Json* i = op->get("invert_camera_y"); i && i->type == Json::Bool) m.invert_camera_y = i->b;
     }
     out = m;
-    if (error) *error = warn;
-    return true;
 }
 
-bool load_file(const std::string& path, Mapping& out, std::string* error) {
+std::string read_text(const std::string& path, bool& ok, int& error) {
     FILE* f = fopen(path.c_str(), "rb");
-    if (!f) {
-        if (error) *error = strerror(errno);
-        return false;
-    }
+    if (!f) { ok = false; error = errno; return {}; }
+    ok = true;
     std::string text;
     char buf[4096];
     size_t n;
     while ((n = fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n);
     fclose(f);
-    return from_json(text, out, error);
+    return text;
 }
 
-static void mkdirs(const std::string& dir) {
+void mkdirs(const std::string& dir) {
     std::error_code ec; std::filesystem::create_directories(dir,ec);
 }
 
-bool save_file(const std::string& path, const Mapping& m) {
+bool write_text(const std::string& path, const std::string& text) {
     size_t slash = path.rfind('/');
     if (slash != std::string::npos) mkdirs(path.substr(0, slash));
     std::string tmp = path + ".tmp";
     FILE* f = fopen(tmp.c_str(), "wb");
     if (!f) return false;
-    std::string text = to_json(m);
     bool ok = fwrite(text.data(), 1, text.size(), f) == text.size();
     ok = fclose(f) == 0 && ok;
     if (ok) ok = host::replace_file(tmp,path);
     if (!ok) remove(tmp.c_str());
     return ok;
+}
+}
+
+bool from_json(const std::string& text, Mapping& out, std::string* error) {
+    Json root;
+    if (!parse_json(text, root, error)) return false;
+    Mapping m;
+    std::string warn;
+    mapping_from_json(root, m, warn);
+    out = m;
+    if (error) *error = warn;
+    return true;
+}
+
+std::string config_to_json(const Config& c) {
+    std::string o = "{\n  \"version\": 2,\n  \"sync\": ";
+    o += c.sync ? "true" : "false";
+    o += ",\n  \"players\": [\n";
+    for (int i = 0; i < kPlayers; i++) {
+        o += to_json(c.players[i]);
+        if (i + 1 < kPlayers) o += ",";
+        o += "\n";
+    }
+    return o + "  ]\n}\n";
+}
+
+bool config_from_json(const std::string& text, Config& out, std::string* error) {
+    Json root;
+    if (!parse_json(text, root, error)) return false;
+    Config c = Config::defaults();
+    std::string warn;
+    const Json* players = root.get("players");
+    if (players && players->type == Json::Arr) {
+        for (int i = 0; i < kPlayers && i < (int)players->arr.size(); i++)
+            mapping_from_json(players->arr[i], c.players[i], warn);
+    } else {
+        Mapping m;
+        mapping_from_json(root, m, warn);
+        for (auto& p : c.players) p = m;
+    }
+    if (const Json* s = root.get("sync"); s && s->type == Json::Bool) c.sync = s->b;
+    if (c.sync)
+        for (int i = 1; i < kPlayers; i++) c.players[i] = c.players[0];
+    out = c;
+    if (error) *error = warn;
+    return true;
+}
+
+bool load_file(const std::string& path, Mapping& out, std::string* error) {
+    Config c;
+    if (!load_config_file(path, c, error)) return false;
+    out = c.players[0];
+    return true;
+}
+
+bool save_file(const std::string& path, const Mapping& m) {
+    Config c = Config::defaults();
+    for (auto& p : c.players) p = m;
+    return save_config_file(path, c);
+}
+
+bool load_config_file(const std::string& path, Config& out, std::string* error) {
+    bool ok = false;
+    int err = 0;
+    std::string text = read_text(path, ok, err);
+    if (!ok) {
+        if (error) *error = strerror(err);
+        return false;
+    }
+    return config_from_json(text, out, error);
+}
+
+bool save_config_file(const std::string& path, const Config& c) {
+    return write_text(path, config_to_json(c));
 }
 
 std::string default_path() {
@@ -576,16 +654,16 @@ std::string default_path() {
 }
 
 static std::mutex g_mu;
-static Mapping g_map = Mapping::defaults();
+static Config g_config = Config::defaults();
 static std::atomic<uint32_t> g_gen{1};
 
 void load_startup() {
     std::string path = default_path(), err;
-    Mapping m;
+    Config c;
     struct stat st;
     if (stat(path.c_str(), &st) != 0) return;
-    if (load_file(path, m, &err)) {
-        set_current(m, false);
+    if (load_config_file(path, c, &err)) {
+        set_config(c, false);
         fprintf(stderr, "[input] controls loaded from %s%s%s\n", path.c_str(), err.empty() ? "" : ": ", err.c_str());
     } else {
         fprintf(stderr, "[input] %s: %s; using default controls\n", path.c_str(), err.c_str());
@@ -594,16 +672,64 @@ void load_startup() {
 
 Mapping current() {
     std::lock_guard<std::mutex> lk(g_mu);
-    return g_map;
+    return g_config.players[0];
 }
 
 void set_current(const Mapping& m, bool save) {
+    set_player(0, m, save);
+}
+
+Mapping player(int index) {
+    std::lock_guard<std::mutex> lk(g_mu);
+    return g_config.players[std::clamp(index, 0, kPlayers - 1)];
+}
+
+void set_player(int index, const Mapping& m, bool save) {
+    index = std::clamp(index, 0, kPlayers - 1);
     {
         std::lock_guard<std::mutex> lk(g_mu);
-        g_map = m;
+        g_config.players[index] = m;
+        if (g_config.sync)
+            for (auto& p : g_config.players) p = m;
     }
     g_gen++;
-    if (save && !save_file(default_path(), m))
+    if (save && !save_config_file(default_path(), config()))
+        fprintf(stderr, "[input] could not save controls to %s\n", default_path().c_str());
+}
+
+bool sync_players() {
+    std::lock_guard<std::mutex> lk(g_mu);
+    return g_config.sync;
+}
+
+void set_sync_players(bool on, int source, bool save) {
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        if (on) {
+            const Mapping& m = g_config.players[std::clamp(source, 0, kPlayers - 1)];
+            for (auto& p : g_config.players) p = m;
+        }
+        g_config.sync = on;
+    }
+    g_gen++;
+    if (save && !save_config_file(default_path(), config()))
+        fprintf(stderr, "[input] could not save controls to %s\n", default_path().c_str());
+}
+
+Config config() {
+    std::lock_guard<std::mutex> lk(g_mu);
+    return g_config;
+}
+
+void set_config(const Config& c, bool save) {
+    {
+        std::lock_guard<std::mutex> lk(g_mu);
+        g_config = c;
+        if (g_config.sync)
+            for (int i = 1; i < kPlayers; i++) g_config.players[i] = g_config.players[0];
+    }
+    g_gen++;
+    if (save && !save_config_file(default_path(), config()))
         fprintf(stderr, "[input] could not save controls to %s\n", default_path().c_str());
 }
 

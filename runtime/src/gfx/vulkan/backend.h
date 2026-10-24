@@ -30,7 +30,7 @@ struct Surface {
  uint32_t arrayLayers=1; std::vector<VkImageView> layerViews;
  std::unordered_map<uint32_t,VkImageView> sampledViews;
  uint32_t addr=0,mipAddr=0,width=0,height=0,slices=1,pitch=0,mips=1,format=0,dim=1,tileMode=0,swizzle=0;
- bool isDepth=false,gpuWritten=false,dirty=true,bcDecoded=false;
+ bool isDepth=false,gpuWritten=false,dirty=true,dirtyOob=false,bcDecoded=false;
  uint64_t writeSeq=0,contentHash=0,lastCheckedFrame=~0ull,sparseHash=0;
  bool formatViews=false;
  uint64_t writtenBackSeq=0;

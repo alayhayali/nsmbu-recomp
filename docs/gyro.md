@@ -16,7 +16,7 @@ In Pro Controller mode the game's own **Options → Gyroscope** switch stays in 
 changed as usual (checked in a game run); its help text still says it "will have no effect when using the
 Wii U Pro Controller", which is the Wii U's behaviour: in the port it does apply while a gyro source is on.
 
-Settings overlay (` or F12) → **Controls** → **Gyro…**:
+The gyro has no settings page. Change the `gyro.*` values in `settings.ini` (or `display.plist` on the macOS app):
 
 - **Source** (above). `NSMBU_GYRO=off|controller|cemuhook|mouse` overrides it at start.
 - **Turn left/right by** (controller and Cemuhook sources), the usual gyro aiming conventions (as in
@@ -46,8 +46,8 @@ whether the game uses the motion, and the game ignores the motion while the righ
 (outside a 0.1 dead zone; a drifting stick does that too, see Troubleshooting).
 
 Why off by default: the gyro moves the first-person camera with every hand movement, which surprises
-players who never asked for it, and a controller lying on a desk works fine either way. The Gyro
-window says when a connected controller has a gyro.
+players who never asked for it, and a controller lying on a desk works fine either way. The
+`[gyro]` log lines say when a connected controller has a gyro.
 
 ## How the game reads the GamePad
 
@@ -115,7 +115,7 @@ frame.
   and on again" (the watchdog), "motion from controller N" (another controller took over), or "the
   right stick has rested at x, y for 2 s while aiming" (the game ignores the gyro while the right stick
   is outside its 0.1 dead zone: a drifting stick does this; raise **Controls → stick dead zone**).
-  The Gyro window shows the same.
+  The `[gyro]` log shows the same.
 - **More detail:** `NSMBU_GYRO_LOG=1` logs, twice a second and for every source, the raw gyro and
   accelerometer samples, the sample rate, the bias, the gravity direction and the aim, plus what the
   virtual GamePad gets; on the macOS app also the raw GameController values.
@@ -137,8 +137,8 @@ controllers. Please report (with the log) if something is off:
 2. Same on the **macOS app** (GameController.framework, a different axis mapping:
    `NSMBU_GYRO_LOG=1` logs the raw values).
 3. **Steam Deck** (SDL) and **Joy-Con** pairs.
-4. **Cemuhook**: DS4Windows or BetterJoy with the server on, source Cemuhook; the Gyro window shows
-   "receiving motion". Stop the server: the game must keep running smoothly. Android needs network
+4. **Cemuhook**: DS4Windows or BetterJoy with the server on, source Cemuhook; the `[gyro]` log says
+   "Receiving motion." Stop the server: the game must keep running smoothly. Android needs network
    permission for this, which the app does not ask for yet.
 5. **Steam Input gyro to mouse**: source Mouse; in first person the pointer is captured and the
    controller's gyro turns the view; after leaving first person the pointer is free again.

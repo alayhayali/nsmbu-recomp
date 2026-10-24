@@ -1,6 +1,6 @@
 # Automation runs
 
-Headless boots use `nsmbu scripted <name>` from the repo root (wraps `tools/scripted-run.sh`).
+Headless boots use `nsmbu scripted <name>` from the repo root (wraps `tools/run/scripted-run.sh`).
 The script copies `nsmbu/save` into `.tmp/<name>/save`, then starts `build/debug/nsmbu` (or another build dir if present) with that save.
 Frame dumps land in `.tmp/<name>/` as `frame_<n>.png`.
 The repo `nsmbu/save` stays unread by the game.
@@ -16,12 +16,12 @@ The repo `nsmbu/save` stays unread by the game.
 3. Read one dumped frame.
    Continue only when that frame is the scene you mean.
 4. For a shake check, dump the same consecutive frames at scale 1 and at scale 2.
-   Run `python3 tools/flicker.py FIRST LAST .tmp/<name>`.
+   Run `python3 tools/frames/flicker.py FIRST LAST .tmp/<name>`.
    The check is done when both scales have a result and you have looked at one frame from each.
 
 ## Environment the script sets
 
-`tools/scripted-run.sh` always exports these values:
+`tools/run/scripted-run.sh` always exports these values:
 
 | Variable | Value | Role |
 | --- | --- | --- |
@@ -86,7 +86,7 @@ NSMBU_PRESS='1800-1820:8000,2600-2620:8000,3400-3420:8000,4200-4220:8000,5000-50
 NSMBU_STICK='5400-6000:1:0' \
 NSMBU_DUMP_FRAMES=7000 \
 NSMBU_EXIT_AT_FRAME=7100 \
-tools/scripted-run.sh w11
+tools/run/scripted-run.sh w11
 ```
 
 Frame 7000 is the course.
@@ -103,33 +103,50 @@ Interactive mute is in the settings overlay (` or F12) > Audio.
 These are separate from `scripted-run.sh` and appear in benches and device checks:
 
 - `NSMBU_RECORD_INPUT` — path of a text log of pad changes, keyed by guest logic step
+- `NSMBU_RECORD_COURSE` — course named in the log's `course=` header
 - `NSMBU_REPLAY_INPUT` — play that log back and ignore the live pad
+- `NSMBU_REPLAY_EXIT` — `none` keeps the game running on live input when the replay input ends
+- `NSMBU_REPLAY_TRACE` — log the replay clock arming, control gate, and early step positions
 - `NSMBU_TEST_ORIGIN`, `NSMBU_TEST_PRESS`, `NSMBU_TEST_STICK`, `NSMBU_TEST_RSTICK`, `NSMBU_TEST_MODE`, `NSMBU_TEST_END` — timed scenarios after a logic-step origin
 - `NSMBU_DUMP_PRESENT`, `NSMBU_DUMP_LOAD_FRAMES`, `NSMBU_CAPTURE` — present / load-path captures (see `docs/vulkan.md`)
 - `NSMBU_STATE_LOAD_AT`, `NSMBU_PORTABLE_SAVE_AT` — save-state load points (see `docs/portable-save-states.md`)
 
 ## Input replays
 
+The `.replay` format is a text input log; [replay-format.md](replay-format.md) lists each line, key, and field.
 `NSMBU_RECORD_INPUT` writes one line each time the pad changes.
 The step count starts when in-level play begins (`AreaTask` is live), then follows guest logic steps (one per simulation tick, not per rendered frame).
-New files use the `# nsmbu-replay` header and `replays/<course>.replay` paths from `nsmbu record` / `nsmbu replay`.
+New files start with `version=1` and use `replays/<name>.replay` paths from `nsmbu record` / `nsmbu replay`.
+Metadata lines are `key=value`; `#` starts a comment.
+`course=` names the course; `nsmbu replay` launches it.
+`origin=control` (what new files write) arms the step count when the game hands control to the player, so a slow boot or an uncapped run does not shift the recording.
+Files without `origin=` fall back to arming when the player reaches a recorded `pos=`, which depends on how long the load takes.
+`NSMBU_RECORD_COURSE` supplies that name when the runtime writes the file.
 Each pad line ends with the player position (`x y z`).
-A `# start` line records player index, lives, coins, course coins, power-up mode (0–8), and spawn position; replay checks that snapshot at step 0.
+Start config lines record `player=`, `lives=`, `player_coins=`, `coins=`, and `mode=`, one per line; replay starts the player with the recorded power-up mode.
+`mode=` is `small`, `normal`, `fire`, `mini`, `propeller`, `penguin`, `ice`, `squirrel`, or `psquirrel`; numeric `0`–`8` still loads.
+The buttons field is `-` when no button is down, otherwise `+`-joined names such as `A+Y`; legacy hex values still load.
+`exit=input` (the default) quits when the recorded input ends; `exit=none` keeps the game running and hands control back to live input.
+`--no-exit-on-input` sets `NSMBU_REPLAY_EXIT=none` for one run.
 Replay logs the first step where position differs by more than 5 cm, and a match or mismatch count when it finishes.
 A slow boot does not shift later lines.
-Legacy `# nsmbu-input` files (including version 1 boot logic steps and v3 `@` witness lines) still load when pointed at by `NSMBU_REPLAY_INPUT`.
+Legacy `!` and `#` directive files, including `# nsmbu-input` version 1 boot logic steps and v3 `@` witness lines, still load when pointed at by `NSMBU_REPLAY_INPUT`.
 `NSMBU_REPLAY_INPUT` applies the latest line whose step is at or before the current step.
 Live keyboard, mouse, and gamepad input is replaced for that run.
 Intro-skip button pulses stay outside the file, so play the file back with the same course pack.
 
 ```
 nsmbu record 1-1
+nsmbu record 2-1 bug-1
 nsmbu replay 1-1
+nsmbu replay bug-1
 nsmbu replay --release 1-1
 ```
 
 `nsmbu record 1-1` writes `replays/1-1.replay` from the start of that course.
+`nsmbu record 2-1 bug-1` writes `replays/bug-1.replay` with `course=2-1`.
 `nsmbu replay 1-1` plays `replays/1-1.replay` on `build/debug/nsmbu`.
+`nsmbu replay bug-1` plays that file on the course named in its header.
 `nsmbu replay --release 1-1` plays it on `build/release/nsmbu`.
 Both set `NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, and `NSMBU_CRASH_RECOVERY` when those variables are unset.
 The command prints `[replay] log <path>`.

@@ -20,6 +20,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <map>
@@ -36,11 +37,15 @@ namespace gfx { void display_plus_pressed(); }
 namespace input {
 static std::mutex g_mu;
 static bool g_keys[256]={},g_script_keys[256]={};
-static PadState g_pad;
+static PadState g_pads[input::kMaxPlayers];
 static float g_values[input_map::kPadCount]={};
+static float g_player_values[input::kMaxPlayers][input_map::kPadCount]={};
 static bool g_touch=false;static float g_tx=0,g_ty=0;
 static std::map<SDL_JoystickID,SDL_Gamepad*> g_controllers;
 static std::set<SDL_JoystickID> g_rumble_controllers;
+static std::array<SDL_JoystickID,input::kMaxPlayers> g_slot{};
+static std::array<std::string,input::kMaxPlayers> g_slot_name;
+static std::mutex g_pads_mu;
 static SDL_Window* g_prompt_window=nullptr;
 static std::function<void(bool,std::u16string)> g_pending,g_done;
 static std::u16string g_initial,g_text;
@@ -163,7 +168,19 @@ void set_touch(bool down,float x,float y){std::lock_guard lk(g_mu);g_touch=down;
 void release_keys(){std::lock_guard lk(g_mu);memset(g_keys,0,sizeof g_keys);g_touch=false;}
 void held_keys(bool* keys){std::lock_guard lk(g_mu);for(int i=0;i<256;i++)keys[i]=g_keys[i]||g_script_keys[i];}
 void controller_values(float* out){std::lock_guard lk(g_mu);std::copy(std::begin(g_values),std::end(g_values),out);}
+void controller_values(int player,float* out){std::lock_guard lk(g_mu);player=std::clamp(player,0,input::kMaxPlayers-1);std::copy(std::begin(g_player_values[player]),std::end(g_player_values[player]),out);}
 void host_controller_values(float* out){controller_values(out);}
+void host_controller_values(int player,float* out){controller_values(player,out);}
+bool controller_connected(int player){
+ if(player<0||player>=input::kMaxPlayers)return false;
+ std::lock_guard lk(g_pads_mu);
+ return g_slot[player]!=0;
+}
+std::string controller_name(int player){
+ if(player<0||player>=input::kMaxPlayers)return {};
+ std::lock_guard lk(g_pads_mu);
+ return g_slot_name[player];
+}
 
 static int overlay_mods(SDL_Keymod m){
  return (m&SDL_KMOD_SHIFT?overlay::kShift:0)|(m&SDL_KMOD_CTRL?overlay::kCtrl:0)|(m&SDL_KMOD_ALT?overlay::kAlt:0)|(m&SDL_KMOD_GUI?overlay::kSuper:0);
@@ -201,30 +218,39 @@ static bool overlay_event(const SDL_Event& event){
 static PadState keyboard_state(bool host){bool keys[256];for(int i=0;i<256;i++)keys[i]=(host&&g_keys[i])||g_script_keys[i];return input_map::keyboard_state(input_map::current(),keys);}
 
 constexpr Uint32 kRumbleRefreshMs=150,kRumbleStallMs=300;
-static std::mutex g_pads_mu;
 static std::map<SDL_JoystickID,Uint16> g_rumble_sent;
 static std::atomic<bool> g_rumble_quit{false};
 static std::atomic<Uint64> g_rumble_update_ms{0};
-static void rumble_all_locked(Uint16 level,Uint32 ms){
+static void rumble_stop_locked(){
 
  if(!SDL_WasInit(SDL_INIT_GAMEPAD))return;
  for(auto id:g_rumble_controllers){
   auto i=g_controllers.find(id);
   if(i==g_controllers.end()||!SDL_GamepadConnected(i->second))continue;
-  Uint16& sent=g_rumble_sent[id];
-  if(level||sent)SDL_RumbleGamepad(i->second,level,level,level?ms:0);
-  if(rumble::log_enabled()&&level!=sent)LOG("[rumble] host: controller %u motor %.2f",(unsigned)id,level/65535.0);
-  sent=level;
+  SDL_RumbleGamepad(i->second,0,0,0);
+  g_rumble_sent[id]=0;
  }
 }
 static void apply_rumble(){
  g_rumble_update_ms=SDL_GetTicks();
  if(g_rumble_controllers.empty()||g_rumble_quit)return;
 
- float level=rumble::host_level(1000000/60);
- if(overlay::is_open()||!SDL_GetKeyboardFocus())level=0;
+ const bool silent=overlay::is_open()||!SDL_GetKeyboardFocus();
+ float levels[input::kMaxPlayers];
+ for(int i=0;i<input::kMaxPlayers;i++)levels[i]=silent?0.f:rumble::host_level(i,1000000/60);
  std::lock_guard lk(g_pads_mu);
- rumble_all_locked((Uint16)(std::clamp(level,0.f,1.f)*0xFFFFu),kRumbleRefreshMs);
+ if(!SDL_WasInit(SDL_INIT_GAMEPAD))return;
+ for(int slot=0;slot<input::kMaxPlayers;slot++){
+  const SDL_JoystickID id=g_slot[slot];
+  if(!id||!g_rumble_controllers.contains(id))continue;
+  auto i=g_controllers.find(id);
+  if(i==g_controllers.end()||!SDL_GamepadConnected(i->second))continue;
+  const Uint16 level=(Uint16)(std::clamp(levels[slot],0.f,1.f)*0xFFFFu);
+  Uint16& sent=g_rumble_sent[id];
+  if(level||sent)SDL_RumbleGamepad(i->second,level,level,level?kRumbleRefreshMs:0);
+  if(rumble::log_enabled()&&level!=sent)LOG("[rumble] host: player %d controller %u motor %.2f",slot+1,(unsigned)id,level/65535.0);
+  sent=level;
+ }
 }
 static void rumble_watchdog(){
  while(!g_rumble_quit){
@@ -233,7 +259,7 @@ static void rumble_watchdog(){
   std::lock_guard lk(g_pads_mu);
   if(std::any_of(g_rumble_sent.begin(),g_rumble_sent.end(),[](auto& s){return s.second!=0;})){
    LOG("[rumble] the main loop stalls: motors stopped");
-   rumble_all_locked(0,0);
+   rumble_stop_locked();
   }
  }
 }
@@ -241,7 +267,7 @@ void stop_rumble_now(){
  g_rumble_quit=true;
 
  std::unique_lock lk(g_pads_mu,std::try_to_lock);
- if(lk.owns_lock())rumble_all_locked(0,0);
+ if(lk.owns_lock())rumble_stop_locked();
 }
 
 static bool rumble_quit_watch(void*,SDL_Event* event){
@@ -298,11 +324,20 @@ static void sensor_event(const SDL_GamepadSensorEvent& e){
  auto a=g_accel.find(e.which);if(a==g_accel.end())return;
  motion::controller_sample((uint64_t)e.which,e.sensor_timestamp,e.data,a->second.data());
 }
+static int slot_of_locked(SDL_JoystickID id){
+ for(int i=0;i<input::kMaxPlayers;i++)if(g_slot[i]==id)return i;
+ return -1;
+}
+static int free_slot_locked(){
+ for(int i=0;i<input::kMaxPlayers;i++)if(!g_slot[i])return i;
+ return -1;
+}
 static void open_controller(SDL_JoystickID id){
  std::lock_guard lk(g_pads_mu);
  if(g_controllers.contains(id))return;
  if(auto* pad=SDL_OpenGamepad(id)){g_controllers[id]=pad;
-
+  const int slot=free_slot_locked();
+  if(slot>=0){g_slot[slot]=id;const char* name=SDL_GetGamepadName(pad);g_slot_name[slot]=name?name:"";}
   if(SDL_RumbleGamepad(pad,0,0,0))g_rumble_controllers.insert(id);
   if(g_sensors_on)set_sensors_locked(pad,true);}
 }
@@ -405,7 +440,7 @@ void handle_event(const SDL_Event& event){
  if(overlay::captures())mods::update_mouse();
  else if(mods::handle_mouse_event(event))return;
  if(event.type==SDL_EVENT_GAMEPAD_ADDED&&!env::NO_CONTROLLERS())open_controller(event.gdevice.which);
- if(event.type==SDL_EVENT_GAMEPAD_REMOVED){std::lock_guard lk(g_pads_mu);auto i=g_controllers.find(event.gdevice.which);if(i!=g_controllers.end()){SDL_CloseGamepad(i->second);g_controllers.erase(i);}g_rumble_controllers.erase(event.gdevice.which);g_rumble_sent.erase(event.gdevice.which);g_accel.erase(event.gdevice.which);g_sensor_seen.erase(event.gdevice.which);g_sensor_kick.erase(event.gdevice.which);motion::controller_gone(event.gdevice.which);}
+ if(event.type==SDL_EVENT_GAMEPAD_REMOVED){std::lock_guard lk(g_pads_mu);auto i=g_controllers.find(event.gdevice.which);if(i!=g_controllers.end()){SDL_CloseGamepad(i->second);g_controllers.erase(i);}const int slot=slot_of_locked(event.gdevice.which);if(slot>=0){g_slot[slot]=0;g_slot_name[slot].clear();}g_rumble_controllers.erase(event.gdevice.which);g_rumble_sent.erase(event.gdevice.which);g_accel.erase(event.gdevice.which);g_sensor_seen.erase(event.gdevice.which);g_sensor_kick.erase(event.gdevice.which);motion::controller_gone(event.gdevice.which);}
  if(event.type==SDL_EVENT_GAMEPAD_SENSOR_UPDATE){g_sensor_seen[event.gsensor.which]=SDL_GetTicks();if(!env::NO_HOST_INPUT()&&!overlay::blocks_input())sensor_event(event.gsensor);return;}
  if(event.type==SDL_EVENT_WINDOW_FOCUS_LOST)release_keys();
  if(text_entry_event(event))return;
@@ -482,24 +517,32 @@ void update(){
   }
  }
  post_test_keys();
- float v[input_map::kPadCount]={};using namespace input_map;
- auto put=[&](int p,float x){v[p]=std::max(v[p],x);};
- for(auto [id,pad]:g_controllers){
-  if(!SDL_GamepadConnected(pad))continue;
-  auto button=[&](SDL_GamepadButton b,int p){put(p,SDL_GetGamepadButton(pad,b)?1.f:0.f);};
-  button(SDL_GAMEPAD_BUTTON_SOUTH,kPadA);button(SDL_GAMEPAD_BUTTON_EAST,kPadB);button(SDL_GAMEPAD_BUTTON_WEST,kPadX);button(SDL_GAMEPAD_BUTTON_NORTH,kPadY);
-  button(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,kPadLB);button(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,kPadRB);
-  button(SDL_GAMEPAD_BUTTON_START,kPadMenu);button(SDL_GAMEPAD_BUTTON_BACK,kPadOptions);button(SDL_GAMEPAD_BUTTON_GUIDE,kPadHome);
-  button(SDL_GAMEPAD_BUTTON_LEFT_STICK,kPadL3);button(SDL_GAMEPAD_BUTTON_RIGHT_STICK,kPadR3);
-  button(SDL_GAMEPAD_BUTTON_DPAD_UP,kPadDUp);button(SDL_GAMEPAD_BUTTON_DPAD_DOWN,kPadDDown);button(SDL_GAMEPAD_BUTTON_DPAD_LEFT,kPadDLeft);button(SDL_GAMEPAD_BUTTON_DPAD_RIGHT,kPadDRight);
-  put(kPadLT,std::max(0.f,SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_LEFT_TRIGGER)/32767.f));put(kPadRT,std::max(0.f,SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)/32767.f));
-  auto stick=[&](SDL_GamepadAxis ax,SDL_GamepadAxis ay,int up,int down,int left,int right){float x=SDL_GetGamepadAxis(pad,ax)/32768.f,y=SDL_GetGamepadAxis(pad,ay)/32768.f;put(right,std::max(x,0.f));put(left,std::max(-x,0.f));put(up,std::max(-y,0.f));put(down,std::max(y,0.f));};
-  stick(SDL_GAMEPAD_AXIS_LEFTX,SDL_GAMEPAD_AXIS_LEFTY,kPadLSUp,kPadLSDown,kPadLSLeft,kPadLSRight);stick(SDL_GAMEPAD_AXIS_RIGHTX,SDL_GAMEPAD_AXIS_RIGHTY,kPadRSUp,kPadRSDown,kPadRSLeft,kPadRSRight);
+ float v[input_map::kPadCount]={};float pv[input::kMaxPlayers][input_map::kPadCount]={};
+ using namespace input_map;
+ {
+  std::lock_guard lk(g_pads_mu);
+  for(auto [id,pad]:g_controllers){
+   if(!SDL_GamepadConnected(pad))continue;
+   const int slot=slot_of_locked(id);
+   if(slot<0)continue;
+   auto put=[&](int p,float x){pv[slot][p]=std::max(pv[slot][p],x);v[p]=std::max(v[p],x);};
+   auto button=[&](SDL_GamepadButton b,int p){put(p,SDL_GetGamepadButton(pad,b)?1.f:0.f);};
+   button(SDL_GAMEPAD_BUTTON_SOUTH,kPadA);button(SDL_GAMEPAD_BUTTON_EAST,kPadB);button(SDL_GAMEPAD_BUTTON_WEST,kPadX);button(SDL_GAMEPAD_BUTTON_NORTH,kPadY);
+   button(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,kPadLB);button(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,kPadRB);
+   button(SDL_GAMEPAD_BUTTON_START,kPadMenu);button(SDL_GAMEPAD_BUTTON_BACK,kPadOptions);button(SDL_GAMEPAD_BUTTON_GUIDE,kPadHome);
+   button(SDL_GAMEPAD_BUTTON_LEFT_STICK,kPadL3);button(SDL_GAMEPAD_BUTTON_RIGHT_STICK,kPadR3);
+   button(SDL_GAMEPAD_BUTTON_DPAD_UP,kPadDUp);button(SDL_GAMEPAD_BUTTON_DPAD_DOWN,kPadDDown);button(SDL_GAMEPAD_BUTTON_DPAD_LEFT,kPadDLeft);button(SDL_GAMEPAD_BUTTON_DPAD_RIGHT,kPadDRight);
+   put(kPadLT,std::max(0.f,SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_LEFT_TRIGGER)/32767.f));put(kPadRT,std::max(0.f,SDL_GetGamepadAxis(pad,SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)/32767.f));
+   auto stick=[&](SDL_GamepadAxis ax,SDL_GamepadAxis ay,int up,int down,int left,int right){float x=SDL_GetGamepadAxis(pad,ax)/32768.f,y=SDL_GetGamepadAxis(pad,ay)/32768.f;put(right,std::max(x,0.f));put(left,std::max(-x,0.f));put(up,std::max(-y,0.f));put(down,std::max(y,0.f));};
+   stick(SDL_GAMEPAD_AXIS_LEFTX,SDL_GAMEPAD_AXIS_LEFTY,kPadLSUp,kPadLSDown,kPadLSLeft,kPadLSRight);stick(SDL_GAMEPAD_AXIS_RIGHTX,SDL_GAMEPAD_AXIS_RIGHTY,kPadRSUp,kPadRSDown,kPadRSLeft,kPadRSRight);
+  }
  }
- auto state=input_map::controller_state(input_map::current(),v);
+ PadState states[input::kMaxPlayers];
+ for(int i=0;i<input::kMaxPlayers;i++)states[i]=input_map::controller_state(input_map::player(i),pv[i]);
 
- {static bool plus=false;const bool now=(state.buttons&input::kPlus)!=0;if(now&&!plus&&!overlay::blocks_input())gfx::display_plus_pressed();plus=now;}
- std::lock_guard lk(g_mu);std::copy(std::begin(v),std::end(v),g_values);g_pad=state;
+ {static bool plus=false;const bool now=(states[0].buttons&input::kPlus)!=0;if(now&&!plus&&!overlay::blocks_input())gfx::display_plus_pressed();plus=now;}
+ std::lock_guard lk(g_mu);std::copy(std::begin(v),std::end(v),g_values);
+ for(int i=0;i<input::kMaxPlayers;i++){std::copy(std::begin(pv[i]),std::end(pv[i]),g_player_values[i]);g_pads[i]=states[i];}
  if(!overlay::blocks_input()&&!env::NO_HOST_INPUT()){motion::poll_recalibrate(v,g_keys);screenshot::poll_controller(v);}
 }
 void prompt_text(const std::u16string& initial,int max_len,std::function<void(bool,std::u16string)> done){std::lock_guard lk(g_mu);g_initial=initial;g_pending_max_len=std::max(0,max_len);if(g_initial.size()>(size_t)g_pending_max_len)g_initial.resize(g_pending_max_len);g_pending=std::move(done);}
@@ -600,6 +643,8 @@ namespace interp {
 void set_mode(int m);
 uint64_t logic_steps();
 bool course_play_active();
+bool input_enabled();
+bool player_witness(float& x, float& y, float& z);
 }
 namespace input {
 static bool pad_same(const PadState& a, const PadState& b) {
@@ -611,6 +656,10 @@ static bool g_course_clock_armed = false;
 static uint64_t g_course_clock_origin = 0;
 static bool g_replay_start_wait = false;
 static uint64_t g_replay_start_wait_from = 0;
+static uint64_t g_replay_wait_ticks = 0;
+static bool g_clock_from_control = false;
+static bool g_replay_mode_applied = false;
+static uint64_t g_witness_checked = ~0ull;
 
 static bool replay_course_clock_ready();
 
@@ -619,6 +668,24 @@ static void reset_course_input_clock() {
     g_course_clock_origin = 0;
     g_replay_start_wait = false;
     g_replay_start_wait_from = 0;
+    g_replay_mode_applied = false;
+    g_witness_checked = ~0ull;
+}
+
+static void trace_clock(uint64_t now, bool armed) {
+    static const bool on = env::REPLAY_TRACE() != nullptr;
+    if (!on) return;
+    static int budget = 1500;
+    if (budget <= 0) return;
+    budget--;
+    float x = 0, y = 0, z = 0;
+    const bool have = interp::player_witness(x, y, z);
+    if (have)
+        LOG("[replay] step %llu armed %d input %d pos %.3f %.3f %.3f", (unsigned long long)now, armed ? 1 : 0,
+            interp::input_enabled() ? 1 : 0, x, y, z);
+    else
+        LOG("[replay] step %llu armed %d input %d pos none", (unsigned long long)now, armed ? 1 : 0,
+            interp::input_enabled() ? 1 : 0);
 }
 
 static bool course_relative_step(uint64_t& step) {
@@ -626,13 +693,17 @@ static bool course_relative_step(uint64_t& step) {
     if (!active) {
         g_course_clock_armed = false;
         g_replay_start_wait = false;
+        g_witness_checked = ~0ull;
         return false;
     }
     const uint64_t now = interp::logic_steps();
     if (!g_course_clock_armed) {
+        trace_clock(now, false);
         if (!replay_course_clock_ready()) return false;
         g_course_clock_armed = true;
         g_course_clock_origin = now;
+    } else if (now - g_course_clock_origin < 90) {
+        trace_clock(now, true);
     }
     step = now - g_course_clock_origin;
     return true;
@@ -652,6 +723,7 @@ static std::string replay_course_from_path(const char* path) {
 
 struct ReplayStart {
     bool have = false;
+    bool have_pos = false;
     interp::PlayerSnapshot expect{};
 };
 
@@ -664,21 +736,117 @@ struct ReplaySample {
     bool witness = false;
 };
 
-static bool parse_start_comment(const char* line, ReplayStart& start) {
-    const char* p = line;
-    if (strncmp(p, "# start", 7) != 0) return false;
-    p += 7;
+static const char* const kPlayerModes[] = {
+    "small", "normal", "fire", "mini", "propeller", "penguin", "ice", "squirrel", "psquirrel",
+};
+
+static bool same_text(const char* a, const char* b) {
+    while (*a && *b) {
+        const char ca = *a >= 'A' && *a <= 'Z' ? (char)(*a + ('a' - 'A')) : *a;
+        const char cb = *b >= 'A' && *b <= 'Z' ? (char)(*b + ('a' - 'A')) : *b;
+        if (ca != cb) return false;
+        ++a;
+        ++b;
+    }
+    return *a == *b;
+}
+
+static int player_mode_from_text(const char* text) {
+    if (!text || !*text) return -1;
+    char* end = nullptr;
+    const long value = strtol(text, &end, 10);
+    if (end && end != text && !*end) return value >= 0 && value <= 8 ? (int)value : -1;
+    for (int i = 0; i < 9; i++)
+        if (same_text(text, kPlayerModes[i])) return i;
+    return -1;
+}
+
+static const char* player_mode_text(int mode) { return mode >= 0 && mode <= 8 ? kPlayerModes[mode] : nullptr; }
+
+static bool hex_text(const char* text) {
+    if (!text) return false;
+    const bool prefixed = text[0] == '0' && (text[1] == 'x' || text[1] == 'X');
+    if (prefixed) text += 2;
+    const size_t len = strlen(text);
+    if (len < (prefixed ? 1u : 2u))
+        return !prefixed && len == 1 && text[0] >= '0' && text[0] <= '9';
+    for (const char* p = text; *p; ++p) {
+        const char c = *p;
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
+    }
+    return true;
+}
+
+static uint32_t action_bit_for(const char* text) {
+    for (int a = 0; a < input_map::kActionCount; a++)
+        if (same_text(text, input_map::action_id(a))) return input_map::action_bit(a);
+    return 0;
+}
+
+static bool parse_buttons(const char* text, uint32_t& buttons) {
+    buttons = 0;
+    if (!text || !*text) return false;
+    if (strcmp(text, "-") == 0 || same_text(text, "none")) return true;
+    const char* p = text;
+    while (*p) {
+        const char* end = p;
+        while (*end && *end != '+') ++end;
+        const std::string token(p, (size_t)(end - p));
+        if (token.empty()) return false;
+        uint32_t bit = 0;
+        if (hex_text(token.c_str())) {
+            char* stop = nullptr;
+            bit = (uint32_t)strtoul(token.c_str(), &stop, 16);
+            if (!stop || *stop) return false;
+        } else {
+            bit = action_bit_for(token.c_str());
+            if (!bit) return false;
+        }
+        buttons |= bit;
+        p = *end ? end + 1 : end;
+    }
+    return true;
+}
+
+static std::string buttons_text(uint32_t buttons) {
+    if (!buttons) return "-";
+    std::string text;
+    uint32_t left = buttons;
+    for (int a = 0; a < input_map::kActionCount; a++) {
+        const uint32_t bit = input_map::action_bit(a);
+        if (!bit || !(left & bit)) continue;
+        if (!text.empty()) text += '+';
+        text += input_map::action_id(a);
+        left &= ~bit;
+    }
+    if (left) {
+        char hex[16];
+        snprintf(hex, sizeof hex, "%08X", buttons);
+        return hex;
+    }
+    return text;
+}
+
+static bool parse_start_line(const char* p, ReplayStart& start) {
+    if (strncmp(p, "start", 5) != 0) return false;
+    p += 5;
     int player = 0;
-    int32_t lives = 0, coins = 0, course_coins = 0, mode = 0;
+    int32_t lives = 0, player_coins = 0, coins = 0;
+    char mode_text[16] = {};
     float x = 0, y = 0, z = 0;
-    if (sscanf(p, " player %d lives %d coins %d course_coins %d mode %d pos %f %f %f", &player, &lives, &coins,
-            &course_coins, &mode, &x, &y, &z) != 8)
+    if (sscanf(p, " player=%d lives=%d player_coins=%d coins=%d mode=%15s pos=%f %f %f", &player, &lives, &player_coins,
+            &coins, mode_text, &x, &y, &z) != 8
+        && sscanf(p, " player %d lives %d player_coins %d coins %d mode %15s pos %f %f %f", &player, &lives,
+            &player_coins, &coins, mode_text, &x, &y, &z) != 8)
         return false;
+    const int mode = player_mode_from_text(mode_text);
+    if (mode < 0) return false;
     start.have = true;
+    start.have_pos = true;
     start.expect.player = player;
     start.expect.lives = lives;
-    start.expect.coins = coins;
-    start.expect.course_coins = course_coins;
+    start.expect.coins = player_coins;
+    start.expect.course_coins = coins;
     start.expect.mode = mode;
     start.expect.x = x;
     start.expect.y = y;
@@ -686,18 +854,76 @@ static bool parse_start_comment(const char* line, ReplayStart& start) {
     return true;
 }
 
-static bool pos_near(float a, float b) { return std::fabs(a - b) <= 0.05f; }
+static void parse_start_fields(const char* p, ReplayStart& start) {
+    if (parse_start_line(p, start)) return;
+    if (strncmp(p, "start", 5) != 0) return;
+    const char* f = p + 5;
+    int value = 0;
+    char mode_text[16] = {};
+    float x = 0, y = 0, z = 0;
+    if (sscanf(f, " player=%d", &value) == 1)
+        start.expect.player = value;
+    else if (sscanf(f, " lives=%d", &value) == 1)
+        start.expect.lives = value;
+    else if (sscanf(f, " player_coins=%d", &value) == 1)
+        start.expect.coins = value;
+    else if (sscanf(f, " coins=%d", &value) == 1)
+        start.expect.course_coins = value;
+    else if (sscanf(f, " mode=%15s", mode_text) == 1 || sscanf(f, " mode %15s", mode_text) == 1) {
+        const int mode = player_mode_from_text(mode_text);
+        if (mode < 0) return;
+        start.expect.mode = mode;
+    } else if (sscanf(f, " pos=%f %f %f", &x, &y, &z) == 3) {
+        start.expect.x = x;
+        start.expect.y = y;
+        start.expect.z = z;
+        start.have_pos = true;
+    } else {
+        return;
+    }
+    start.have = true;
+}
+
+static bool parse_start_field_line(const char* line, ReplayStart& start) {
+    int value = 0;
+    char mode_text[16] = {};
+    float x = 0, y = 0, z = 0;
+    if (sscanf(line, "player=%d", &value) == 1)
+        start.expect.player = value;
+    else if (sscanf(line, "lives=%d", &value) == 1)
+        start.expect.lives = value;
+    else if (sscanf(line, "player_coins=%d", &value) == 1)
+        start.expect.coins = value;
+    else if (sscanf(line, "coins=%d", &value) == 1)
+        start.expect.course_coins = value;
+    else if (sscanf(line, "mode=%15s", mode_text) == 1) {
+        const int mode = player_mode_from_text(mode_text);
+        if (mode >= 0) start.expect.mode = mode;
+    } else if (sscanf(line, "pos=%f %f %f", &x, &y, &z) == 3) {
+        start.expect.x = x;
+        start.expect.y = y;
+        start.expect.z = z;
+        start.have_pos = true;
+    } else
+        return false;
+    start.have = true;
+    return true;
+}
+
+static float pos_gap(float a, float b) { return std::fabs(a - b); }
+static bool pos_near(float a, float b) { return pos_gap(a, b) <= 0.05f; }
+static constexpr float kReplayStopGap = 4.f;
+static bool pos_stops(float a, float b) { return pos_gap(a, b) > kReplayStopGap; }
 
 static FILE* open_record_file(const char* path) {
-    reset_course_input_clock();
     FILE* f = fopen(path, "w");
     if (!f) { LOG("[input] can't write %s", path); return nullptr; }
     setvbuf(f, nullptr, _IONBF, 0);
-    const std::string course = replay_course_from_path(path);
-    fprintf(f, "# nsmbu-replay\n");
-    if (!course.empty()) fprintf(f, "# course %s\n", course.c_str());
-    fprintf(f, "# clock course\n");
-    fprintf(f, "# step buttons lx ly rx ry touch tx ty x y z\n");
+    const char* given = env::RECORD_COURSE();
+    const std::string course = given && given[0] ? std::string(given) : replay_course_from_path(path);
+    fprintf(f, "version=1\n");
+    if (!course.empty()) fprintf(f, "course=%s\n", course.c_str());
+    fprintf(f, "origin=control\n");
     LOG("[input] recording %s from in-level play", path);
     return f;
 }
@@ -705,11 +931,13 @@ static FILE* open_record_file(const char* path) {
 static void record_pad(const PadState& s) {
     const char* path = env::path(env::RECORD_INPUT);
     if (!path || !path[0] || env::REPLAY_INPUT()) return;
+    g_clock_from_control = true;
     uint64_t step = 0;
     if (!course_relative_step(step)) return;
     static FILE* f = nullptr;
     static bool opened = false;
     static bool start_written = false;
+    static bool legend_written = false;
     static PadState prev{};
     static bool have = false;
     if (!opened) {
@@ -723,20 +951,33 @@ static void record_pad(const PadState& s) {
     interp::PlayerSnapshot snap;
     const bool have_snap = interp::player_snapshot(snap, 0);
     if (!start_written && have_snap) {
-        fprintf(f, "# start player %d lives %d coins %d course_coins %d mode %d pos %.9g %.9g %.9g\n", snap.player,
-            snap.lives, snap.coins, snap.course_coins, snap.mode, snap.x, snap.y, snap.z);
+        fprintf(f, "player=%d\n", snap.player);
+        fprintf(f, "lives=%d\n", snap.lives);
+        fprintf(f, "player_coins=%d\n", snap.coins);
+        fprintf(f, "coins=%d\n", snap.course_coins);
+        if (const char* mode = player_mode_text(snap.mode))
+            fprintf(f, "mode=%s\n", mode);
+        else
+            fprintf(f, "mode=%d\n", snap.mode);
         start_written = true;
     }
+    if (!legend_written) {
+        fprintf(f, "# step buttons lx ly rx ry touch tx ty x y z\n");
+        legend_written = true;
+    }
+    const std::string buttons = buttons_text(s.buttons);
     if (have_snap)
-        fprintf(f, "%llu %08X %.9g %.9g %.9g %.9g %d %.9g %.9g %.9g %.9g %.9g\n", (unsigned long long)step,
-            s.buttons, s.lx, s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty, snap.x, snap.y, snap.z);
+        fprintf(f, "%llu %s %.9g %.9g %.9g %.9g %d %.9g %.9g %.9g %.9g %.9g\n", (unsigned long long)step,
+            buttons.c_str(), s.lx, s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty, snap.x, snap.y, snap.z);
     else
-        fprintf(f, "%llu %08X %.9g %.9g %.9g %.9g %d %.9g %.9g\n", (unsigned long long)step, s.buttons, s.lx,
+        fprintf(f, "%llu %s %.9g %.9g %.9g %.9g %d %.9g %.9g\n", (unsigned long long)step, buttons.c_str(), s.lx,
             s.ly, s.rx, s.ry, s.touch ? 1 : 0, s.tx, s.ty);
 }
 
 static int g_replay_version = 2;
 static bool g_replay_modern = false;
+static bool g_replay_exit_on_input = true;
+static bool g_replay_live = false;
 static ReplayStart g_replay_start;
 static std::string g_replay_course;
 static size_t g_replay_index = 0;
@@ -755,6 +996,9 @@ static const std::vector<ReplaySample>& replay_samples() {
     g_replay_start = {};
     g_replay_course.clear();
     g_replay_modern = false;
+    g_clock_from_control = false;
+    g_replay_exit_on_input = true;
+    g_replay_live = false;
     FILE* f = fopen(path, "r");
     if (!f) { LOG("[input] can't read %s", path); return samples; }
     char line[512];
@@ -763,16 +1007,46 @@ static const std::vector<ReplaySample>& replay_samples() {
     bool have_pending = false;
     size_t witness_count = 0;
     while (fgets(line, sizeof line, f)) {
-        if (line[0] == '#') {
-            if (strstr(line, "nsmbu-replay")) {
+        if (strncmp(line, "version=", 8) == 0) {
+            g_replay_modern = true;
+            g_replay_version = 3;
+            continue;
+        }
+        if (strncmp(line, "clock=", 6) == 0) continue;
+        if (strncmp(line, "origin=", 7) == 0) {
+            char value[16];
+            if (sscanf(line, "origin=%15s", value) == 1) g_clock_from_control = same_text(value, "control");
+            continue;
+        }
+        if (strncmp(line, "exit=", 5) == 0) {
+            char value[16];
+            if (sscanf(line, "exit=%15s", value) == 1) g_replay_exit_on_input = strcmp(value, "none") != 0;
+            continue;
+        }
+        if (strncmp(line, "course=", 7) == 0) {
+            char course[128];
+            if (sscanf(line, "course=%127s", course) == 1) g_replay_course = course;
+            continue;
+        }
+        if (parse_start_field_line(line, g_replay_start)) continue;
+        if (strncmp(line, "start", 5) == 0) {
+            parse_start_fields(line, g_replay_start);
+            continue;
+        }
+        if (line[0] == '#' || line[0] == '!') {
+            const char* p = line + 1;
+            while (*p == ' ') p++;
+            if (strncmp(p, "nsmbu-replay", 12) == 0) {
                 g_replay_modern = true;
                 g_replay_version = 3;
             }
             int ver = 0;
-            if (sscanf(line, "# nsmbu-input %d", &ver) == 1) g_replay_version = ver;
+            if (sscanf(p, "nsmbu-input %d", &ver) == 1) g_replay_version = ver;
             char course[128];
-            if (sscanf(line, "# course %127s", course) == 1) g_replay_course = course;
-            parse_start_comment(line, g_replay_start);
+            if (sscanf(p, "course %127s", course) == 1) g_replay_course = course;
+            char origin[16];
+            if (sscanf(p, "origin %15s", origin) == 1) g_clock_from_control = same_text(origin, "control");
+            parse_start_fields(p, g_replay_start);
             continue;
         }
         if (line[0] == '\n') continue;
@@ -789,13 +1063,17 @@ static const std::vector<ReplaySample>& replay_samples() {
             continue;
         }
         unsigned long long step;
-        unsigned buttons;
+        char buttons_field[128] = {};
+        int used = 0;
+        if (sscanf(line, "%llu %127s %n", &step, buttons_field, &used) != 2 || used <= 0) continue;
         float lx, ly, rx, ry, tx, ty;
         float wx = 0, wy = 0, wz = 0;
         int touch;
-        int n = sscanf(line, "%llu %x %f %f %f %f %d %f %f %f %f %f", &step, &buttons, &lx, &ly, &rx, &ry, &touch, &tx,
-            &ty, &wx, &wy, &wz);
-        if (n != 9 && n != 12) continue;
+        const int n = sscanf(line + used, "%f %f %f %f %d %f %f %f %f %f", &lx, &ly, &rx, &ry, &touch, &tx, &ty, &wx,
+            &wy, &wz);
+        if (n != 7 && n != 10) continue;
+        uint32_t buttons = 0;
+        if (!parse_buttons(buttons_field, buttons)) continue;
         PadState p;
         p.buttons = buttons;
         p.lx = lx;
@@ -806,7 +1084,7 @@ static const std::vector<ReplaySample>& replay_samples() {
         p.tx = tx;
         p.ty = ty;
         ReplaySample sample{step, p, 0, 0, 0, false};
-        if (n == 12) {
+        if (n == 10) {
             sample.wx = wx;
             sample.wy = wy;
             sample.wz = wz;
@@ -823,6 +1101,7 @@ static const std::vector<ReplaySample>& replay_samples() {
         samples.push_back(sample);
     }
     fclose(f);
+    if (const char* exit = env::REPLAY_EXIT(); exit && *exit) g_replay_exit_on_input = strcmp(exit, "none") != 0;
     g_replay_index = 0;
     g_witness_miss = 0;
     g_witness_first = 0;
@@ -830,10 +1109,22 @@ static const std::vector<ReplaySample>& replay_samples() {
     g_start_miss = 0;
     reset_course_input_clock();
     LOG("[input] replaying %zu samples from %s (%zu position checks)", samples.size(), path, witness_count);
+    if (!g_replay_course.empty()) LOG("[input] replay course %s", g_replay_course.c_str());
+    if (g_replay_start.have)
+        LOG("[input] replay start player %d mode %d", g_replay_start.expect.player, g_replay_start.expect.mode);
+    if (g_replay_start.have_pos)
+        LOG("[input] replay start pos %.3f %.3f %.3f", g_replay_start.expect.x, g_replay_start.expect.y,
+            g_replay_start.expect.z);
     return samples;
 }
 
 static void replay_finished(uint64_t step) {
+    if (!g_replay_exit_on_input) {
+        if (g_replay_live) return;
+        g_replay_live = true;
+        LOG("[input] replay stopped at step %llu; live input from now on", (unsigned long long)step);
+        return;
+    }
     static std::atomic<bool> sent{false};
     if (sent.exchange(true)) return;
     const int misses = g_witness_miss + g_start_miss;
@@ -849,23 +1140,54 @@ static void replay_finished(uint64_t step) {
     SDL_PushEvent(&quit);
 }
 
+static void apply_replay_start_mode() {
+    if (g_replay_mode_applied || !g_replay_start.have) return;
+    g_replay_mode_applied = true;
+    const int mode = g_replay_start.expect.mode;
+    if (mode < 0 || mode > 8) return;
+    interp::PlayerSnapshot now{};
+    const bool have = interp::player_snapshot(now, g_replay_start.expect.player);
+    if (have && now.mode == mode) return;
+    if (!interp::set_player_mode(g_replay_start.expect.player, mode)) return;
+    if (have)
+        LOG("[input] replay start mode %d -> %d", now.mode, mode);
+    else
+        LOG("[input] replay start mode %d", mode);
+}
+
 static bool replay_course_clock_ready() {
-    if (!g_replay_start.have) return true;
+    if (!g_replay_start.have_pos && !g_clock_from_control) return true;
     interp::PlayerSnapshot snap;
-    const bool positioned = interp::player_snapshot(snap, g_replay_start.expect.player)
-        && pos_near(snap.x, g_replay_start.expect.x) && pos_near(snap.y, g_replay_start.expect.y)
-        && pos_near(snap.z, g_replay_start.expect.z);
-    if (positioned) {
-        g_replay_start_wait = false;
-        return true;
+    if (g_clock_from_control) {
+        if (interp::input_enabled()) {
+            g_replay_start_wait = false;
+            apply_replay_start_mode();
+            return true;
+        }
+        const uint64_t now = timebase::now();
+        if (!g_replay_start_wait) {
+            g_replay_start_wait = true;
+            g_replay_wait_ticks = now;
+            return false;
+        }
+        if (now - g_replay_wait_ticks < 20ull * timebase::kTicksPerSec) return false;
+    } else {
+        const bool positioned = interp::player_snapshot(snap, g_replay_start.expect.player)
+            && pos_near(snap.x, g_replay_start.expect.x) && pos_near(snap.y, g_replay_start.expect.y)
+            && pos_near(snap.z, g_replay_start.expect.z);
+        if (positioned) {
+            g_replay_start_wait = false;
+            apply_replay_start_mode();
+            return true;
+        }
+        const uint64_t now = interp::logic_steps();
+        if (!g_replay_start_wait) {
+            g_replay_start_wait = true;
+            g_replay_start_wait_from = now;
+            return false;
+        }
+        if (now - g_replay_start_wait_from < 180) return false;
     }
-    const uint64_t now = interp::logic_steps();
-    if (!g_replay_start_wait) {
-        g_replay_start_wait = true;
-        g_replay_start_wait_from = now;
-        return false;
-    }
-    if (now - g_replay_start_wait_from < 180) return false;
     if (!g_start_miss) {
         g_start_miss = 1;
         g_witness_first = 0;
@@ -890,7 +1212,7 @@ static bool replay_step(uint64_t& step) {
 }
 
 static void check_replay_start(uint64_t step) {
-    if (g_replay_start_checked || !g_replay_start.have || step != 0) return;
+    if (g_replay_start_checked || !g_replay_start.have_pos || step != 0) return;
     g_replay_start_checked = true;
     interp::PlayerSnapshot now;
     if (!interp::player_snapshot(now, g_replay_start.expect.player)) return;
@@ -899,40 +1221,44 @@ static void check_replay_start(uint64_t step) {
         return;
     g_start_miss = 1;
     if (!g_witness_first) g_witness_first = step;
-    LOG("[input] replay start mismatch: recorded player %d lives %d coins %d course_coins %d mode %d pos %.3f %.3f %.3f now "
-        "player %d lives %d coins %d course_coins %d mode %d pos %.3f %.3f %.3f",
+    LOG("[input] replay start mismatch: recorded player %d lives %d player_coins %d coins %d mode %d pos %.3f %.3f %.3f now "
+        "player %d lives %d player_coins %d coins %d mode %d pos %.3f %.3f %.3f",
         g_replay_start.expect.player, g_replay_start.expect.lives, g_replay_start.expect.coins,
         g_replay_start.expect.course_coins, g_replay_start.expect.mode, g_replay_start.expect.x, g_replay_start.expect.y,
         g_replay_start.expect.z, now.player, now.lives, now.coins, now.course_coins, now.mode, now.x, now.y, now.z);
 }
 
-static void apply_replay(PadState& s) {
+static bool apply_replay(PadState& s) {
+    if (g_replay_live) return false;
     const std::vector<ReplaySample>& samples = replay_samples();
-    if (samples.empty()) return;
+    if (samples.empty()) return false;
     uint64_t step = 0;
     if (!replay_step(step)) {
         s = PadState{};
-        return;
+        return true;
     }
     check_replay_start(step);
     while (g_replay_index + 1 < samples.size() && samples[g_replay_index + 1].step <= step) g_replay_index++;
     const ReplaySample& cur = samples[g_replay_index];
     if (cur.step <= step) s = cur.pad;
-    if (cur.step == step && cur.witness) {
+    if (cur.step == step && cur.witness && g_witness_checked != step) {
         interp::PlayerSnapshot now;
         if (interp::player_snapshot(now, 0)) {
+            g_witness_checked = step;
             if (!pos_near(now.x, cur.wx) || !pos_near(now.y, cur.wy) || !pos_near(now.z, cur.wz)) {
+                const bool stop = pos_stops(now.x, cur.wx) || pos_stops(now.y, cur.wy) || pos_stops(now.z, cur.wz);
                 const bool first = g_witness_miss == 0;
-                if (first)
+                if (first || stop)
                     LOG("[input] replay diverged at step %llu: recorded %.3f %.3f %.3f now %.3f %.3f %.3f",
                         (unsigned long long)step, cur.wx, cur.wy, cur.wz, now.x, now.y, now.z);
                 if (!g_witness_first) g_witness_first = step;
                 g_witness_miss++;
-                if (first) replay_finished(step);
+                if (stop) replay_finished(step);
             }
         }
     }
     if (step > samples.back().step) replay_finished(step);
+    return !g_replay_live;
 }
 
 static void apply_scenario(PadState& s) {
@@ -969,11 +1295,11 @@ static std::atomic<bool> g_pro{env::PRO_CONTROLLER() != nullptr};
 bool pro_controller() { return g_pro.load(std::memory_order_relaxed); }
 void set_pro_controller(bool on) { g_pro = on; LOG("[input] keyboard/controller act as %s", on ? "Pro Controller" : "GamePad"); }
 
-PadState read() {
-    if (env::REPLAY_INPUT()) {
+PadState read(int player) {
+    player = std::clamp(player, 0, input::kMaxPlayers - 1);
+    if (player == 0 && env::REPLAY_INPUT()) {
         PadState s{};
-        apply_replay(s);
-        return s;
+        if (apply_replay(s)) return s;
     }
     static const std::vector<Press> script = scripted();
     static const std::vector<Stick> sticks = scripted_stick();
@@ -982,38 +1308,43 @@ PadState read() {
     std::lock_guard<std::mutex> lk(g_mu);
 
     static const bool no_host = env::NO_HOST_INPUT() != nullptr;
-    if (!keys.empty()) {
-        memset(g_script_keys, 0, sizeof g_script_keys);
-        for (auto& p : keys)
-            if (render::frame_count() >= p.from && render::frame_count() <= p.to)
-                for (int c : p.codes) g_script_keys[c] = true;
-    }
-    PadState k = keyboard_state(!no_host), s = g_pad;
+    PadState s = g_pads[player];
     if (no_host) s = PadState{};
-    for (auto& p : script)
-        if (render::frame_count() >= p.from && render::frame_count() <= p.to) s.buttons |= p.bits;
-    for (auto& p : sticks)
-        if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.lx = p.x; s.ly = p.y; }
-    for (auto& p : rsticks)
-        if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.rx = p.x; s.ry = p.y; }
-    apply_scenario(s);
-    s.buttons |= k.buttons;
-    if (k.lx || k.ly) { s.lx = k.lx; s.ly = k.ly; }
-    if (k.rx || k.ry) { s.rx = k.rx; s.ry = k.ry; }
-    agent_ctl::apply_pad(s);
-    s.touch = g_touch;
-    s.tx = g_tx;
-    s.ty = g_ty;
+    if (player == 0) {
+        if (!keys.empty()) {
+            memset(g_script_keys, 0, sizeof g_script_keys);
+            for (auto& p : keys)
+                if (render::frame_count() >= p.from && render::frame_count() <= p.to)
+                    for (int c : p.codes) g_script_keys[c] = true;
+        }
+        PadState k = keyboard_state(!no_host);
+        for (auto& p : script)
+            if (render::frame_count() >= p.from && render::frame_count() <= p.to) s.buttons |= p.bits;
+        for (auto& p : sticks)
+            if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.lx = p.x; s.ly = p.y; }
+        for (auto& p : rsticks)
+            if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.rx = p.x; s.ry = p.y; }
+        apply_scenario(s);
+        s.buttons |= k.buttons;
+        if (k.lx || k.ly) { s.lx = k.lx; s.ly = k.ly; }
+        if (k.rx || k.ry) { s.rx = k.rx; s.ry = k.ry; }
+        agent_ctl::apply_pad(s);
+        s.touch = g_touch;
+        s.tx = g_tx;
+        s.ty = g_ty;
 
-    static const bool log_buttons = env::LOG_BUTTONS() != nullptr;
-    static uint32_t last_buttons = 0;
-    if (log_buttons && s.buttons != last_buttons) {
-        LOG("[input] frame %llu buttons %04X", (unsigned long long)render::frame_count(), s.buttons);
-        last_buttons = s.buttons;
+        static const bool log_buttons = env::LOG_BUTTONS() != nullptr;
+        static uint32_t last_buttons = 0;
+        if (log_buttons && s.buttons != last_buttons) {
+            LOG("[input] frame %llu buttons %04X", (unsigned long long)render::frame_count(), s.buttons);
+            last_buttons = s.buttons;
+        }
     }
     if (overlay::blocks_input()) s = PadState{};
-    record_pad(s);
+    if (player == 0) record_pad(s);
     return s;
 }
+
+PadState read() { return read(0); }
 
 }

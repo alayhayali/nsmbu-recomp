@@ -212,6 +212,55 @@ static void test_deadzone() {
     CHECK(std::fabs(controller_state(m, v).ry - 0.5f) < 1e-6);
 }
 
+static void test_config_json() {
+    Config c = Config::defaults();
+    CHECK(c.sync);
+    for (int i = 1; i < kPlayers; i++) CHECK(c.players[i] == c.players[0]);
+
+    c.sync = false;
+    c.players[1].pad[kA] = kPadX;
+    c.players[2].deadzone = 0.25f;
+    std::string err;
+    Config r;
+    CHECK(config_from_json(config_to_json(c), r, &err) && err.empty());
+    CHECK(r == c);
+    CHECK(r.players[1].pad[kA] == kPadX && r.players[2].deadzone == 0.25f);
+
+    Mapping m = Mapping::defaults();
+    m.pad[kA] = kPadNone;
+    CHECK(config_from_json(to_json(m), r, &err) && err.empty());
+    CHECK(r.sync);
+    for (int i = 0; i < kPlayers; i++) CHECK(r.players[i] == m);
+
+    Config s = c;
+    s.sync = true;
+    CHECK(config_from_json(config_to_json(s), r, &err) && err.empty());
+    for (int i = 1; i < kPlayers; i++) CHECK(r.players[i] == r.players[0]);
+}
+
+static void test_players() {
+    set_config(Config::defaults(), false);
+    CHECK(sync_players());
+    Mapping m = player(2);
+    m.pad[kA] = kPadNone;
+    set_player(2, m, false);
+    for (int i = 0; i < kPlayers; i++) CHECK(player(i) == m);
+
+    set_sync_players(false, 0, false);
+    CHECK(!sync_players());
+    Mapping first = player(0);
+    first.pad[kB] = kPadX;
+    set_player(0, first, false);
+    CHECK(player(0).pad[kB] == kPadX);
+    CHECK(player(1).pad[kB] != kPadX);
+    CHECK(player(3) == m);
+
+    set_sync_players(true, 1, false);
+    CHECK(sync_players());
+    for (int i = 0; i < kPlayers; i++) CHECK(player(i) == player(1));
+    set_config(Config::defaults(), false);
+}
+
 static void test_files() {
     std::string dir=(std::filesystem::temp_directory_path()/("input_map_test."+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))).string();
     std::error_code ec;
@@ -237,6 +286,13 @@ static void test_files() {
     set_current(Mapping::defaults());
     CHECK(generation() != g);
     CHECK(load_file(path, r, &err) && r == Mapping::defaults());  // saved
+    Config c = Config::defaults();
+    c.sync = false;
+    c.players[1].pad[kA] = kPadX;
+    c.players[3].invert_camera_y = true;
+    CHECK(save_config_file(path, c));
+    Config cr;
+    CHECK(load_config_file(path, cr, &err) && cr == c);
     std::filesystem::remove_all(dir,ec);
 }
 
@@ -269,6 +325,8 @@ int main() {
     test_conflicts();
     test_json_roundtrip();
     test_json_partial_and_bad();
+    test_config_json();
+    test_players();
     test_deadzone();
     test_files();
     printf("input_map_test: %d passed, %d failed\n", g_pass, g_fail);

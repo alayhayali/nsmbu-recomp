@@ -15,6 +15,8 @@ Put these in **this** folder (`game/`):
 | `common.key` | Wii U common key from your console (same formats), **or** set `WIIU_COMMON_KEY` |
 | `update/` | Optional matching **1.3.0** update (already extracted). Recommended for mods. |
 
+In the setup window you can also type or paste each key as 32 hex digits instead of a key file.
+
 ### `update/` layout
 
 | Path | Contents |
@@ -25,7 +27,10 @@ Put these in **this** folder (`game/`):
 
 USA 1.3.0 is title version **64**.
 Europe 1.3.0 is title version **80**.
-The USA base disc alone is title version **0** (build `USA_V0`); it is playable, but **mods are not supported** without the update.
+The USA base disc alone is title version **0** (build `USA_V0`).
+The Europe base disc alone is title version **0** (build `EU_V0`).
+Both are playable.
+**Mods are not supported** on either base disc without the update.
 `game.key` must be the key for **this** `game.wux`.
 
 ## Extract

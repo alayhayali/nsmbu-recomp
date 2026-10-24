@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -29,6 +30,7 @@
 #include "core/env.h"
 #include "gfx/renderer.h"
 #include "hooks/interp.h"
+#include "mods/lua_eval.h"
 #include "mods/mod_json.h"
 #include "overlay/hostui.h"
 #include "core/runtime.h"
@@ -44,6 +46,7 @@ bool g_stop = false;
 #ifndef _WIN32
 int g_listen = -1;
 int g_client = -1;
+std::mutex g_write_mu;
 #else
 HANDLE g_pipe = INVALID_HANDLE_VALUE;
 bool g_win_logged = false;
@@ -67,6 +70,19 @@ struct ShotWait {
 std::deque<ShotWait> g_shots;
 std::deque<std::string> g_out_lines;
 std::atomic<bool> g_quit{false};
+
+struct EvalJob {
+    int id = 0;
+    std::string code;
+    int timeout_ms = 5000;
+};
+std::deque<EvalJob> g_evals;
+thread_local bool g_servicing = false;
+
+struct ServiceGuard {
+    ServiceGuard() { g_servicing = true; }
+    ~ServiceGuard() { g_servicing = false; }
+};
 
 
 void queue_line(const std::string& line) {
@@ -194,6 +210,21 @@ void handle_request(const mods::json::Value& req) {
         }
         return;
     }
+    if (cmd == "eval") {
+        const auto& cv = req.get("code");
+        if (cv.type != mods::json::Value::String) {
+            queue_line(response_err(id, "missing code"));
+            return;
+        }
+        EvalJob job;
+        job.id = id;
+        job.code = cv.text;
+        const auto& tv = req.get("timeout");
+        if (tv.type == mods::json::Value::Number && tv.number > 0) job.timeout_ms = int(tv.number);
+        std::lock_guard<std::mutex> lk(g_mu);
+        g_evals.push_back(std::move(job));
+        return;
+    }
     if (cmd == "quit") {
         g_quit.store(true);
         queue_line(response_ok(id));
@@ -219,6 +250,7 @@ void flush_writes() {
         lines.swap(g_out_lines);
     }
     if (g_client < 0 || lines.empty()) return;
+    std::lock_guard<std::mutex> write_lk(g_write_mu);
     for (const auto& line : lines) {
         std::string out = line;
         out += '\n';
@@ -415,6 +447,36 @@ void service() {
 #ifndef _WIN32
     flush_writes();
 #endif
+}
+
+void guest_service() {
+    if (!g_active.load() || g_servicing) return;
+    ServiceGuard guard;
+    for (;;) {
+        EvalJob job;
+        {
+            std::lock_guard<std::mutex> lk(g_mu);
+            if (g_evals.empty()) return;
+            job = std::move(g_evals.front());
+            g_evals.pop_front();
+        }
+        mods::lua_eval::Result result;
+        try {
+            result = mods::lua_eval::run(job.code, job.timeout_ms);
+        } catch (const std::exception& e) {
+            result.ok = false;
+            result.output = e.what();
+        }
+        mods::json::Value v;
+        v.type = mods::json::Value::Object;
+        v.object["id"] = job.id;
+        v.object["ok"] = result.ok;
+        if (result.ok)
+            v.object["output"] = result.output;
+        else
+            v.object["error"] = result.output;
+        queue_line(mods::json::dump(v));
+    }
 }
 
 void apply_pad(input::PadState& pad) {

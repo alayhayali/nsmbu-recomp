@@ -17,6 +17,8 @@ void env(const char* key, const char* value) {
 }
 }
 #include "mods/cemu_pack.h"
+#include "mods/lua_eval.h"
+#include "mods/lua_gui.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -190,6 +192,24 @@ int main(int argc, char** argv) {
         assert(enable("lua.hostmiss",true,error));frame(24);
         {auto v=view("lua.hostmiss");assert(!v.active&&!v.enabled);}
         assert(remove("lua.hostmiss",error));
+
+        assert(install(lua_pack("lua.gui",
+            "function nsmbu.Hooks.onLogicStep(step)\n"
+            "  assert(nsmbu.Gui.clear()==true)\n"
+            "  assert(nsmbu.Gui.rect_filled(10,20,30,40,0xff00ffff)==true)\n"
+            "  assert(nsmbu.Gui.rect(1,2,3,4,0x11223344,2,5)==true)\n"
+            "  assert(nsmbu.Gui.text(5,6,\"ok\",0xffffffff,2)==true)\n"
+            "  nsmbu.status(\"gui-ok\")\n"
+            "end\n",""),error));
+        assert(enable("lua.gui",true,error));frame(25);
+        {auto v=view("lua.gui");assert(v.active&&v.enabled&&v.status=="gui-ok");}
+        {auto cmds=mods::lua_gui::commands();assert(cmds.size()==3);
+         assert(cmds[0].kind==mods::lua_gui::Kind::RectFilled&&cmds[0].color==0xff00ffffu);
+         assert(cmds[1].kind==mods::lua_gui::Kind::Rect&&cmds[1].thickness==2);
+         assert(cmds[2].kind==mods::lua_gui::Kind::Text&&cmds[2].text=="ok");}
+        assert(enable("lua.gui",false,error));frame(26);
+        assert(mods::lua_gui::commands().empty());
+        assert(remove("lua.gui",error));
 
         std::vector<uint8_t> slab(65536,0);
         mods::lua_guest::set_base(reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(slab.data())-0x10000000u));
@@ -369,8 +389,39 @@ int main(int argc, char** argv) {
         assert(set_hot_reload(false,error));
         assert(remove("lua.both",error));
 
+        {
+            auto r=mods::lua_eval::run("return 1+1", 1000);
+            assert(r.ok&&r.output=="2\n");
+        }
+        {
+            auto r=mods::lua_eval::run("answer = 41\nreturn answer", 1000);
+            assert(r.ok&&r.output=="41\n");
+            r=mods::lua_eval::run("return answer + 1", 1000);
+            assert(r.ok&&r.output=="42\n");
+        }
+        {
+            auto r=mods::lua_eval::run("print('hi', 3)", 1000);
+            assert(r.ok&&r.output=="hi\t3\n");
+        }
+        {
+            auto r=mods::lua_eval::run("return {1, 2, x = 'y'}", 1000);
+            assert(r.ok&&r.output.find("{1, 2")!=std::string::npos&&r.output.find("x = \"y\"")!=std::string::npos);
+        }
+        {
+            auto r=mods::lua_eval::run("local nsmbu=require('nsmbu')\nreturn type(nsmbu.Level)", 1000);
+            assert(r.ok&&r.output=="table\n");
+        }
+        {
+            auto r=mods::lua_eval::run("error('boom')", 1000);
+            assert(!r.ok&&r.output.find("boom")!=std::string::npos);
+        }
+        {
+            auto r=mods::lua_eval::run("while true do end", 25);
+            assert(!r.ok&&r.output.find("timed out")!=std::string::npos);
+        }
+
         fs::remove_all(root);
-        std::cout<<"Lua load, options, onSceneChange, fault isolation, sandbox, guest memory, level/player API, content_dir, and hot reload passed\n";
+        std::cout<<"Lua load, options, onSceneChange, fault isolation, sandbox, guest memory, level/player API, content_dir, hot reload, and eval passed\n";
         return 0;
     }
     if(argc==2&&(std::string(argv[1])=="--cemu-startup"||std::string(argv[1])=="--cemu-backend")){

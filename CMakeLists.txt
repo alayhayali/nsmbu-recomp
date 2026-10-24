@@ -246,7 +246,7 @@ if(NSMBU_SETUP_GUI)
   include(cmake/SetupGui.cmake)
 endif()
 
-add_executable(mod_package_test runtime/tools/mod_package_test.cpp runtime/src/mods/packages.cpp runtime/src/mods/mod_archive.cpp runtime/src/mods/content.cpp runtime/src/mods/cemu_pack.cpp runtime/src/mods/lua_runtime.cpp runtime/src/mods/lua_guest.cpp runtime/src/mods/sdk/nsmbu.cpp runtime/src/mods/lua_press.cpp runtime/src/mods/mod_lua_test_stubs.cpp runtime/src/core/guest_addr_identity.c runtime/src/core/env.cpp)
+add_executable(mod_package_test runtime/tools/mod_package_test.cpp runtime/src/mods/packages.cpp runtime/src/mods/mod_archive.cpp runtime/src/mods/content.cpp runtime/src/mods/cemu_pack.cpp runtime/src/mods/lua_runtime.cpp runtime/src/mods/lua_eval.cpp runtime/src/mods/lua_guest.cpp runtime/src/mods/sdk/nsmbu.cpp runtime/src/mods/lua_press.cpp runtime/src/mods/lua_gui.cpp runtime/src/mods/mod_lua_test_stubs.cpp runtime/src/core/guest_addr_identity.c runtime/src/core/env.cpp)
 target_include_directories(mod_package_test PRIVATE runtime/src runtime/include)
 target_compile_options(mod_package_test PRIVATE -UNDEBUG)
 target_link_libraries(mod_package_test PRIVATE nsmbu_luajit ZLIB::ZLIB Threads::Threads)

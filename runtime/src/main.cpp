@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #endif
+#include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include "guest_addr.h"
@@ -337,7 +339,47 @@ static void start_log_file() {
     LOG("[log] writing %s", path.c_str());
 }
 
+static void print_help(const char* argv0) {
+    const char* name = argv0 && *argv0 ? argv0 : "nsmbu";
+    if (const char* slash = strrchr(name, '/')) name = slash + 1;
+#ifdef _WIN32
+    if (const char* slash = strrchr(name, '\\')) name = slash + 1;
+#endif
+    printf("Usage: %s [options]\n"
+           "\n"
+           "Options:\n"
+           "  --game DIR            Game dump directory\n"
+           "  --save DIR            Save data directory\n"
+           "  --trace               Log HLE calls\n"
+           "  --renderer API        metal or vulkan (also --renderer=API)\n"
+           "  --open W-C            Boot into a course pack with the native intro skip (e.g. 1-1)\n"
+#ifdef NSMBU_HAS_METAL
+           "  --warm-shaders        Fill the Metal shader cache and exit\n"
+#endif
+#ifdef NSMBU_HAS_VULKAN
+           "  --renderer-smoke      Run the Vulkan smoke test and exit\n"
+#endif
+           "  -h, --help            Show this help\n",
+           name);
+}
+
+static bool valid_open_pack(const char* s) {
+    const char* dash = strchr(s, '-');
+    if (!dash || dash == s || dash[-1] < '1' || dash[-1] > '9' || dash != s + 1) return false;
+    const char* p = dash + 1;
+    if (*p == '0' || !*p) return false;
+    long course = 0;
+    for (; *p; ++p) {
+        if (*p < '0' || *p > '9') return false;
+        course = course * 10 + (*p - '0');
+        if (course > 256) return false;
+    }
+    return course >= 1;
+}
+
 int main(int argc, char** argv) {
+    if (const char* warm = env::SHADER_WARM())
+        if (*warm && std::strcmp(warm, "0")) std::setvbuf(stderr, nullptr, _IONBF, 0);
     apply_portable_mode();
     default_vulkan_cpu_paths();
 #ifdef _WIN32
@@ -373,10 +415,32 @@ int main(int argc, char** argv) {
     bool renderer_smoke = false;
 #endif
     for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--game") && i + 1 < argc) config::game_dir = argv[++i];
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            print_help(argv[0]);
+            return 0;
+        }
+        else if (!strcmp(argv[i], "--game") && i + 1 < argc) config::game_dir = argv[++i];
         else if (!strcmp(argv[i], "--save") && i + 1 < argc) config::save_dir = argv[++i];
         else if (!strcmp(argv[i], "--trace")) g_trace_hle = true;
         else if (!strcmp(argv[i], "--warm-shaders")) warm_shaders = true;
+        else if (!strcmp(argv[i], "--open") && i + 1 < argc) {
+            const char* pack = argv[++i];
+            if (!valid_open_pack(pack)) {
+                fprintf(stderr, "--open expects a course pack like 1-1\n");
+                print_help(argv[0]);
+                return 1;
+            }
+            mods::packages::set_open_pack(pack);
+        }
+        else if (!strncmp(argv[i], "--open=", 7)) {
+            const char* pack = argv[i] + 7;
+            if (!valid_open_pack(pack)) {
+                fprintf(stderr, "--open expects a course pack like 1-1\n");
+                print_help(argv[0]);
+                return 1;
+            }
+            mods::packages::set_open_pack(pack);
+        }
 #ifdef NSMBU_HAS_VULKAN
         else if (!strcmp(argv[i], "--renderer-smoke")) renderer_smoke = true;
 #endif

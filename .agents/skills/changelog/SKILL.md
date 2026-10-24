@@ -1,18 +1,26 @@
 ---
 name: changelog
-description: "Edit CHANGELOG.md in Keep a Changelog form: player-facing notes, type sections, importance order within a section, and release cleanup. Use when adding, rewriting, or sorting changelog entries, preparing Unreleased for a version heading, or when AGENTS.md requires the changelog skill."
+description: "Edit CHANGELOG.md or modding/examples/CHANGELOG.md in Keep a Changelog form: player-facing notes, type sections, importance order within a section, and release cleanup. Use when adding, rewriting, or sorting changelog entries, preparing Unreleased for a version heading, or when AGENTS.md requires the changelog skill."
 ---
 
 # Changelog
 
-`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-GitHub Release bodies copy the matching version block via `tools/release/notes.py`.
+`CHANGELOG.md` and `modding/examples/CHANGELOG.md` follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+GitHub Release bodies copy the matching version block from `CHANGELOG.md` via `tools/release/notes.py`.
+
+## Which file
+
+`CHANGELOG.md` is the game, installer, and Mods tab.
+`modding/examples/CHANGELOG.md` is the example mods in that folder.
+A note about one example mod's behaviour goes only in the examples changelog.
+A note about loading packages, the Mods tab, or install stays in `CHANGELOG.md`.
 
 ## When to edit
 
 Append under `## [Unreleased]` as work lands.
-At release, the `release` skill moves that block under a dated `## [X.Y.Z] - YYYY-MM-DD` heading and leaves Unreleased empty.
-Refresh the compare links at the bottom of the file when versions change.
+At release, the `release` skill moves the `CHANGELOG.md` block under a dated `## [X.Y.Z] - YYYY-MM-DD` heading and leaves Unreleased empty.
+Refresh the compare links at the bottom of `CHANGELOG.md` when versions change.
+The examples changelog keeps its own headings and is not copied into the GitHub Release.
 The same rules apply to every version heading, not only Unreleased.
 
 ## Audience
@@ -80,7 +88,7 @@ Keep each bullet to one outcome plus at most one short supporting sentence unles
 
 ## Steps
 
-1. Read `CHANGELOG.md` and the change being documented.
+1. Read the changelog for that change (`CHANGELOG.md` or `modding/examples/CHANGELOG.md`) and the change being documented.
 2. Decide whether the change is player-facing, skip the edit when it is not.
 3. Place the note under the right `###` section using Audience, Sections, and Wording.
 4. Re-sort that section so importance order still holds.

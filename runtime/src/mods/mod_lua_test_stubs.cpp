@@ -1,8 +1,10 @@
 #include "core/runtime.h"
+#include "input/input.h"
 
 void log_msg(const char*, ...) {}
 
 extern "C" __attribute__((weak)) void nsmbu_fill_course_banner_digits(void) {}
+extern "C" __attribute__((weak)) void nsmbu_banner_entry_arm(void) {}
 
 __attribute__((weak)) uint32_t guest_call(Cpu* c, uint32_t fn,
                                           std::initializer_list<uint32_t> args) {
@@ -22,4 +24,5 @@ __attribute__((weak)) uint32_t host_alloc(uint32_t size, uint32_t align) {
 
 namespace input {
 __attribute__((weak)) bool pro_controller() { return false; }
+__attribute__((weak)) PadState read() { return PadState{}; }
 }

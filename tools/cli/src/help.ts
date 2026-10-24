@@ -7,11 +7,12 @@ Usage:
   nsmbu wine [--no-debug] [--trace] [slot|course] […]
   nsmbu run [--release] [slot|course] […]
   nsmbu extract […]
-  nsmbu record <course> […]
-  nsmbu replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course> […]
+  nsmbu save <save.dat|save.json> [output] [--output PATH]
+  nsmbu record <course> [name] […]
+  nsmbu replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name> […]
   nsmbu profile […]
   nsmbu perf […]
-  nsmbu installer [cmake args…]
+  nsmbu installer [--version VERSION]
   nsmbu lint
   nsmbu recomp
   nsmbu scripted <name> […]
@@ -24,6 +25,7 @@ Agent control (single game instance):
   nsmbu stick <x> <y> [--frames N]
   nsmbu rstick <x> <y> [--frames N]
   nsmbu screenshot [path]
+  nsmbu eval [code] [--file PATH] [--timeout MS]
   nsmbu wait --frame N | --step N [--timeout SEC]
   nsmbu quit | close
 `;

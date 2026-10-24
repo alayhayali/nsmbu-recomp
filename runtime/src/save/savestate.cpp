@@ -1170,7 +1170,8 @@ void request_save(int slot, std::function<void(bool ok, const std::string& why)>
         g_done_slot = slot;
         g_done = std::move(done);
     }
-    g_save_req = slot;
+    if (is_auto(slot) || full_states()) g_save_req = slot;
+    else g_psave_req = slot;
 }
 
 void request_save(int slot) { request_save(slot, nullptr); }
@@ -1220,9 +1221,21 @@ void request_load(int slot) {
     }).detach();
 }
 
-bool full_states_forced() { return true; }
+bool full_states_forced() { return full_env() >= 0; }
 
-bool full_states() { return true; }
+bool full_states() {
+    if (full_env() >= 0) return full_env() == 1;
+    std::lock_guard<std::mutex> lk(g_mu);
+    if (g_full_setting < 0) {
+        g_full_setting = 0;
+        if (FILE* f = fopen(full_cfg_path().c_str(), "r")) {
+            int v = 0;
+            if (fscanf(f, "%d", &v) == 1) g_full_setting = v ? 1 : 0;
+            fclose(f);
+        }
+    }
+    return g_full_setting == 1;
+}
 
 void set_full_states(bool on) {
     {

@@ -70,8 +70,9 @@ process (so Python is found or fetched exactly as in the terminal setup; on Wind
 `setup.py` directly with the Python the release ships, see below) and talks to `setup.py`
 over its stdin/stdout. Screens: welcome (or, when installed: play / update / repair / reinstall /
 import saves or settings / open the folder), choose the disc image, Cemu archive or game folder (native file dialogs), keys
-(disc images only: disc key and common key as a file next to the image, chosen, or pasted into a hidden field), installation
-(a bar per step, an overall bar, the log under "Details"), optional save import (an NSMBU
+(disc images only: disc key and common key typed or pasted as 32 hex digits, or taken from a key file next to the image
+or chosen), installation
+(a bar per step, an overall bar, and the setup log), optional save import (an NSMBU
 `rp_personal_savedata.dat`
 folder, or the saves and settings of an
 earlier installation or another release folder, copied), done (Play, Open folder, Quit; in a portable
@@ -152,6 +153,7 @@ One JSON object per line. Events on stdout all have `"event"`:
 | `plan` | `steps`: `[{id, title}]` of the installation that starts |
 | `step` | `n`, `total`, `title`, `id` (`keys`, `archive`, `folder`, `compiler`, `extract`, `copy`, `translate`, `compile`, `app`) |
 | `progress` | `label`, `done`, `total`, `detail` |
+| `shader` | `phase`, `done`, `total`, `detail` while `shaders` is running |
 | `reply` | `id` and `cmd` of the request, `ok`; on failure `problem` and `message` |
 | `fatal` | `message` (setup cannot run, e.g. the wrong release for this system) |
 
@@ -167,11 +169,33 @@ Requests on stdin: `{"cmd": ..., "id": n, ...}`
 | `remove_toolchain` | | `freed` bytes |
 | `shortcut` | | `path` of the created shortcut |
 | `launch` | | starts the installed game |
+| `shaders` | | runs the installed game in the background until the shaders it draws have compiled, streaming `shader` events (`phase`, `done`, `total`, `detail`) and then `compiled`; `shaders_cancel` on stdin during that run stops it and keeps shaders already compiled (`not_installed`, `missing_exe`, `missing_game`, `shaders`, `spawn`) |
 | `quit` | | |
 
 Keys: an image install uses the keys from the last successful `check_keys`; they stay in the
 `setup.py` process's memory and are dropped when the installation starts extracting. Requests are
 never logged or echoed, and no key is written to disk or passed on a command line.
+
+## Disc image keys
+
+A disc image needs its disc key and the Wii U common key. On the Keys screen each one is typed or
+pasted as 32 hex digits, or taken from a key file. The disc key belongs to that one image; the common
+key is the same on every Wii U.
+
+For both keys the pasted text is the first option: `disc_key_hex` and `common_key_hex` in the protocol
+above, with the key file next to the image used when nothing is pasted. A key file holds one of:
+
+- 16 raw bytes;
+- one line of 32 hex digits (spaces, dashes and a leading `0x` are ignored);
+- a Cemu `keys.txt` with a `common = <32 hex>` line and a `disc = <32 hex>` line.
+
+UTF-8 and UTF-16 files work, with or without a byte order mark (Notepad's "UTF-8 with BOM",
+"Unicode" and "UTF-8" encodings all do).
+
+A `keys.txt` next to the image or in the release folder is used too: its `common` line is the common key,
+its `disc` line is the disc key. There a bare line is not used as the common key (it is usually the disc
+key). Title-key lines (`<title id> = <32 hex>`) are not keys for these two, and a file with only a title
+key is rejected with a message that names the title id.
 
 ## Cemu archives (`.wua`)
 
@@ -183,8 +207,9 @@ the GUI skips the key screen and the terminal setup asks for none.
 `nsmbu-extract --title 0005000010101d00 info GAME.wua` lists every title folder and the one selected;
 setup then decides (`archive_choice` in `setup.py`) and logs which title it uses and why:
 
-- a supported game title at the matching 1.3.0 version is used: USA `0005000010101d00_v64` or Europe
-  `0005000010101e00_v80` (a Cemu archive that already merged the update into the game folder);
+- a supported game title is used: USA `0005000010101d00_v64` or Europe `0005000010101e00_v80`
+  (a Cemu archive that already merged the update into the game folder), or a base disc at version 0
+  (`0005000010101d00_v0` or `0005000010101e00_v0`);
 - a lone update title (`0005000e…`) without the base game stops with an explanation.
   DLC or other titles are listed as not used.
 - an extracted folder that is only the update (update title id, or no base
@@ -202,8 +227,8 @@ archive written by the test) and `ArchiveTitles` in `test_setup.py`.
 ## Game version check
 
 The hooks (`tools/recomp/hooks*.txt`) use canonical USA addresses.
-Setup accepts `code/red-pro2.rpx` from New Super Mario Bros. U USA (`00050000-10101d00`, title version 64)
-or Europe (`00050000-10101e00`, title version 80).
+Setup accepts `code/red-pro2.rpx` from New Super Mario Bros. U USA (`00050000-10101d00`, title version 64
+or base disc 0) or Europe (`00050000-10101e00`, title version 80 or base disc 0).
 The build registry (`tools/recomp/builds.py` and `tools/recomp/builds/*.json`) keeps those SHA-256
 values (checksums only: they identify the file and contain nothing of it;
 `guard.py` flags 32-digit, key-shaped strings, not 64-digit sums) and `check_game_version` compares
@@ -218,7 +243,7 @@ Europe uses a USA→EU address map; see [docs/builds.md](../../docs/builds.md).
 A disc image is the base game.
 The matching 1.3.0 update is optional: an extracted folder (`code/`, `content/`, `meta/`).
 Setup looks for `update/` next to the disc image, accepts `--update-dir`, or asks (terminal / Keys screen).
-Without it, the USA base disc (title version 0) still works.
+Without it, the USA or Europe base disc (title version 0) still works.
 Mods need the update.
 `check_update_folder` checks the update RPX and that build's title version before extract.
 After the base extract, `apply_update_to` merges that folder when present, then `check_game_version` runs on the result.

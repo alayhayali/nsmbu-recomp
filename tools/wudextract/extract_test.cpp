@@ -211,6 +211,17 @@ static std::string hex(const uint8_t* k) {
     for (int i = 0; i < 16; i++) snprintf(b, 3, "%02X", k[i]), s += b;
     return s;
 }
+static std::string hex_bytes(const uint8_t* k, size_t n) {
+    std::string s;
+    char b[3];
+    for (size_t i = 0; i < n; i++) snprintf(b, 3, "%02X", k[i]), s += b;
+    return s;
+}
+static void write_utf16le(const fs::path& p, const std::string& s) {
+    std::vector<uint8_t> d{0xFF, 0xFE};
+    for (char c : s) d.push_back((uint8_t)c), d.push_back(0);
+    write_file(p, d);
+}
 
 static std::string q(const fs::path& p) { return "\"" + p.string() + "\""; }
 
@@ -353,6 +364,28 @@ int main(int argc, char** argv) {
                " extract " + q(work / "disc.wux") + " " + q(work / "out_wux") + " 2> " + q(work / "log.txt")) == 0,
            "extract .wux (raw-bytes key files)");
     check_tree(work / "out_wux", "extracted .wux files match");
+
+    std::string tid = hex_bytes(title_id, 8);
+    write_text(work / "cemu_keys.txt", "# Cemu keys\r\ndisc = " + hex(disc_key) + "\r\ncommon = " + hex(common_key) +
+                                           "\r\n" + tid + " = " + hex(title_key) + "\r\n");
+    expect(run(x + " --common-key " + q(work / "cemu_keys.txt") + " info " + q(wud) + " > " + q(work / "info3.txt")) == 0,
+           "Cemu keys.txt with CRLF and named lines");
+    expect(run(x + " --disc-key " + q(work / "cemu_keys.txt") + ck + " info " + q(wud) + " > " + q(work / "info6.txt")) == 0,
+           "Cemu keys.txt disc key line");
+    write_text(work / "common_bom.txt", std::string("\xEF\xBB\xBF") + hex(common_key) + "\r\n");
+    expect(run(x + " --common-key " + q(work / "common_bom.txt") + " info " + q(wud) + " > " + q(work / "info4.txt")) == 0,
+           "common key in a UTF-8 file with BOM");
+    write_utf16le(work / "common_utf16.txt", hex(common_key) + "\r\n");
+    expect(run(x + " --common-key " + q(work / "common_utf16.txt") + " info " + q(wud) + " > " + q(work / "info5.txt")) == 0,
+           "common key in a UTF-16 LE file");
+    write_text(work / "title_only.txt", tid + " = " + hex(title_key) + "\n");
+    expect(run(x + " --common-key " + q(work / "title_only.txt") + " info " + q(wud) + " 2> " + q(work / "e7.txt")) == 5,
+           "title-key-only common key file -> exit 5");
+    {
+        auto e = read_file(work / "e7.txt");
+        std::string s(e.begin(), e.end());
+        expect(s.find("title key") != std::string::npos, "title-key-only error mentions the title key");
+    }
 
     expect(run(x + ck + " --only content/common/pack/permanent_2d_*.pack --only META/meta.xml --progress extract " + q(wud) +
                " " + q(work / "out_only") + " > " + q(work / "progress_only.txt")) == 0,

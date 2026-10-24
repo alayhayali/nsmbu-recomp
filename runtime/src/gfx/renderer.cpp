@@ -5,7 +5,10 @@
 
 #include <atomic>
 #include <cerrno>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <mutex>
 #include <string>
@@ -209,6 +212,42 @@ void init() {
                              "The game is running with " + std::string(api_name(fallback->api)) + " instead.\n\n" + g_reason +
                                  "\n\nGraphics > Renderer selects the renderer for the next start.");
 #endif
+}
+
+bool shader_warm_tick(uint64_t activity) {
+    const char* spec = env::SHADER_WARM();
+    if (!spec || !*spec || !std::strcmp(spec, "0")) return false;
+    using clock = std::chrono::steady_clock;
+    static const bool armed = (std::setvbuf(stderr, nullptr, _IONBF, 0), true);
+    (void)armed;
+    static auto started = clock::now();
+    static auto quiet = clock::now();
+    static auto logged = clock::time_point{};
+    static uint64_t last = ~uint64_t{0};
+    auto now = clock::now();
+    if (std::strcmp(spec, "1") != 0) {
+        static auto polled = clock::time_point{};
+        if (now - polled >= std::chrono::milliseconds(200)) {
+            polled = now;
+            if (FILE* f = std::fopen(spec, "rb")) {
+                std::fclose(f);
+                return true;
+            }
+        }
+    }
+    if (activity != last) {
+        last = activity;
+        quiet = now;
+    }
+    if (logged == clock::time_point{} || now - logged >= std::chrono::milliseconds(500)) {
+        logged = now;
+        LOG("[warm] progress %llu 0 %llu shaders compiled",
+            (unsigned long long)activity, (unsigned long long)activity);
+    }
+    if (now - started > std::chrono::minutes(15)) return true;
+    if (activity > 0 && now - quiet > std::chrono::seconds(30)) return true;
+    if (activity == 0 && now - started > std::chrono::minutes(3)) return true;
+    return false;
 }
 
 void run_main_loop() { g_backend->run_main_loop(); }

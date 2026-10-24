@@ -7,7 +7,7 @@ Expose it globally as `nsmbu` via `npm link` from `tools/cli/`.
 Agents and automation always invoke `nsmbu …` on `PATH`.
 Add an agent-browser-like control loop for a running game: wait/status, press/stick pulses, screenshot, quit.
 
-Keep `NSMBU_RECORD_INPUT` / `NSMBU_REPLAY_INPUT` and `replays/<course>.replay` for complex timelines (see [automation.md](automation.md)).
+Keep `NSMBU_RECORD_INPUT` / `NSMBU_REPLAY_INPUT` and `replays/<name>.replay` for complex timelines (see [automation.md](automation.md)).
 The live CLI is for short interactive pulses and observation, not a replacement for long pad logs.
 
 Only one game instance is supported.
@@ -45,6 +45,7 @@ flowchart LR
   Game["build/debug/nsmbu"] --> Sock
   Game --> Input["agent pad overlay"]
   Game --> Shot["screenshot::request"]
+  Game --> Eval["mods::lua_eval"]
 ```
 
 ### Transport
@@ -75,18 +76,35 @@ The CLI exports `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout 
 
 | Command | Role |
 | --- | --- |
-| `nsmbu build` / `build --release` / `build --sanitizer` | `tools/build.py` |
-| `nsmbu launch` (+ `--no-debug`, `--trace`, `--gdb`, `--lldb`) | `tools/launch.py` |
+| `nsmbu build` / `build --release` / `build --sanitizer` | `tools/build/build.py` |
+| `nsmbu launch` (+ `--no-debug`, `--trace`, `--gdb`, `--lldb`) | `tools/run/launch.py` |
 | `nsmbu crash` | launch with `NSMBU_TEST_HOST_CRASH=1` to exercise the Report crash dialog |
-| `nsmbu wine` (+ `--no-debug`, `--trace`) | cross-build `build/windows/nsmbu.exe` then `tools/launch.py --wine` |
+| `nsmbu wine` (+ `--no-debug`, `--trace`) | cross-build `build/windows/nsmbu.exe` then `tools/run/launch.py --wine` |
 | `nsmbu run` / `run --release` | build then launch |
-| `nsmbu extract` | `tools/extract.py` |
-| `nsmbu record <course>` / `replay [--release] [--uncapped] [--exit-at N] [--log PATH] <course>` | env + launch (see [automation.md](automation.md)) |
+| `nsmbu extract` | `tools/disc/extract.py` |
+| `nsmbu save <save.dat\|save.json> [output] [--output PATH]` | convert `rp_savedata.dat` to JSON and back |
+| `nsmbu record <course> [name]` / `replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name>` | env + launch (see [automation.md](automation.md)) |
 | `nsmbu profile` / `perf` | profiling helpers |
-| `nsmbu installer` / `lint` / `recomp` | installer, TypeScript mod build, recomp only |
-| `nsmbu scripted <name>` | wraps `tools/scripted-run.sh` |
+| `nsmbu installer [--version VERSION]` | builds this Linux host's GitHub Release folder (the zip contents) at `build/installer` with the release workflow's pinned zig toolchain, then opens that folder's setup window; does not publish |
+| `nsmbu lint` / `recomp` | TypeScript mod build, recomp only |
+| `nsmbu scripted <name>` | wraps `tools/run/scripted-run.sh` |
 
 Run `nsmbu` with no arguments (or `--help`) for the full list.
+
+### Save data
+
+`nsmbu save` converts `rp_savedata.dat` to JSON and back.
+Pass the save file to produce JSON next to it; pass the JSON to produce a `.dat` file.
+
+```
+nsmbu save .tmp/menutr2/save/common/rp_savedata.dat
+nsmbu save .tmp/menutr2/save/common/rp_savedata.json
+nsmbu save in.dat out.json
+```
+
+The JSON keeps every unknown and padding byte, so a JSON to `.dat` to JSON round trip is lossless.
+No CRC32 fields appear in the JSON; the structural checksums are recomputed when writing the `.dat` file so the game still accepts it.
+Non-finite `f32` values (star coin coordinates) are written as `0x`-prefixed 32-bit hex.
 
 ## Agent control
 
@@ -99,10 +117,17 @@ Commands talk to the single running game over the fixed control socket.
 - `nsmbu press A` / `press 8000` — short pulse (configurable frames).
 - `nsmbu stick <x> <y> [--frames N]` / `rstick …`
 - `nsmbu screenshot [path]` — wait until PNG written; print path.
+- `nsmbu eval [code] [--file PATH] [--timeout MS]` — run Lua on the game thread and print its output.
+  The state persists between calls, has the mod SDK as the global `nsmbu`, and reads code from stdin when no code or file is given.
+  `--timeout` limits execution time in milliseconds (default 5000) so a runaway loop errors instead of freezing the game.
 - `nsmbu wait --frame N` / `wait --step N` — poll `status` until bound.
 - `nsmbu quit` / `close` — graceful quit and tear down control files under `.tmp/agent/`.
 
-Headless boots that use `tools/scripted-run.sh` stay available as `nsmbu scripted <name>` so agents can still do exit-at-frame dumps without a second path.
+These commands block until their work is done: `open` waits for the socket, `press` / `stick` hold for their frames, `screenshot` waits for the PNG, `eval` waits for the game thread to run the code, and `wait` polls until the frame or step bound.
+Do not add shell sleeps between control commands.
+Use `wait --step N` when the next action needs guest progress.
+
+Headless boots that use `tools/run/scripted-run.sh` stay available as `nsmbu scripted <name>` so agents can still do exit-at-frame dumps without a second path.
 Live `open` / `press` / `screenshot` is the interactive loop.
 
 ## Runtime work
@@ -113,6 +138,8 @@ New small module (for example `runtime/src/agent/agent_ctl.cpp` and header):
 - Accept one local client connection at a time (or multiplex simple request IDs).
 - Apply pad overlay each `input::read()`.
 - Service screenshot, status, and quit on the render/host thread safely (queue commands, apply on known threads — same discipline as overlay / `hostui::post`).
+- Service `eval` on the guest thread next to `mods::packages::frame()`, so Lua reads and writes game state at the same point as mods.
+  Keep one persistent `lua_mod` instance for the console and reuse `mods::lua_eval` from `runtime/src/mods/lua_eval.cpp`.
 - Wire quit to the existing SDL quit path.
 
 No change to the replay file format or `NSMBU_PRESS` start-only tables except coexistence (agent overlay OR’ed with scripted/replay as documented).

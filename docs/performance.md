@@ -317,7 +317,7 @@ Two changes in the per-frame register stream:
   (one bump per write fault, host write, or hint), so `write_seq()` now returns `g_clock - 1` and
   each hint, fault, and host write does one atomic RMW instead of two. Page stamping is unchanged.
 
-`tools/perf.py` passes `--call-graph none` for the flat report (perf 7.0 removed
+`tools/run/perf.py` passes `--call-graph none` for the flat report (perf 7.0 removed
 `--no-callchains`).
 
 | Symbol (P-core sample periods, ~6.9 s / ~5.8 s windows) | before | after |
@@ -384,6 +384,51 @@ Frames 1800–2760 stay on the vsync limit.
 
 The replay still reports 7 position mismatches, first at step 1036.
 
+## Uncapped 1-1 replay: texture re-hash and small copies (2026-10-20)
+
+`perf` needs `perf_event_paranoid` at 1 or lower, which this machine does not allow.
+The numbers below come from a `SIGPROF` leaf sampler on the thread CPU clock (1 ms) attached with `LD_PRELOAD`, plus the `[prof]` windows of `nsmbu replay --release --uncapped`.
+
+A replay with its position columns stops at the first divergence, so the uncapped runs use a copy of `replays/1-1.replay` without those columns; it plays all 2420 steps.
+The machine and build match the note above, with a warm shader cache.
+
+The render thread was the largest CPU user (about 55% of samples).
+Two costs came out of it:
+
+- The 4 MiB CPU texture was hashed on every frame.
+  Surface `41410800` is 2048x512 `TM_2D_TILED_THIN1`, one level of 4.00 MiB.
+  The game calls `GX2Invalidate` on it every frame, which set `dirty` and made `upload_surface` hash the whole level with XXH3.
+  Write tracking showed that none of the written pages had changed, so the hash only confirmed that the image was unchanged.
+  `dirty` now tells apart changes that write tracking cannot see (`dirtyOob`: `GX2CopySurface` into the surface, a save-state load) from an invalidation that only announces CPU writes.
+  In-band changes therefore use the per-page verdict and the 4 MiB hash is skipped; out-of-band changes still take the whole-level path.
+- Small copies went through libc.
+  `apply_small_regs` compared and copied every register set with `memcmp` and `memcpy`, twice when a context shadow was bound, and the command queue copied every payload with `vector::insert`.
+  Sets of 16 words or fewer now compare and copy word by word, the shadow is written only when a word differs, and small payloads are appended without `insert`.
+
+Frames 1200-3300 of the uncapped 1-1 run, four runs each, medians of the 120-frame `[prof]` windows:
+
+| 2x internal resolution | before | after |
+| --- | ---: | ---: |
+| render-thread CPU ms/frame | 1.35 | 1.14 |
+| textures ms/frame | 0.27 | 0.08 |
+| regs ms/frame | 0.42 | 0.36 |
+| draw op ms/frame | 0.87 | 0.70 |
+| frame time ms | 1.75 | 1.75 |
+| swaps/s | 571 | 572 |
+
+At 2x the GPU takes the CPU time that was freed, so frame time does not move.
+The same replay at 1x internal resolution is CPU-bound, and there the faster render thread raises throughput:
+
+| 1x internal resolution | before | after |
+| --- | ---: | ---: |
+| render-thread CPU ms/frame | 1.36 | 1.10 |
+| frame time ms | 1.51 | 1.22 |
+| swaps/s | 663 | 818 |
+| whole run wall time | 6.15 s | 5.81 s |
+
+The capped replay behaves as before: both builds stop at the same divergence, step 17, recorded 600.000 and now 600.100.
+`ctest` and `--renderer-smoke` pass.
+
 ## Texture change detection (2026-10-06)
 
 The renderers used to re-hash a CPU texture in full only when it was new, invalidated by an exact
@@ -404,3 +449,39 @@ The 300-frame `[gfx]` report (Metal) and the `[vulkan textures]` line (`NSMBU_VK
 full checks, hashed bytes (Metal), uploads, page write faults and pages protected;
 `NSMBU_LOG_TEXCHECK=1` (Metal) logs which textures were re-checked because of a write.
 
+
+## Guest register reloads after calls (2026-10-21)
+
+Functions with calls now keep the guest registers in C locals between calls and reload only the ones a later read needs.
+A backward liveness pass over each function's statement graph (`tools/recomp/leaflocal.py`, `NSMBU_RECOMP_NONLEAF_LIVE`, on by default) drops the reloads of registers and float halves that are overwritten before they are read again, and keeps the ones a return, a tail call or a loop-head sync still needs.
+
+The recompiler emits one reload statement per register per call, and the game has 173,463 calls in functions with calls.
+`report.txt` therefore counts 2,918,797 reload statements with the pass off and 621,916 with it on: 79% of them are gone.
+
+`NSMBU_RECOMP_NONLEAF_ABI`, an earlier version that also left r0, r11 and r12 in their locals at a call, was removed because both halves break the game.
+A generated callee loads `c->r[0]`, `c->r[11]` and `c->r[12]` in its prologue, and 6 and 36 guest functions read r0 and r11 before writing them, so skipping the write-back loses their input (the boot hangs before `[gx2] initialized`).
+A callee with calls of its own writes those registers back at its own calls, so skipping the reload leaves the caller a stale copy (SIGSEGV at guest address `00000019`, `lr=02000278`).
+In a plain (struct form) recomp, 0 of 84,509 functions read r12 before writing it and 40 read r0 or r11, but a sound skip needs the callee's live-in set at each call site for about 15% of what the live pass already saves.
+
+Release `replays/1-1.replay`, uncapped copy without the position columns, frames 1200-3240, median of the 18 120-frame `[prof]` windows, three runs each:
+
+| | 2x off | 2x on | 1x off | 1x on |
+| --- | ---: | ---: | ---: | ---: |
+| frame time ms | 2.070 | 2.085 | 1.325 | 1.280 |
+| swaps/s | 482 | 480 | 753 | 782 |
+| render-thread CPU ms/frame | 1.165 | 1.195 | 1.115 | 1.070 |
+| guest-thread `f_*` CPU samples | - | - | 911 | 836 |
+
+Frame time and swaps/s stay inside the run-to-run spread (the medians above are within 4%): the guest thread has slack at 24% of the process CPU and the render thread or the GPU sets the pace (56% busy at 2x, 84% at 1x).
+The direct effect is on the guest code.
+A 1 ms `SIGPROF` leaf sampler on the thread CPU clock, attached with `LD_PRELOAD`, counts the guest thread's samples in `f_*` code between 881 and 928 with the pass off and between 830 and 884 with it on, about 8% fewer.
+That is CPU headroom, not frames, on this machine.
+
+`nsmbu recomp` writes the reload count to `report.txt`; recompile the same tree with `NSMBU_RECOMP_NONLEAF_LIVE=0` for the baseline.
+A build with the pass on must still print `62 position checks` and `replay finished at step 2420, player state matched` for `nsmbu replay --release 1-1`.
+`python3 -m unittest tools/recomp/test_leaflocal.py` covers the transform itself.
+
+Three things mislead while measuring this.
+The `[prof]` windows for one setting swing up to 20% between runs here, so compare three runs per side and use the medians; a single pair can show a gain that is not there.
+`perf` is unavailable (`perf_event_paranoid=4`), which is why the guest CPU number comes from a `SIGPROF` sampler on the thread CPU clock.
+`NSMBU_RECOMP_LEAF_POISON=1` fills the locals that a reload would have overwritten with garbage, and it also writes garbage into the `Cpu` struct at every return, so it is good for a short boot and not for a full replay (SIGSEGV at guest address `00000034` with r5-r12 all `DEADBEEF`).

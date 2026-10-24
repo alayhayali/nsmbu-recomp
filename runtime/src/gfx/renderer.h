@@ -106,6 +106,7 @@ inline void wait_idle() { g_backend->wait_idle(); }
 inline void write_back() { if (g_backend->write_back) g_backend->write_back(); }
 inline void ss_reset() { g_backend->ss_reset(); }
 uint64_t frame_count();
+bool shader_warm_tick(uint64_t activity);
 inline void request_tv_dump(const std::string& path, int frames_ahead) { g_backend->request_tv_dump(path, frames_ahead); }
 inline void request_capture() { g_backend->request_capture(); }
 void shutdown();

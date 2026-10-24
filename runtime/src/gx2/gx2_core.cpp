@@ -24,6 +24,7 @@
 #include "gfx/vulkan/api.h"
 #endif
 #include "core/runtime.h"
+#include "agent/agent_ctl.h"
 #include "save/savestate.h"
 #include "mods/sdk/nsmbu.h"
 #include "guest_addr.h"
@@ -33,6 +34,9 @@
 #include "platform/perf_hint.h"
 #include "gfx/render_prof.h"
 #include "mods/packages.h"
+#include "hooks/collision_wireframe.h"
+#include "hooks/course_hot_reload.h"
+#include "hooks/interp.h"
 
 using namespace Latte;
 
@@ -93,17 +97,16 @@ static void apply_small_regs(uint32 first, const uint32* v, uint32 n) {
         return e && !strcmp(e, "1");
     }();
     static const bool collectStats = env::VK_STATS() != nullptr;
-    if (!memcmp(&g_regs[first], v, n * 4)) {
-        if (g_shadow && memcmp(&g_shadow[first], v, n * 4))
-            memcpy(&g_shadow[first], v, n * 4);
-        return;
-    }
+    bool changed = false, shadowDiff = false;
     const bool classify = rprof::enabled();
     bool baselineBump = false, actualBump = false;
     uint64_t maskedWords = 0;
     for (uint32 i = 0; i < n; ++i) {
         const uint32 reg = first + i, value = v[i], old = g_regs[reg];
+        if (g_shadow && g_shadow[reg] != value) shadowDiff = true;
         if (old == value) continue;
+        changed = true;
+        g_regs[reg] = value;
         if (classify) {
             if (rprof::fast_class_reg(reg)) rprof::g_reg_dirty |= 1;
             else rprof::note_other_reg(reg);
@@ -116,8 +119,10 @@ static void apply_small_regs(uint32 first, const uint32* v, uint32 n) {
             } else actualBump = true;
         }
     }
-    memcpy(&g_regs[first], v, n * 4);
-    if (g_shadow) memcpy(&g_shadow[first], v, n * 4);
+    if (shadowDiff) {
+        for (uint32 i = 0; i < n; ++i) g_shadow[first + i] = v[i];
+    }
+    if (!changed) return;
     if (actualBump) ++g_shader_state_gen;
     if (collectStats) {
         ++shaderKeyDirtyStats.changedBatches;
@@ -196,10 +201,57 @@ static void execute_one(Op op, const uint32* p, uint32 n);
 
 static const bool g_render_thread = env::NO_RENDER_THREAD() == nullptr;
 static std::mutex g_q_mutex;
-static std::condition_variable g_q_cv, g_q_done_cv;
+static std::condition_variable g_q_cv, g_q_done_cv, g_q_space_cv;
 static std::vector<uint32> g_q_pending, g_q_work;
 static bool g_q_waiting = false;
 static uint64_t g_fence_issued = 0, g_fence_done = 0;
+static constexpr size_t kQMaxWords = 1u << 20;
+static constexpr size_t kQResumeWords = kQMaxWords / 2;
+
+struct PendingDl {
+    uint32_t start, bytes;
+    uint64_t fence;
+};
+static std::mutex g_dl_leases_mutex;
+static std::vector<PendingDl> g_dl_leases;
+
+static void dl_release_done(uint64_t fence) {
+    std::lock_guard<std::mutex> lk(g_dl_leases_mutex);
+    g_dl_leases.erase(std::remove_if(g_dl_leases.begin(), g_dl_leases.end(),
+                          [=](const PendingDl& dl) { return dl.fence <= fence; }),
+        g_dl_leases.end());
+}
+
+static void dl_lease(uint32_t ea, uint32_t bytes) {
+    if (bytes > 0x1000000u || ea < 0x02000000u) return;
+    std::lock_guard<std::mutex> lk(g_dl_leases_mutex);
+    uint64_t fence;
+    {
+        std::lock_guard<std::mutex> q(g_q_mutex);
+        fence = g_fence_issued;
+    }
+    g_dl_leases.push_back({ea, bytes, fence});
+}
+
+static void check_dl_race(uint32_t ea, uint32_t bytes) {
+    if (bytes > 0x1000000u || ea < 0x02000000u) return;
+    uint32_t clash = 0;
+    {
+        std::lock_guard<std::mutex> lk(g_dl_leases_mutex);
+        for (PendingDl& dl : g_dl_leases)
+            if (ea < dl.start + dl.bytes && dl.start < ea + bytes) clash++;
+    }
+    if (!clash) return;
+    static uint64_t last = 0;
+    const uint64_t now = timebase::now();
+    if (now - last <= timebase::kTicksPerSec) return;
+    last = now;
+    LOG("[gx2] display list %08X of %X bytes reused while %u of %u lists still queued",
+        ea, bytes, clash, [] {
+            std::lock_guard<std::mutex> lk(g_dl_leases_mutex);
+            return (unsigned)g_dl_leases.size();
+        }());
+}
 
 static void render_thread_main() {
     host::set_thread_name("GX2 render");
@@ -216,21 +268,46 @@ static void render_thread_main() {
             }
             g_q_waiting = false;
             g_q_work.swap(g_q_pending);
+            g_q_space_cv.notify_all();
         }
         {
             std::lock_guard<std::recursive_mutex> lk(g_exec_mutex);
-            render::with_autorelease_pool([] { execute(g_q_work.data(), (uint32)g_q_work.size()); });
+            render::with_autorelease_pool([] {
+                try {
+                    execute(g_q_work.data(), (uint32)g_q_work.size());
+                } catch (const std::exception& e) {
+                    static uint64_t last = 0;
+                    const uint64_t now = timebase::now();
+                    if (now - last > timebase::kTicksPerSec) {
+                        last = now;
+                        LOG("[gx2] render thread exception: %s (frame work aborted)", e.what());
+                    }
+                    render::wait_idle();
+                } catch (...) {
+                    render::wait_idle();
+                    LOG("[gx2] render thread exception (frame work aborted)");
+                }
+            });
         }
         g_q_work.clear();
+        if (g_fence_done) dl_release_done(__atomic_load_n(&g_fence_done, __ATOMIC_RELAXED));
     }
 }
 
 static void enqueue(Op op, const uint32* payload, uint32 n) {
     static std::once_flag once;
     std::call_once(once, [] { std::thread(render_thread_main).detach(); });
+    {
+        std::unique_lock<std::mutex> space(g_q_mutex);
+        g_q_space_cv.wait(space, [] { return g_q_pending.size() <= kQResumeWords; });
+    }
     std::lock_guard<std::mutex> lk(g_q_mutex);
     g_q_pending.push_back(op | (n << 8));
-    g_q_pending.insert(g_q_pending.end(), payload, payload + n);
+    if (n <= 16) {
+        for (uint32 i = 0; i < n; ++i) g_q_pending.push_back(payload[i]);
+    } else {
+        g_q_pending.insert(g_q_pending.end(), payload, payload + n);
+    }
     if (g_q_waiting) g_q_cv.notify_one();
 }
 
@@ -329,7 +406,11 @@ void set_regs(uint32 first, const uint32* values, uint32 count) {
     static thread_local std::vector<uint32> buf;
     buf.resize(count + 1);
     buf[0] = first;
-    memcpy(&buf[1], values, count * 4);
+    if (count <= 16) {
+        for (uint32 i = 0; i < count; ++i) buf[i + 1] = values[i];
+    } else {
+        memcpy(&buf[1], values, count * 4);
+    }
     emit(OP_SET_REGS, buf.data(), count + 1);
 }
 void set_reg(uint32 reg, uint32 value) { emit(OP_SET_REGS, {reg, value}); }
@@ -341,7 +422,16 @@ void execute(const uint32* words, uint32 count) {
         Op op = (Op)(hdr & 0xFF);
         uint32 n = hdr >> 8;
         if (op >= OP_COUNT || i + 1 + n > count) {
-            LOG("[gx2] corrupt display list command %08X", hdr);
+            static uint64_t last = 0;
+            const uint64_t now = timebase::now();
+            if (now - last > timebase::kTicksPerSec) {
+                last = now;
+                const uint8_t* w = (const uint8_t*)words;
+                const bool guest = (uintptr_t)w >= (uintptr_t)PPC_MEM_BASE
+                    && (uintptr_t)w < (uintptr_t)(PPC_MEM_BASE + 0x100000000ull);
+                LOG("[gx2] corrupt display list command %08X at %s %08X op %u words %u (+%u)",
+                    hdr, guest ? "guest" : "host", guest ? mem::guest(w) + i : 0, (unsigned)op, n, i);
+            }
             return;
         }
         execute_one(op, &words[i + 1], n);
@@ -456,7 +546,20 @@ static void execute_op(Op op, const uint32* p, uint32 n) {
         break;
     }
     case OP_COPY_TO_SCAN: render::copy_to_scan(unpack_struct(p, kColorBufferWords, 0), p[kColorBufferWords]); break;
-    case OP_CALL: execute((const uint32*)mem::ptr(p[0]), p[1] / 4); break;
+    case OP_CALL: {
+        const uint32 list = p[0];
+        if (list < 0x02000000u || p[1] < 4u || (p[1] & 3u) || p[1] > 0x400000u) {
+            static uint64_t last = 0;
+            const uint64_t now = timebase::now();
+            if (now - last > timebase::kTicksPerSec) {
+                last = now;
+                LOG("[gx2] ignored display list %08X of %u bytes", list, p[1]);
+            }
+            break;
+        }
+        execute((const uint32*)mem::ptr(list), p[1] / 4);
+        break;
+    }
     case OP_SET_CONTEXT: set_context(p[0]); break;
     case OP_INVALIDATE: render::invalidate(p[0], p[1], p[2]); break;
     case OP_EXPAND_COLOR: case OP_EXPAND_DEPTH: break;
@@ -547,7 +650,7 @@ using namespace gx2;
 static uint64_t g_swap_count = 0, g_flip_count = 0;
 namespace gx2 { uint64_t flips_presented() { return __atomic_load_n(&g_flip_count, __ATOMIC_RELAXED); } }
 static uint32 g_swap_interval = 1;
-namespace interp { uint32_t effective_swap_interval(uint32_t game); uint64_t logic_steps(); int vsync_rate(); }
+namespace interp { uint32_t effective_swap_interval(uint32_t game); uint64_t logic_steps(); int vsync_granule(); }
 static std::mutex g_flip_mutex;
 namespace gx2 { uint64_t swap_count() { std::lock_guard<std::mutex> lk(g_flip_mutex); return g_swap_count; } }
 static const auto g_vsync_epoch = std::chrono::steady_clock::now();
@@ -607,14 +710,19 @@ static uint64_t vsync_index() {
     return uint64_t((std::chrono::steady_clock::now() - g_vsync_epoch).count()) * kTicksPerVsync / uint64_t(vsync_period_ns());
 }
 static uint64_t vsync_granule() {
-    const int rate = interp::vsync_rate();
-    return rate >= 4 ? 1 : rate >= 2 ? 2 : kTicksPerVsync;
+    const int quarters = std::clamp(interp::vsync_granule(), 1, int(kTicksPerVsync));
+    return uint64_t(quarters);
 }
 static std::chrono::steady_clock::time_point g_capped_vsync_last_wake;
 static bool g_capped_vsync_last_wake_valid = false;
 static uint64_t g_paced_vsync = 0;
 static bool g_paced_vsync_valid = false;
 static std::chrono::nanoseconds capped_vsync_wait_period(uint64_t granule) {
+    if (interp::mode() == 1) {
+        const int fps = interp::output_fps();
+        if (fps > 0 && fps % 60 != 0)
+            return std::chrono::nanoseconds(1'000'000'000LL / fps);
+    }
     return std::chrono::nanoseconds(uint64_t(vsync_period_ns()) * granule / kTicksPerVsync);
 }
 static bool capped_vsync_same_frame(uint64_t granule, std::chrono::steady_clock::time_point now) {
@@ -660,6 +768,31 @@ static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void
     threads::park_sleep_until(target, preciseSleep, before_resume);
     g_capped_vsync_last_wake = target;
     capped_vsync_note_wake(granule);
+}
+
+static void align_swap_after_wake() {
+    if (gx2::uncapped() || !g_capped_vsync_last_wake_valid) return;
+    static std::chrono::steady_clock::time_point seen_wake{};
+    static bool used = false;
+    if (seen_wake != g_capped_vsync_last_wake) {
+        seen_wake = g_capped_vsync_last_wake;
+        used = false;
+    }
+    if (used) return;
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsed = now - g_capped_vsync_last_wake;
+    const auto period = capped_vsync_wait_period(vsync_granule());
+    if (elapsed < std::chrono::nanoseconds(0) || elapsed > period / 2) return;
+    used = true;
+    using us = std::chrono::microseconds;
+    static us offset{2500};
+    const us want = std::chrono::duration_cast<us>(elapsed) + us{1800};
+    if (want > offset) offset = want;
+    const us cap = std::chrono::duration_cast<us>(period / 3);
+    if (offset < us{1500}) offset = us{1500};
+    if (cap > us{0} && offset > cap) offset = cap;
+    const auto deadline = g_capped_vsync_last_wake + offset;
+    if (now < deadline) threads::park_sleep_until(deadline, true, nullptr);
 }
 
 static uint64_t flip_due(const PendingFlip& f) {
@@ -745,6 +878,7 @@ HLE(gx2, GX2GetContextStateDisplayList) {
 }
 
 HLE(gx2, GX2BeginDisplayListEx) {
+    check_dl_race(arg(c, 0), arg(c, 1));
     t_rec.start = t_rec.pos = arg(c, 0);
     t_rec.end = arg(c, 0) + arg(c, 1);
 }
@@ -758,7 +892,10 @@ HLE(gx2, GX2GetCurrentDisplayList) {
     if (arg(c, 1)) st32(arg(c, 1), t_rec.start ? t_rec.end - t_rec.start : 0);
     ret(c, t_rec.start != 0);
 }
-HLE(gx2, GX2CallDisplayList) { emit(OP_CALL, {arg(c, 0), arg(c, 1)}); }
+HLE(gx2, GX2CallDisplayList) {
+    dl_lease(arg(c, 0), arg(c, 1));
+    emit(OP_CALL, {arg(c, 0), arg(c, 1)});
+}
 HLE(gx2, GX2DirectCallDisplayList) { emit(OP_CALL, {arg(c, 0), arg(c, 1)}); }
 
 HLE(gx2, GX2DrawEx) { emit(OP_DRAW, {arg(c, 0), arg(c, 1), arg(c, 2), arg(c, 3)}); }
@@ -832,6 +969,7 @@ HLE(gx2, GX2DrawDone) {
     ret(c, 1);
 }
 HLE(gx2, GX2SwapScanBuffers) {
+    align_swap_after_wake();
 
     static int trace = env::TRACE_SWAP.integer_or(0);
     if (trace > 0) {
@@ -858,6 +996,10 @@ HLE(gx2, GX2SwapScanBuffers) {
     if (!hold) {
         mods::lua_sdk::set_cpu(c);
         mods::packages::frame(steps);
+        mods::lua_sdk::native_intro_skip_tick(steps);
+        agent_ctl::guest_service();
+        collision_wireframe::capture(c);
+        course_hot_reload::tick();
     }
 
     static const char* captureCounter = env::TEST_CAPTURE_LOAD_COUNTER();

@@ -21,6 +21,7 @@
 #include "gfx/vulkan/settings.h"
 #endif
 #include "core/runtime.h"
+#include "core/build_info.h"
 
 namespace gfx {
 bool drc_window_available();
@@ -114,20 +115,13 @@ static void save_prefs() {
 
 static void update_title() {
     save_prefs();
-    NSString* res = current_res_scale() != 1.0f ? [NSString stringWithFormat:@" \u00b7 %gx res", current_res_scale()] : @"";
-    if (aspect::mode() != aspect::kOriginal) res = [res stringByAppendingFormat:@" \u00b7 %s", aspect::mode_name(aspect::mode())];
-    NSString* rnd = @(render::api_name(render::active()));
-    if (render::active() != render::requested())
-        rnd = [rnd stringByAppendingFormat:@" (%s unavailable)", render::api_name(render::requested())];
-    else if (render::restart_pending())
-        rnd = [rnd stringByAppendingFormat:@" (%s after restart)", render::api_name(render::preferred())];
-
-    NSString* t = [NSString stringWithFormat:@"%@ \u2014 %@ \u00b7 %.0f fps%@ \u00b7 AF: %s%@%@", kTitle, rnd, g_fps, res,
-                                             render::aniso() ? "16x" : "game",
-                                             interp::mode() ? [@" \u00b7 " stringByAppendingString:@(interp::mode_name())] : @"", render::fxaa() ? @" \u00b7 FXAA" : @""];
-    if (gx2::uncapped()) t = [t stringByAppendingString:@" \u00b7 UNCAPPED (debug)"];
+    NSString* t = kTitle;
+    if (build::dev()) {
+        t = [NSString stringWithFormat:@"%@ \u2014 %.0f fps", kTitle, g_fps];
+        if (gx2::uncapped()) t = [t stringByAppendingString:@" \u00b7 UNCAPPED (debug)"];
+    }
     std::string msg = ss::last_message();
-    if (!msg.empty()) t = [NSString stringWithFormat:@"%@ \u2014 %@ \u2014 %s", kTitle, rnd, msg.c_str()];
+    if (!msg.empty()) t = [NSString stringWithFormat:@"%@ \u2014 %s", kTitle, msg.c_str()];
     if (env::LOG_TITLE() && ![t isEqualToString:g_tv.title]) {
         NSString* noFps = [t stringByReplacingOccurrencesOfString:[NSString stringWithFormat:@"%.0f fps", g_fps] withString:@"N fps"];
         static NSString* last;
@@ -355,6 +349,7 @@ void install_menu(NSWindow* tv) {
     [g addItem:[NSMenuItem separatorItem]];
     add(g, @"16x anisotropic filtering (N)", @selector(toggleAniso:), @"N");
     add(g, @"Edge smoothing, FXAA (8)", @selector(toggleFxaa:), @"8");
+    [g addItemWithTitle:@"Frame rate (experimental)" action:nil keyEquivalent:@""].enabled = NO;
     add(g, @"60 fps: frame interpolation (6)", @selector(toggleInterpFps:), @"6", 60);
     add(g, @"120 fps: frame interpolation", @selector(toggleInterpFps:), @"", 120);
     add(g, @"240 fps: frame interpolation", @selector(toggleInterpFps:), @"", 240);

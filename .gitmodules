@@ -1,6 +1,9 @@
 [submodule "decomp"]
-	path = decomp
+	path = vendor/decomp
 	url = https://github.com/nsmbu-recomp/decomp.git
+[submodule "vendor/Nintendo-File-Formats"]
+	path = vendor/Nintendo-File-Formats
+	url = https://github.com/nsmbu-recomp/Nintendo-File-Formats.git
 [submodule "vendor/luajit"]
 	path = vendor/luajit
 	url = https://github.com/LuaJIT/LuaJIT.git

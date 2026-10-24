@@ -2,7 +2,7 @@
 
 | Path | Contents |
 | --- | --- |
-| [sdk/](sdk/) | TypeScript definitions for the global `nsmbu` API (`nsmbu.d.ts` declares the global) |
+| [sdk/](sdk/) | TypeScript definitions for the global `nsmbu` API, one `.d.ts` per module (`nsmbu.d.ts` declares the global and shared types) |
 | [examples/](examples/) | Example mod packages: TypeScript source plus the Lua the runtime loads |
 
 Mod sources are TypeScript, compiled to Lua with [TypeScriptToLua](https://typescripttolua.github.io/).

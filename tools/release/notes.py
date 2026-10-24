@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Release notes: install instructions, one CHANGELOG.md version, and checksums.
+"""Release notes: a short install summary and the matching CHANGELOG.md version.
 
-usage: notes.py README.md VERSION SHA256SUMS.txt > notes.md
+usage: notes.py README.md VERSION > notes.md
 
 VERSION is the tag (v0.1) or the changelog heading (0.1).
 The notes take the matching "## [0.1]" / "## 0.1" block from CHANGELOG.md next to the README.
@@ -21,44 +21,46 @@ def changelog_version(readme, version):
         text,
         re.S | re.M,
     )
-    return m.group(1).strip() if m else ""
+    body = m.group(1) if m else ""
+    body = re.split(r"^\[[^\]]+\]:\s", body, maxsplit=1, flags=re.M)[0]
+    return body.strip()
 
 def main():
-    readme, version, sums = sys.argv[1:4]
+    readme, version = sys.argv[1:3]
     new = changelog_version(readme, version)
-    with open(sums) as f:
-        checksums = f.read().strip()
     print("""**New Super Mario Bros. U, native PC port, %s**
 
-This release contains **no game files, no game code and no keys**. You need your own disc dump
-(.wux/.wud with its disc key, plus the Wii U common key from your console), a Cemu .wua archive
-(no keys needed), or an already extracted game folder. The installer builds the game from it on your machine.
+The Wii U game rebuilt as a native program for Windows, macOS and Linux. The download has no game
+files, no game code and no keys: the installer builds the game on your machine from your own copy.
 
-**Install:** download the zip for your system, unzip it anywhere and start **NSMBU**. The
-first start prepares the game once from your dump (about two minutes); later starts launch it directly.
-Everything stays in that folder.
-- macOS (Apple Silicon, macOS 14+): `NSMBU.app`. The release is not signed by Apple:
-  macOS 15+: System Settings > Privacy & Security > Open Anyway; macOS 14: right-click > Open.
-  Keep the app inside the unzipped folder (move the whole folder, not just the app)
-- Windows (x86-64): `NSMBU.exe` (SmartScreen: "More info" > "Run anyway")
-- Linux (glibc 2.35+, Vulkan): `nsmbu-launcher`; `linux-x86_64` for x86-64, `linux-aarch64` for arm64
-  (Raspberry Pi 5, Asahi Linux, ARM laptops). Or one file: `chmod +x` the `.AppImage` and start it
-  from anywhere (Steam Deck included); its game, code, saves and settings go to `~/.local/share/nsmbu`
-  and `~/.config/nsmbu` instead of beside it (Ubuntu 24.04+: `libfuse2t64`, or
-  `--appimage-extract-and-run`)
+| System | Start |
+| --- | --- |
+| Windows 10/11, x86-64, Vulkan | `NSMBU.exe` |
+| macOS 14+, Apple Silicon | `NSMBU.app` |
+| Linux, x86-64 or arm64, glibc 2.35+, Vulkan | `nsmbu-launcher` |
 
-See "Install" in the README for details.
+Download the zip for your system, unzip it anywhere and start that file. The first start builds the
+game once and can take a few minutes; later starts go straight to the game. The game, saves and
+settings stay in the folder. On Linux you can also use the single-file `.AppImage` without
+unzipping (Steam Deck included); it keeps them in `~/.local/share/nsmbu` and `~/.config/nsmbu`
+instead (Ubuntu 24.04+: `libfuse2t64`, or `--appimage-extract-and-run`).
 
-## What's new
+The installer takes a `.wux`/`.wud` disc image with its disc and Wii U common keys, a Cemu `.wua`
+archive (no keys needed), or an extracted game folder. Supported regions and versions are in the
+[Compatibility](https://github.com/nsmbu-recomp/nsmbu-recomp#compatibility) table.
+
+The builds are unsigned. On macOS 14, right-click the app and choose **Open**. On macOS 15 or
+newer, use **System Settings > Privacy & Security > Open Anyway**, and keep `NSMBU.app` inside the
+unzipped folder. On Windows, choose **More info > Run anyway** when SmartScreen blocks the app.
+
+To open the installer again, hold Shift while starting (macOS, Windows) or run
+`nsmbu-launcher --setup` (Linux). Full install steps and controls are in the
+[README](https://github.com/nsmbu-recomp/nsmbu-recomp#install).
+
+## Changelog
 
 %s
-
-## Checksums (SHA-256)
-
-```
-%s
-```
-""" % (version, new or "See CHANGELOG.md.", checksums))
+""" % (version, new or "See CHANGELOG.md."))
 
 if __name__ == "__main__":
     main()

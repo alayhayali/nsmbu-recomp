@@ -7,6 +7,7 @@ namespace interp {
 void record_executed_step();
 uint64_t executed_steps();
 bool course_play_active();
+bool input_enabled();
 bool player_witness(float& x, float& y, float& z);
 
 struct PlayerSnapshot {
@@ -20,6 +21,7 @@ struct PlayerSnapshot {
     float z = 0;
 };
 bool player_snapshot(PlayerSnapshot& out, int player = 0);
+bool set_player_mode(int player, int mode);
 uint64_t logic_steps();
 int mode();
 void set_mode(int m);

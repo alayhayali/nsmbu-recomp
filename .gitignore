@@ -9,6 +9,7 @@
 /cemu/
 # generated / build output
 /build/
+/dist/
 out/
 __pycache__/
 node_modules/
@@ -41,6 +42,3 @@ headstart.bin
 # local coordination board
 /task.md
 /.tmp/
-
-# Reference repos and data
-references/

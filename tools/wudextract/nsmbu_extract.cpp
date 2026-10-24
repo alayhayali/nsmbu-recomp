@@ -1,7 +1,7 @@
 // nsmbu-extract: reads the game from a Wii U disc image (.wud/.wux) or a Cemu Wii U archive (.wua)
 // and extracts it; used by the installer.
 //
-// Disc images: native port of tools/wudextract.py (itself a port of Cemu's
+// Disc images: native port of tools/disc/wudextract.py (itself a port of Cemu's
 // src/Cafe/Filesystem/WUD/wud.cpp and FST/FST.cpp, Copyright (c) Cemu contributors, Mozilla Public
 // License 2.0, see runtime/third_party/cemu/LICENSE.txt), without Python or pycryptodome.
 // Cemu archives: ZArchive files (zarchive.h), already decrypted, so no keys; one folder per title
@@ -22,7 +22,10 @@
 //   --common-key FILE   the Wii U common key (default: WIIU_COMMON_KEY environment variable,
 //                       then common.key next to IMAGE or in the current directory)
 //   --keys-stdin        read "disc <32 hex digits>" / "common <32 hex digits>" lines from stdin
-// A key file holds 16 raw bytes or 32 hex digits (whitespace ignored). Keys are never printed.
+// A key file holds 16 raw bytes, or text: a bare line of 32 hex digits, or named lines such as Cemu's
+// keys.txt ("disc = <32 hex digits>", "common = <32 hex digits>") or "wii u common key: <32 hex digits>".
+// Text may be UTF-8 (with or without BOM) or UTF-16 with BOM, with any line endings; '#' and '//' start a
+// comment. Keys are never printed.
 // --title T: a title id (16 hex digits; the highest version of it is used) or a folder name
 // (0005000010101d00_v64). Without it an archive with a single title uses that one.
 // --only GLOB (repeatable): extract only the files whose path in the title (code/..., content/...,
@@ -120,17 +123,30 @@ struct Key {
     bool set = false;
 };
 
-bool parse_key(const std::string& data, Key& k) {
-    if (data.size() == 16) {
-        memcpy(k.b, data.data(), 16);
-        k.set = true;
-        return true;
-    }
-    std::string h;
-    for (char c : data)
-        if (!isspace((unsigned char)c)) h += c;
-    if (h.size() == 34 && (h.compare(0, 2, "0x") == 0 || h.compare(0, 2, "0X") == 0)) h = h.substr(2);
-    if (h.size() != 32) return false;
+enum class KeyRole { Disc, Common };
+
+std::string lower(std::string s) {
+    for (auto& c : s) c = (char)tolower((unsigned char)c);
+    return s;
+}
+
+bool is_hex(const std::string& s) {
+    return std::all_of(s.begin(), s.end(), [](char c) { return isxdigit((unsigned char)c) != 0; });
+}
+
+std::string trim(const std::string& s) {
+    size_t b = 0, e = s.size();
+    while (b < e && isspace((unsigned char)s[b])) b++;
+    while (e > b && isspace((unsigned char)s[e - 1])) e--;
+    return s.substr(b, e - b);
+}
+
+bool parse_hex_key(const std::string& h, Key& k) {
+    std::string s;
+    for (char c : h)
+        if (!isspace((unsigned char)c) && c != '-') s += c;
+    if (s.size() == 34 && (s.compare(0, 2, "0x") == 0 || s.compare(0, 2, "0X") == 0)) s = s.substr(2);
+    if (s.size() != 32) return false;
     for (int i = 0; i < 16; i++) {
         auto nib = [](char c) -> int {
             if (c >= '0' && c <= '9') return c - '0';
@@ -138,12 +154,95 @@ bool parse_key(const std::string& data, Key& k) {
             if (c >= 'A' && c <= 'F') return c - 'A' + 10;
             return -1;
         };
-        int hi = nib(h[2 * i]), lo = nib(h[2 * i + 1]);
+        int hi = nib(s[2 * i]), lo = nib(s[2 * i + 1]);
         if (hi < 0 || lo < 0) return false;
         k.b[i] = (uint8_t)(hi << 4 | lo);
     }
     k.set = true;
     return true;
+}
+
+bool parse_key(const std::string& data, Key& k) {
+    if (data.size() == 16) {
+        memcpy(k.b, data.data(), 16);
+        k.set = true;
+        return true;
+    }
+    return parse_hex_key(data, k);
+}
+
+std::string decode_utf16(const std::string& b, bool le) {
+    std::string s;
+    for (size_t i = 0; i + 1 < b.size(); i += 2) {
+        unsigned u = le ? ((unsigned)(uint8_t)b[i] | (unsigned)(uint8_t)b[i + 1] << 8)
+                        : ((unsigned)(uint8_t)b[i] << 8 | (unsigned)(uint8_t)b[i + 1]);
+        if (u < 0x80) {
+            s += (char)u;
+        } else if (u < 0x800) {
+            s += (char)(0xC0 | (u >> 6));
+            s += (char)(0x80 | (u & 0x3F));
+        } else {
+            s += (char)(0xE0 | (u >> 12));
+            s += (char)(0x80 | ((u >> 6) & 0x3F));
+            s += (char)(0x80 | (u & 0x3F));
+        }
+    }
+    return s;
+}
+
+std::string key_text(const std::string& d) {
+    if (d.size() >= 2 && (uint8_t)d[0] == 0xFF && (uint8_t)d[1] == 0xFE) return decode_utf16(d.substr(2), true);
+    if (d.size() >= 2 && (uint8_t)d[0] == 0xFE && (uint8_t)d[1] == 0xFF) return decode_utf16(d.substr(2), false);
+    if (d.size() >= 3 && (uint8_t)d[0] == 0xEF && (uint8_t)d[1] == 0xBB && (uint8_t)d[2] == 0xBF) return d.substr(3);
+    return d;
+}
+
+struct KeyText {
+    Key disc, common, fallback;
+    std::string title_id;
+    bool title_key = false;
+};
+
+void parse_key_line(const std::string& raw, KeyText& kt) {
+    std::string line = trim(raw);
+    if (line.size() >= 2 && (line.front() == '"' || line.front() == '\'') && line.back() == line.front())
+        line = trim(line.substr(1, line.size() - 2));
+    if (line.empty() || line[0] == '#' || line.compare(0, 2, "//") == 0) return;
+    size_t sep = line.find_first_of(":=");
+    if (sep == std::string::npos) {
+        Key k;
+        if (!kt.fallback.set && parse_hex_key(line, k)) kt.fallback = k;
+        return;
+    }
+    std::string label = lower(trim(line.substr(0, sep)));
+    for (auto& c : label)
+        if (c == '_' || isspace((unsigned char)c)) c = ' ';
+    label.erase(std::unique(label.begin(), label.end(), [](char a, char b) { return a == ' ' && b == ' '; }),
+                label.end());
+    label = trim(label);
+    std::string val = line.substr(sep + 1);
+    Key k;
+    if (label == "common" || label == "common key" || label == "wii u common key") {
+        if (!kt.common.set && parse_hex_key(val, k)) kt.common = k;
+    } else if (label == "disc" || label == "disc key") {
+        if (!kt.disc.set && parse_hex_key(val, k)) kt.disc = k;
+    } else if (label.size() == 16 && is_hex(label)) {
+        if (parse_hex_key(val, k)) kt.title_id = label, kt.title_key = true;
+    }
+}
+
+KeyText scan_key_text(const std::string& data) {
+    KeyText kt;
+    std::string text = key_text(data), line;
+    for (size_t i = 0; i <= text.size(); i++) {
+        if (i < text.size() && text[i] != '\n' && text[i] != '\r') {
+            line += text[i];
+            continue;
+        }
+        parse_key_line(line, kt);
+        line.clear();
+    }
+    return kt;
 }
 
 bool read_small_file(const fs::path& p, std::string& out) {
@@ -156,12 +255,30 @@ bool read_small_file(const fs::path& p, std::string& out) {
     return true;
 }
 
-void load_key_file(const fs::path& p, Key& k, int code, const char* what) {
+void load_key_file(const fs::path& p, Key& k, KeyRole role, int code, const char* what) {
     std::string d;
     if (!read_small_file(p, d)) fail(code, std::string(what) + " not found or unreadable: " + ustr(p));
-    if (!parse_key(d, k))
-        fail(code, std::string(what) + " in " + ustr(p) +
-                       " is malformed: expected 16 raw bytes or one line of 32 hex digits");
+    if (d.size() == 16) {
+        memcpy(k.b, d.data(), 16);
+        k.set = true;
+        return;
+    }
+    KeyText kt = scan_key_text(d);
+    const Key& found = role == KeyRole::Disc ? kt.disc : kt.common;
+    if (found.set) {
+        k = found;
+        return;
+    }
+    if (kt.fallback.set) {
+        k = kt.fallback;
+        return;
+    }
+    if (kt.title_key)
+        fail(code, std::string(what) + " in " + ustr(p) + " holds a title key for " + kt.title_id + ", not the " +
+                       what);
+    fail(code, std::string(what) + " in " + ustr(p) +
+                   " is malformed: expected 16 raw bytes or one line of 32 hex digits (a Cemu keys.txt with "
+                   "common = ... / disc = ... lines also works)");
 }
 
 struct Wud {
@@ -422,8 +539,8 @@ Disc open_disc(const fs::path& image, Key disc_key, Key common_key) {
     disc.gm = part_fst(parts[gm_idx].addr, title_key, ok);
     memset(title_key, 0, sizeof title_key);
     if (!ok)
-        fail(6, "the Wii U common key is wrong: the game partition could not be decrypted (the common key is "
-                "the same for every Wii U; 16 raw bytes or 32 hex digits)");
+        fail(6, "the Wii U common key is wrong, or this image's game partition cannot be read (the common key is "
+                "the same for every Wii U; 16 raw bytes, 32 hex digits, or a Cemu keys.txt with common = ...)");
     return disc;
 }
 
@@ -436,15 +553,6 @@ struct Title {
     uint32_t node;
     uint64_t files = 0, bytes = 0;
 };
-
-bool is_hex(const std::string& s) {
-    return std::all_of(s.begin(), s.end(), [](char c) { return isxdigit((unsigned char)c) != 0; });
-}
-
-std::string lower(std::string s) {
-    for (auto& c : s) c = (char)tolower((unsigned char)c);
-    return s;
-}
 
 bool glob_match(const std::string& pat, const std::string& s) {
     size_t p = 0, i = 0, star = std::string::npos, mark = 0;
@@ -690,11 +798,11 @@ int run(const std::vector<std::string>& args) {
         fs::path p = disc_key_file.empty() ? fs::path(img).replace_extension(".key") : upath(disc_key_file);
         if (disc_key_file.empty() && !fs::exists(p))
             fail(3, "disc key not found: expected " + ustr(p) + " (16 raw bytes or 32 hex digits)");
-        load_key_file(p, disc_key, 3, "disc key");
+        load_key_file(p, disc_key, KeyRole::Disc, 3, "disc key");
     }
     if (!common_key.set) {
         if (!common_key_file.empty()) {
-            load_key_file(upath(common_key_file), common_key, 5, "Wii U common key");
+            load_key_file(upath(common_key_file), common_key, KeyRole::Common, 5, "Wii U common key");
         } else if (const char* env = getenv("WIIU_COMMON_KEY"); env && *env) {
             if (!parse_key(env, common_key)) fail(5, "WIIU_COMMON_KEY is malformed: expected 32 hex digits");
         } else {
@@ -702,7 +810,7 @@ int run(const std::vector<std::string>& args) {
             for (fs::path d : {fs::absolute(img, ec).parent_path(), fs::current_path(ec)}) {
                 fs::path p = d / "common.key";
                 if (fs::is_regular_file(p, ec)) {
-                    load_key_file(p, common_key, 5, "Wii U common key");
+                    load_key_file(p, common_key, KeyRole::Common, 5, "Wii U common key");
                     break;
                 }
             }

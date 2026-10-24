@@ -1,27 +1,28 @@
 # New Super Mario Bros. U: Native Port / Recompilation
 
-> [!IMPORTANT]
-> This repository contains no Nintendo property.
-> It has no game code, no game assets, and no keys from Nintendo.
-
-> [!NOTE]
-> This project is made with the help of AI agents.
-
 This project compiles Wii U game assets into a standalone, native executable.  
 The release package includes the necessary runtime, build tools, and installer script.  
 You must supply your own copy of the game files, disc image, and encryption keys.  
 
 ## Controls
 
-Press `` ` `` or `F12` to open the settings overlay.
-**F1**–**F5** load save states; **Shift+F1**–**F5** save.
-Open **Audio** for mute, volume, and TV / GamePad output.
-Open **Controls** to change keys and controller buttons.
+Press `F12` to open the settings overlay.  
+**F1**–**F5** load save states; **Shift+F1**–**F5** save.  
+Open **Audio** for mute, volume, and TV / GamePad output.  
+Open **Controls** to change keys and controller buttons.  
 
 A release stores the mapping in `data/nsmbu/controls.json`.
 A build from source stores it in the port config directory.
 That directory is `~/.config/nsmbu` on Linux, `%APPDATA%\NSMBU` on Windows, and `~/Library/Application Support/NSMBU` on macOS.
 Set `NSMBU_CONTROLS` to use another file.
+
+Up to four controllers work as separate players.
+Player 1 uses the keyboard and the first controller.
+Each extra controller joins as the next player.
+In **Controls**, keep **Same controls for every player** on to use one layout for every controller.
+Turn it off to bind buttons for one player at a time.
+In GamePad mode Player 1 is the Wii U GamePad and extra controllers act as Wii U Pro Controllers.
+In Pro Controller mode every controller acts as a Wii U Pro Controller.
 
 Host gamepads use the same layout as the Wii U GamePad by default (face buttons by position).
 The bottom face button (Xbox **A**) is Wii U **B**.
@@ -52,9 +53,9 @@ Default layout:
 ## Compatibility
 
 Addresses in the repo are USA 1.3.0.
-Europe, the USA base disc, and the NSMBU + NSLU packs use USA→build maps ([docs/builds.md](docs/builds.md)).
+Europe, the USA and Europe base discs, and the NSMBU + NSLU packs use USA→build maps ([docs/builds.md](docs/builds.md)).
 Standalone USA and Europe discs should use their matching 1.3.0 update for full support and mods.
-The USA base disc alone (title version 0) is playable; mods are not supported on that build.
+The USA and Europe base discs alone (title version 0) are playable; mods are not supported on those builds.
 Combo packs are title version 0 (no separate update folder) and support mods.
 
 | Region | Title ID | Title version | Status |
@@ -62,6 +63,7 @@ Combo packs are title version 0 (no separate update folder) and support mods.
 | USA | `00050000-10101d00` | 64 (1.3.0) | Supported and playtested |
 | USA base disc | `00050000-10101d00` | 0 | Supported; mods not supported |
 | Europe | `00050000-10101e00` | 80 (1.3.0) | Supported |
+| Europe base disc | `00050000-10101e00` | 0 | Supported; mods not supported |
 | USA combo (NSMBU + NSLU) | `00050000-1014b700` | 0 | Supported |
 | Europe combo (NSMBU + NSLU) | `00050000-1014b800` | 0 | Supported |
 | Japan | `00050000-10101c00` | — | Not supported yet |
@@ -86,22 +88,25 @@ Each later start launches the game.
 
 ### 2. Choose your game copy
 
-The installer accepts USA or Europe NSMBU at version 1.3.0, or either NSMBU + NSLU pack at version 0.
-USA is title `00050000-10101d00`, title version 64.
-Europe is title `00050000-10101e00`, title version 80.
+The installer accepts USA or Europe NSMBU at version 1.3.0, the matching base disc, or either NSMBU + NSLU pack at version 0.
+USA is title `00050000-10101d00`, title version 64, or base disc title version 0.
+Europe is title `00050000-10101e00`, title version 80, or base disc title version 0.
 The USA combo pack is title `00050000-1014b700`, title version 0.
 The Europe combo pack is title `00050000-1014b800`, title version 0.
 
 Choose one of these:
 
 1. **Disc image.**
-   Use a `.wux` or `.wud` file, its keys, and the matching **1.3.0** update folder.
+   Use a `.wux` or `.wud` file and its keys.
+   The matching **1.3.0** update folder is optional.
+   Mods need that update.
 2. **Cemu archive.**
    Use a `.wua` file that already has that title version.
    This option needs no keys.
 3. **Extracted folder.**
-   Use a game folder that already has the 1.3.0 update applied.
-   The folder must contain `code`, `content`, and `meta`.
+   Use a game folder with `code`, `content`, and `meta`.
+   A 1.3.0 update merged into that folder is optional.
+   Mods need that update.
 
 The installer opens a file window so you can pick that file or folder.
 macOS and Windows use the system file chooser.
@@ -117,15 +122,21 @@ A disc image also needs:
 
 - the disc key
 - the Wii U common key
-- the matching 1.3.0 update
+- an optional matching 1.3.0 update (mods need it)
+
+On the Keys screen, type or paste each key's 32 hex digits into its own field.
+The disc key belongs to that disc image.
+The common key is the same on every Wii U.
 
 Put the update in an `update/` folder next to the disc image (`code/`, `content/`, `meta/`).
 You can also choose that folder in the installer.
 
+Key files are optional.
 If a `.key` file with the same name as the image sits next to the image, the installer uses it.
 If `common.key` sits next to the image, the installer uses that too.
-When a key is missing, choose a key file or paste 32 hex digits.
-The paste field hides the text.
+You can also choose a key file.
+A key file can be 16 raw bytes, one line of 32 hex digits, or a Cemu `keys.txt`.
+The text field hides the key.
 Keys stay in memory until extraction starts.
 The setup log never stores keys.
 
@@ -182,6 +193,14 @@ It opens the same file window when the system provides one.
 
 Build from source, CLI commands, and developer docs are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Credits
+## Notes
 
 This repository was forked from the [Wind Waker HD recompilation](https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp).
+
+The Collision Viewer is based on the collision viewer from [Tsuru](https://github.com/Zenith-Team/Tsuru).
+
+This repository contains no Nintendo property.  
+It has no game code, no game assets, and no keys from Nintendo.  
+
+>  [!IMPORTANT]
+> This project is made with the help of AI agents.

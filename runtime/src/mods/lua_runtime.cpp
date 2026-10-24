@@ -253,7 +253,10 @@ void close_state(Instance& inst) {
 }
 
 Instance::Instance() = default;
-Instance::~Instance() { close_state(*this); }
+Instance::~Instance() {
+    lua_sdk::forget(this);
+    close_state(*this);
+}
 Instance::Instance(Instance&& o) noexcept
     : id(std::move(o.id)), version(std::move(o.version)), path(std::move(o.path)),
       entry(std::move(o.entry)), config(std::move(o.config)), status_line(std::move(o.status_line)),
@@ -263,6 +266,7 @@ Instance::Instance(Instance&& o) noexcept
 }
 Instance& Instance::operator=(Instance&& o) noexcept {
     if (this == &o) return *this;
+    lua_sdk::forget(this);
     close_state(*this);
     id = std::move(o.id);
     version = std::move(o.version);
@@ -279,10 +283,9 @@ Instance& Instance::operator=(Instance&& o) noexcept {
     return *this;
 }
 
-std::unique_ptr<Instance> load(const LoadInfo& info) {
+std::unique_ptr<Instance> create(const LoadInfo& info) {
     if (info.id.empty()) throw std::runtime_error("mod id is empty");
     if (info.path.empty()) throw std::runtime_error("mod path is empty");
-    if (info.entry.empty()) throw std::runtime_error("mod entry is empty");
 
     auto inst = std::make_unique<Instance>();
     inst->id = info.id;
@@ -297,6 +300,13 @@ std::unique_ptr<Instance> load(const LoadInfo& info) {
 
     sandbox(L, inst.get());
     lua_sdk::install(L, inst.get());
+    return inst;
+}
+
+std::unique_ptr<Instance> load(const LoadInfo& info) {
+    if (info.entry.empty()) throw std::runtime_error("mod entry is empty");
+    auto inst = create(info);
+    lua_State* L = static_cast<lua_State*>(inst->state);
 
     std::string err;
     fs::path entry_path;
@@ -317,6 +327,7 @@ void unload(Instance& inst) {
     if (!inst.state) return;
     fire_unload(inst);
     lua_press::drop(&inst);
+    lua_sdk::forget(&inst);
     close_state(inst);
 }
 

@@ -39,13 +39,53 @@ inline float pass_fraction(int phase, int n, bool exact) {
     return phase < n ? float(phase + 1) / float(n + 1) : 1.0f;
 }
 
-inline int valid_fps(int f) { return f >= 240 ? 240 : f >= 165 ? 165 : f >= 120 ? 120 : 60; }
+inline float even_fraction(uint64_t present, uint64_t logic_step, int fps) {
+    if (fps <= 0 || logic_step == 0 || present == 0) return 1.f;
+    const double t = double(present) * 60.0 / double(fps) - double(logic_step - 1);
+    if (t <= 0.0) return 0.f;
+    if (t >= 1.0) return 1.f;
+    return float(t);
+}
+
+inline const int* fps_ladder(int& n) {
+    static const int rates[] = {60, 120, 144, 165, 240};
+    n = int(sizeof rates / sizeof rates[0]);
+    return rates;
+}
+
+inline int valid_fps(int f) {
+    int n = 0;
+    const int* rates = fps_ladder(n);
+    int best = rates[0];
+    for (int i = 0; i < n; i++)
+        if (std::abs(rates[i] - f) < std::abs(best - f)) best = rates[i];
+    return best;
+}
+
+inline int display_fps(int hz) {
+    int n = 0;
+    const int* rates = fps_ladder(n);
+    int shown = rates[0];
+    for (int i = 0; i < n; i++)
+        if (rates[i] <= hz + 2) shown = rates[i];
+    return shown;
+}
 
 inline int cap_fps(int fps, int hz, bool vsync) {
     fps = valid_fps(fps);
     if (!vsync || hz <= 0) return fps;
-    const int shown = hz >= 238 ? 240 : hz >= 163 ? 165 : hz >= 118 ? 120 : 60;
-    return std::min(fps, shown);
+    return std::min(fps, display_fps(hz));
+}
+
+inline int frames_for_step(int fps, uint64_t step) {
+    const int64_t rate = valid_fps(fps);
+    return int(rate * int64_t(step + 1) / 60 - rate * int64_t(step) / 60);
+}
+
+inline int granule_quarter(int frames, int phase) {
+    frames = std::max(1, frames);
+    phase = std::clamp(phase, 0, frames - 1);
+    return int(int64_t(phase + 1) * 4 / frames - int64_t(phase) * 4 / frames);
 }
 
 inline int plan_in_between(int n_max, int64_t budget, int64_t logic_pass, int64_t hold_pass) {

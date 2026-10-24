@@ -16,7 +16,7 @@ graphics, audio, input) with native implementations of the APIs the game calls.
 | Shaders | Latte microcode → GLSL/SPIR-V/MSL (Cemu decompiler) | same decompiler (vendored), MSL only, persistent recipe cache |
 | Threads | emulated cores with a cycle-quantum scheduler on host fibers | each guest thread is a host thread; a per-core scheduler reproduces Cafe OS priority rules |
 | Memory | emulated address space | guest memory mapped at a fixed host address; loads/stores are byte-swapped host accesses |
-| Audio / input / text entry | emulated AX DSP + host audio; configurable controllers; ImGui keyboard | AX mixing to CoreAudio; keyboard + GameController as a GamePad; native macOS text field |
+| Audio / input / text entry | emulated AX DSP + host audio; configurable controllers; ImGui keyboard | AX mixing to CoreAudio; keyboard + up to four controllers as a GamePad and Pro Controllers; native macOS text field |
 | Distribution | emulator + your game dump | recompiled program + your game dump (game files are never redistributed) |
 
 ## The CPU: static recompilation

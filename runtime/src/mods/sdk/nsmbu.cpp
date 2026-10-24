@@ -1,7 +1,9 @@
 #include "nsmbu.h"
 #include "mods/lua_runtime.h"
 #include "mods/lua_guest.h"
+#include "mods/lua_gui.h"
 #include "mods/lua_press.h"
+#include "mods/packages.h"
 #include "guest_addr.h"
 #include "input/input.h"
 #include "core/runtime.h"
@@ -9,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -20,9 +23,11 @@ extern "C" {
 }
 
 extern "C" void nsmbu_fill_course_banner_digits(void);
+extern "C" void nsmbu_banner_entry_arm(void);
 
 namespace mods::lua_sdk {
 std::atomic<bool> g_story_leave_queued{false};
+std::atomic<uint64_t> g_story_load_generation{0};
 namespace {
 using lua_mod::Instance;
 using json::Value;
@@ -397,6 +402,261 @@ int l_input_press(lua_State* L) {
     return 1;
 }
 
+struct InputSample {
+    uint64_t step = UINT64_MAX;
+    input::PadState pad;
+    uint32_t previous = 0;
+};
+
+std::mutex g_input_mu;
+std::map<const Instance*, InputSample> g_input_samples;
+
+input::PadState sample_input(Instance* inst, uint32_t& previous) {
+    std::lock_guard guard(g_input_mu);
+    InputSample& sample = g_input_samples[inst];
+    input::PadState now = input::read();
+    now.buttons |= lua_press::active(inst->step);
+    if (sample.step != inst->step) {
+        sample.previous = sample.pad.buttons;
+        sample.pad = now;
+        sample.step = inst->step;
+    }
+    previous = sample.previous;
+    return sample.pad;
+}
+
+bool input_button(lua_State* L, uint32_t& bit) {
+    if (!lua_isstring(L, 1)) return false;
+    return button_bit(lua_tostring(L, 1), bit);
+}
+
+int l_input_call(lua_State* L) {
+    Instance* inst = self(L);
+    uint32_t previous = 0;
+    const input::PadState pad = sample_input(inst, previous);
+    lua_newtable(L);
+    lua_pushnumber(L, (lua_Number)pad.buttons);
+    lua_setfield(L, -2, "buttons");
+    lua_pushnumber(L, (lua_Number)pad.lx);
+    lua_setfield(L, -2, "lx");
+    lua_pushnumber(L, (lua_Number)pad.ly);
+    lua_setfield(L, -2, "ly");
+    lua_pushnumber(L, (lua_Number)pad.rx);
+    lua_setfield(L, -2, "rx");
+    lua_pushnumber(L, (lua_Number)pad.ry);
+    lua_setfield(L, -2, "ry");
+    lua_pushboolean(L, pad.touch);
+    lua_setfield(L, -2, "touch");
+    lua_pushnumber(L, (lua_Number)pad.tx);
+    lua_setfield(L, -2, "tx");
+    lua_pushnumber(L, (lua_Number)pad.ty);
+    lua_setfield(L, -2, "ty");
+    return 1;
+}
+
+int l_input_held(lua_State* L) {
+    Instance* inst = self(L);
+    uint32_t bit = 0;
+    if (!input_button(L, bit)) return fail(L, "bad type");
+    uint32_t previous = 0;
+    const input::PadState pad = sample_input(inst, previous);
+    lua_pushboolean(L, (pad.buttons & bit) != 0);
+    return 1;
+}
+
+int l_input_pressed(lua_State* L) {
+    Instance* inst = self(L);
+    uint32_t bit = 0;
+    if (!input_button(L, bit)) return fail(L, "bad type");
+    uint32_t previous = 0;
+    const input::PadState pad = sample_input(inst, previous);
+    lua_pushboolean(L, (pad.buttons & bit) != 0 && (previous & bit) == 0);
+    return 1;
+}
+
+int l_gui_clear(lua_State* L) {
+    Instance* inst = self(L);
+    lua_gui::clear(inst->id);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+bool gui_number(lua_State* L, int arg, float& out) {
+    if (!lua_isnumber(L, arg)) return false;
+    out = (float)lua_tonumber(L, arg);
+    return true;
+}
+
+bool gui_optional(lua_State* L, int arg, float& out, float fallback) {
+    if (lua_isnoneornil(L, arg)) {
+        out = fallback;
+        return true;
+    }
+    return gui_number(L, arg, out);
+}
+
+bool gui_color(lua_State* L, int arg, uint32_t& out) {
+    if (!lua_isnumber(L, arg)) return false;
+    out = (uint32_t)lua_tonumber(L, arg);
+    return true;
+}
+
+int l_gui_rect(lua_State* L) {
+    Instance* inst = self(L);
+    float x = 0, y = 0, w = 0, h = 0, thickness = 2, rounding = 0;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x) || !gui_number(L, 2, y) || !gui_number(L, 3, w) || !gui_number(L, 4, h) ||
+        !gui_color(L, 5, color))
+        return fail(L, "bad type");
+    if (!gui_optional(L, 6, thickness, 2) || !gui_optional(L, 7, rounding, 0)) return fail(L, "bad type");
+    if (w < 0) {
+        x += w;
+        w = -w;
+    }
+    if (h < 0) {
+        y += h;
+        h = -h;
+    }
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::Rect;
+    c.x0 = x;
+    c.y0 = y;
+    c.x1 = x + w;
+    c.y1 = y + h;
+    c.color = color;
+    c.thickness = thickness;
+    c.rounding = rounding;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_rect_filled(lua_State* L) {
+    Instance* inst = self(L);
+    float x = 0, y = 0, w = 0, h = 0, rounding = 0;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x) || !gui_number(L, 2, y) || !gui_number(L, 3, w) || !gui_number(L, 4, h) ||
+        !gui_color(L, 5, color))
+        return fail(L, "bad type");
+    if (!gui_optional(L, 6, rounding, 0)) return fail(L, "bad type");
+    if (w < 0) {
+        x += w;
+        w = -w;
+    }
+    if (h < 0) {
+        y += h;
+        h = -h;
+    }
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::RectFilled;
+    c.x0 = x;
+    c.y0 = y;
+    c.x1 = x + w;
+    c.y1 = y + h;
+    c.color = color;
+    c.rounding = rounding;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_line(lua_State* L) {
+    Instance* inst = self(L);
+    float x0 = 0, y0 = 0, x1 = 0, y1 = 0, thickness = 2;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x0) || !gui_number(L, 2, y0) || !gui_number(L, 3, x1) || !gui_number(L, 4, y1) ||
+        !gui_color(L, 5, color))
+        return fail(L, "bad type");
+    if (!gui_optional(L, 6, thickness, 2)) return fail(L, "bad type");
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::Line;
+    c.x0 = x0;
+    c.y0 = y0;
+    c.x1 = x1;
+    c.y1 = y1;
+    c.color = color;
+    c.thickness = thickness;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_circle(lua_State* L) {
+    Instance* inst = self(L);
+    float x = 0, y = 0, r = 0, thickness = 2;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x) || !gui_number(L, 2, y) || !gui_number(L, 3, r) || !gui_color(L, 4, color))
+        return fail(L, "bad type");
+    if (!gui_optional(L, 5, thickness, 2)) return fail(L, "bad type");
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::Circle;
+    c.x0 = x;
+    c.y0 = y;
+    c.x1 = r;
+    c.color = color;
+    c.thickness = thickness;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_circle_filled(lua_State* L) {
+    Instance* inst = self(L);
+    float x = 0, y = 0, r = 0;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x) || !gui_number(L, 2, y) || !gui_number(L, 3, r) || !gui_color(L, 4, color))
+        return fail(L, "bad type");
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::CircleFilled;
+    c.x0 = x;
+    c.y0 = y;
+    c.x1 = r;
+    c.color = color;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_triangle_filled(lua_State* L) {
+    Instance* inst = self(L);
+    float x0 = 0, y0 = 0, x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x0) || !gui_number(L, 2, y0) || !gui_number(L, 3, x1) || !gui_number(L, 4, y1) ||
+        !gui_number(L, 5, x2) || !gui_number(L, 6, y2) || !gui_color(L, 7, color))
+        return fail(L, "bad type");
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::TriangleFilled;
+    c.x0 = x0;
+    c.y0 = y0;
+    c.x1 = x1;
+    c.y1 = y1;
+    c.x2 = x2;
+    c.y2 = y2;
+    c.color = color;
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+int l_gui_text(lua_State* L) {
+    Instance* inst = self(L);
+    float x = 0, y = 0, scale = 1;
+    uint32_t color = 0;
+    if (!gui_number(L, 1, x) || !gui_number(L, 2, y) || !lua_isstring(L, 3) || !gui_color(L, 4, color))
+        return fail(L, "bad type");
+    if (!gui_optional(L, 5, scale, 1)) return fail(L, "bad type");
+    lua_gui::Command c;
+    c.kind = lua_gui::Kind::Text;
+    c.x0 = x;
+    c.y0 = y;
+    c.color = color;
+    c.scale = scale;
+    c.text = lua_tostring(L, 3);
+    lua_gui::push(inst->id, c);
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 const uint32_t kCourseTimerSingleton = GD(0x101D15F4);
 const uint32_t kFieldGameSingleton = GD(0x101D1604);
 const uint32_t kPlayerMgrSingleton = GD(0x101E6994);
@@ -418,6 +678,7 @@ const uint32_t kMainGame = GD(0x101E7D7C);
 constexpr uint32_t kSinglePlayerDrc = 0x14u;
 const uint32_t kSaveMgr = GD(0x101E7DA4);
 const uint32_t kSaveApplyFlag = GD(0x101E7D9C);
+const uint32_t kCourseInfo = GD(0x101D18EC);
 constexpr uint32_t kSaveFileCount = 3u;
 constexpr uint32_t kSaveApplyFlagOff = 0x11u;
 const uint32_t kFaderBusy = GC(0x02983B28);
@@ -450,6 +711,8 @@ constexpr uint32_t kAppGateSelect = 0xDB1u;
 constexpr uint32_t kAppGateStory = 0xDB2u;
 constexpr uint32_t kSaveDataOff = 0x24u;
 constexpr uint32_t kLastFileOff = 0x07u;
+constexpr uint32_t kCourseInfoNextWorldOff = 0x1Cu;
+constexpr uint32_t kCourseInfoNextCourseOff = 0x1Du;
 constexpr uint32_t kCourseTaskSrcOff = 0x10u;
 const uint32_t kCreatorBoot = GC(0x0202930C);
 const uint32_t kCreatorFlow = GC(0x0297B9F8);
@@ -1751,7 +2014,7 @@ bool save_file_arg(lua_State* L, uint32_t& file, std::string& err) {
     return true;
 }
 
-bool apply_save_file(uint32_t file, std::string& err) {
+bool apply_save_file(uint32_t file, int32_t world, int32_t course, bool entry, std::string& err) {
     if (!scene_change_open(err)) return false;
     uint32_t mgr = 0;
     if (!lua_guest::read_u32(kSaveMgr, mgr, err)) return false;
@@ -1772,6 +2035,17 @@ bool apply_save_file(uint32_t file, std::string& err) {
         err = "file not ready";
         return false;
     }
+    if (entry) {
+        uint32_t info = 0;
+        if (!lua_guest::read_u32(kCourseInfo, info, err)) return false;
+        if (info == 0) {
+            err = "file not ready";
+            return false;
+        }
+        if (!lua_guest::write_u8(info + kCourseInfoNextWorldOff, (uint8_t)world, err)) return false;
+        if (!lua_guest::write_u8(info + kCourseInfoNextCourseOff, (uint8_t)course, err)) return false;
+        ::nsmbu_banner_entry_arm();
+    }
     uint32_t gate = 0;
     if (!lua_guest::read_u32(kSaveApplyFlag, gate, err)) return false;
     if (gate != 0 && !lua_guest::write_u8(gate + kSaveApplyFlagOff, 0, err)) return false;
@@ -1790,7 +2064,16 @@ int l_scene_apply_save(lua_State* L) {
     uint32_t file = 0;
     std::string err;
     if (!save_file_arg(L, file, err)) return fail(L, err.c_str());
-    if (!apply_save_file(file, err)) return fail(L, err.c_str());
+    int32_t world = 0;
+    int32_t course = 0;
+    bool entry = lua_gettop(L) >= 2;
+    if (entry) {
+        if (!lua_isnumber(L, 2) || !lua_isnumber(L, 3)) return fail(L, "bad type");
+        world = (int32_t)lua_tonumber(L, 2);
+        course = (int32_t)lua_tonumber(L, 3);
+        if (world < 0 || world > 8 || course < 0 || course > 255) return fail(L, "bad entry");
+    }
+    if (!apply_save_file(file, world, course, entry, err)) return fail(L, err.c_str());
     lua_pushboolean(L, 1);
     return 1;
 }
@@ -1799,7 +2082,7 @@ int l_scene_open_first_save(lua_State* L) {
     uint32_t file = 0;
     std::string err;
     if (!save_file_arg(L, file, err)) return fail(L, err.c_str());
-    if (!apply_save_file(file, err)) return fail(L, err.c_str());
+    if (!apply_save_file(file, 0, 0, false, err)) return fail(L, err.c_str());
     uint32_t src = 0;
     if (!continue_source(src, err)) return fail(L, err.c_str());
     guest_call(t_guest_cpu, kOpenFirstSave, {src});
@@ -1977,8 +2260,113 @@ bool scene_load_story_transition(int32_t world, int32_t course, std::string& err
         err = "scene busy";
         return false;
     }
+    g_story_load_generation.fetch_add(1, std::memory_order_acq_rel);
+    ::nsmbu_banner_entry_arm();
     ::nsmbu_fill_course_banner_digits();
     return true;
+}
+
+struct NativeSkip {
+    bool active = false;
+    bool done = false;
+    bool opened = false;
+    bool requested = false;
+    int file_select_steps = 0;
+    int popup_pulses = 0;
+    uint8_t world = 0;
+    uint8_t course = 0;
+    std::string last;
+};
+
+NativeSkip g_native_skip;
+char g_native_skip_owner;
+
+void native_note(uint64_t step, const std::string& message) {
+    if (message == g_native_skip.last) return;
+    g_native_skip.last = message;
+    LOG("[open] step %llu %s", (unsigned long long)step, message.c_str());
+}
+
+void native_intro_skip_tick_impl(uint64_t step) {
+    static const std::string pack = mods::packages::open_pack_value();
+    if (pack.empty()) return;
+    if (!g_native_skip.active) {
+        int world = 0;
+        int course = 0;
+        if (std::sscanf(pack.c_str(), "%d-%d", &world, &course) != 2) return;
+        if (world < 1 || world > 9 || course < 1 || course > 256) return;
+        g_native_skip.active = true;
+        g_native_skip.world = (uint8_t)(world - 1);
+        g_native_skip.course = (uint8_t)(course - 1);
+        native_note(step, "wait boot");
+    }
+    if (g_native_skip.done) return;
+
+    uint32_t creator = 0;
+    std::string err;
+    if (!scene_now_creator(creator, err)) {
+        native_note(step, "wait scene");
+        return;
+    }
+    if (creator == kCreatorSaveSelect) {
+        g_native_skip.done = true;
+        native_note(step, "unexpected challenge select");
+        return;
+    }
+    uint32_t task = 0;
+    std::string task_err;
+    const bool in_course = lua_guest::read_u32(kCourseTaskInstance, task, task_err) && task != 0;
+    if (g_native_skip.requested) {
+        if (creator == kCreatorCourseTask || in_course) {
+            g_native_skip.done = true;
+            native_note(step, "course up");
+        }
+        return;
+    }
+    if (creator == kCreatorBoot) {
+        native_note(step, "wait boot");
+        return;
+    }
+    if (creator == kCreatorFileSelect) {
+        g_native_skip.file_select_steps++;
+        if (g_native_skip.popup_pulses < 4) {
+            if (g_native_skip.file_select_steps % 30 == 0) {
+                lua_press::press(&g_native_skip_owner, input::kA, 3, step);
+                g_native_skip.popup_pulses++;
+                native_note(step, "press A file_select");
+            }
+        } else {
+            std::string title_err;
+            if (scene_transition(kCreatorTitle, 0, title_err)) native_note(step, "open_title");
+            else native_note(step, "open_title " + title_err);
+        }
+        return;
+    }
+    g_native_skip.file_select_steps = 0;
+    if (!g_native_skip.opened) {
+        std::string save_err;
+        if (!apply_save_file(0, g_native_skip.world, g_native_skip.course, true, save_err)) {
+            native_note(step, "apply_save " + save_err);
+            return;
+        }
+        g_native_skip.opened = true;
+        char message[64];
+        std::snprintf(message, sizeof message, "apply save 1 entry %d-%d",
+                      g_native_skip.world + 1, g_native_skip.course + 1);
+        native_note(step, message);
+    }
+    if (!g_native_skip.requested) {
+        std::string load_err;
+        if (!scene_load_story_transition(g_native_skip.world, g_native_skip.course, load_err)) {
+            native_note(step, "load_pack " + load_err);
+            return;
+        }
+        g_native_skip.requested = true;
+        char message[64];
+        std::snprintf(message, sizeof message, "load_pack %d-%d",
+                      g_native_skip.world + 1, g_native_skip.course + 1);
+        native_note(step, message);
+    }
 }
 
 int l_scene_load_story(lua_State* L) {
@@ -2081,6 +2469,7 @@ void install_global(lua_State* L) {
     attach_loaded(L, "nsmbu.Fn", "Fn");
     attach_loaded(L, "nsmbu.Hooks", "Hooks");
     attach_loaded(L, "nsmbu.Input", "Input");
+    attach_loaded(L, "nsmbu.Gui", "Gui");
     attach_loaded(L, "nsmbu.Data", "Data");
     attach_loaded(L, "nsmbu.Enemy", "Enemy");
     attach_loaded(L, "nsmbu.Boss", "Boss");
@@ -2145,7 +2534,38 @@ void install_modules(lua_State* L, Instance* inst) {
     set_empty_module(L, "nsmbu.Hooks");
     lua_newtable(L);
     bind(L, inst, "press", l_input_press);
+    lua_newtable(L);
+    bind(L, inst, "held", l_input_held);
+    bind(L, inst, "pressed", l_input_pressed);
+    static const struct { const char* name; uint32_t bit; } kButtons[] = {
+        {"A", input::kA},       {"B", input::kB},       {"X", input::kX},
+        {"Y", input::kY},       {"L", input::kL},       {"R", input::kR},
+        {"ZL", input::kZL},     {"ZR", input::kZR},     {"Plus", input::kPlus},
+        {"Minus", input::kMinus}, {"Home", input::kHome},
+        {"Up", input::kUp},     {"Down", input::kDown},
+        {"Left", input::kLeft}, {"Right", input::kRight},
+        {"StickL", input::kStickL}, {"StickR", input::kStickR},
+    };
+    for (const auto& entry : kButtons) {
+        lua_pushnumber(L, (lua_Number)entry.bit);
+        lua_setfield(L, -2, entry.name);
+    }
+    lua_setfield(L, -2, "button");
+    lua_newtable(L);
+    bind(L, inst, "__call", l_input_call);
+    lua_setmetatable(L, -2);
     set_loaded(L, "nsmbu.Input");
+
+    lua_newtable(L);
+    bind(L, inst, "clear", l_gui_clear);
+    bind(L, inst, "rect", l_gui_rect);
+    bind(L, inst, "rect_filled", l_gui_rect_filled);
+    bind(L, inst, "line", l_gui_line);
+    bind(L, inst, "circle", l_gui_circle);
+    bind(L, inst, "circle_filled", l_gui_circle_filled);
+    bind(L, inst, "triangle_filled", l_gui_triangle_filled);
+    bind(L, inst, "text", l_gui_text);
+    set_loaded(L, "nsmbu.Gui");
     set_empty_module(L, "nsmbu.Data");
     set_empty_module(L, "nsmbu.Enemy");
     set_empty_module(L, "nsmbu.Boss");
@@ -2154,6 +2574,13 @@ void install_modules(lua_State* L, Instance* inst) {
 
     install_game(L);
 }
+}
+
+void forget(Instance* inst) {
+    if (!inst) return;
+    lua_gui::drop(inst->id);
+    std::lock_guard guard(g_input_mu);
+    g_input_samples.erase(inst);
 }
 
 void install(lua_State* L, Instance* inst) {
@@ -2167,6 +2594,14 @@ std::string g_load_story_status;
 
 bool story_leave_pending() {
     return g_story_leave_queued.load(std::memory_order_acquire);
+}
+
+uint64_t story_load_generation() {
+    return g_story_load_generation.load(std::memory_order_acquire);
+}
+
+void native_intro_skip_tick(uint64_t step) {
+    native_intro_skip_tick_impl(step);
 }
 
 void request_load_story(int world, int course) {

@@ -342,10 +342,11 @@ void dashed_rect(ImDrawList* dl, ImVec2 a, ImVec2 b, ImU32 col) {
 bool in_rect(ImVec2 p, ImVec2 a, ImVec2 b) { return p.x >= a.x && p.x <= b.x && p.y >= a.y && p.y <= b.y; }
 bool in_circle(ImVec2 p, ImVec2 c, float r) { return std::hypot(p.x - c.x, p.y - c.y) <= r; }
 
-std::string binding_summary(const Mapping& m, int a) {
+std::string binding_summary(const Mapping& m, int a, bool keys) {
     std::string out;
-    for (int key : m.keys[a])
-        if (key != kNoKey) out += (out.empty() ? "" : "  -  ") + key_label(key);
+    if (keys)
+        for (int key : m.keys[a])
+            if (key != kNoKey) out += (out.empty() ? "" : "  -  ") + key_label(key);
     if (m.pad[a] != kPadNone) out += (out.empty() ? "controller " : "  -  controller ") + std::string(pad_label(m.pad[a]));
     return out.empty() ? "not bound" : out;
 }
@@ -391,7 +392,7 @@ void draw_controls(ControlsView& v, float w, float h) {
     if (ImGui::InvisibleButton("##drawing", ImVec2(w, h)) && partHover >= 0 && v.cap_action < 0) v.start_action = partHover, v.start_col = kColAny;
     ImGui::PopItemFlag();
 
-    struct ChipItem { int action, col; ImVec2 a, b; bool hovered, focused; };
+    struct ChipItem { int action, col; ImVec2 a, b; bool hovered, focused, disabled; };
     std::vector<ChipItem> chips;
     for (int side = 0; side < 2; side++)
         for (auto& gr : g.groups) {
@@ -403,22 +404,26 @@ void draw_controls(ControlsView& v, float w, float h) {
                     ch.col = c;
                     ch.a = ImVec2(gr.a.x + kChipX[c] * k, gr.rows[q] + 2.5f * k);
                     ch.b = ImVec2(ch.a.x + kChipW[c] * k, gr.rows[q] + (kRowH - 2.5f) * k);
-                    ImGui::SetCursorScreenPos(ch.a);
-                    ImGui::PushID(ch.action * 4 + c);
-                    bool pressed = ImGui::InvisibleButton("##chip", ImVec2(ch.b.x - ch.a.x, ch.b.y - ch.a.y),
-                                                          ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_EnableNav);
-                    ch.focused = ImGui::IsItemFocused() && ImGui::GetIO().NavVisible;
-                    ch.hovered = ImGui::IsItemHovered() || ch.focused;
-                    if (pressed && v.cap_action < 0) {
-                        if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) v.clear_action = ch.action, v.clear_col = c;
-                        else v.start_action = ch.action, v.start_col = c;
+                    ch.disabled = c != kColPad && !v.keys_enabled;
+                    ch.focused = ch.hovered = false;
+                    if (!ch.disabled) {
+                        ImGui::SetCursorScreenPos(ch.a);
+                        ImGui::PushID(ch.action * 4 + c);
+                        bool pressed = ImGui::InvisibleButton("##chip", ImVec2(ch.b.x - ch.a.x, ch.b.y - ch.a.y),
+                                                              ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_EnableNav);
+                        ch.focused = ImGui::IsItemFocused() && ImGui::GetIO().NavVisible;
+                        ch.hovered = ImGui::IsItemHovered() || ch.focused;
+                        if (pressed && v.cap_action < 0) {
+                            if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) v.clear_action = ch.action, v.clear_col = c;
+                            else v.start_action = ch.action, v.start_col = c;
+                        }
+                        if (ImGui::IsItemFocused() && v.cap_action < 0 &&
+                            (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false) ||
+                             ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false)))
+                            v.clear_action = ch.action, v.clear_col = c;
+                        if (ch.hovered) v.hover_action = ch.action, v.hover_col = c;
+                        ImGui::PopID();
                     }
-                    if (ImGui::IsItemFocused() && v.cap_action < 0 &&
-                        (ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false) ||
-                         ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false)))
-                        v.clear_action = ch.action, v.clear_col = c;
-                    if (ch.hovered) v.hover_action = ch.action, v.hover_col = c;
-                    ImGui::PopID();
                     chips.push_back(ch);
                 }
         }
@@ -476,7 +481,7 @@ void draw_controls(ControlsView& v, float w, float h) {
             std::string sub = v.cap_action >= 0 ? (v.cap_col == kColPad   ? "Press a controller button..."
                                                    : v.cap_col == kColAny ? "Press a key or controller button..."
                                                                           : "Press a key...")
-                                                : binding_summary(m, a);
+                                                : binding_summary(m, a, v.keys_enabled);
             text_fit(dl, sub, ImVec2(x0, cy + 0.005f * s), ImVec2(x1, cy + 0.045f * s), 0.024f * s,
                      v.cap_action >= 0 ? alpha(P.accent, pulse) : alpha(P.screenText, 0.75f));
         } else {
@@ -594,6 +599,11 @@ void draw_controls(ControlsView& v, float w, float h) {
     }
     for (const ChipItem& ch : chips) {
         const int a = ch.action, c = ch.col;
+        if (ch.disabled) {
+            dashed_rect(dl, ch.a, ch.b, alpha(P.boxEdge, 0.5f));
+            text_fit(dl, "\xE2\x80\x94", ch.a, ch.b, 13.5f * k, alpha(P.dim, 0.35f));
+            continue;
+        }
         const bool isPad = c == kColPad;
         const int code = isPad ? m.pad[a] : m.keys[a][c];
         const bool bound = isPad ? code != kPadNone : code != kNoKey;

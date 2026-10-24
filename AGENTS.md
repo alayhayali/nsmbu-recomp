@@ -1,11 +1,8 @@
 # NSMBU native port
 
-Native port of New Super Mario Bros. U.
-Supported builds are USA or Europe v1.3.0, and the USA or Europe NSMBU + NSLU packs.
-`tools/recomp/` translates `red-pro2.rpx` to C ahead of time.
-`runtime/` implements Cafe OS and GX2 as native code.
-Linux and Windows render with Vulkan; macOS with Metal.
-The game dump, keys, and extracted files stay in `game/` on the machine that owns them; layout in `game/README.md`.
+## Rules
+
+Assume that the Typescript to Lua watcher is already running.
 
 ## Verify
 
@@ -14,6 +11,7 @@ The `nsmbu` cli is installed and can be used to interact with the game.
 ## Changelog
 
 When editing `CHANGELOG.md`, use the `changelog` skill.
+Notes for the example mods go in `modding/examples/CHANGELOG.md` and use that same form.
 
 ## Code style
 
@@ -21,4 +19,7 @@ Match the file you are editing.
 Put the opening brace on the same line as the declaration.
 Indent with 4 spaces.
 The `nsmbu` target compiles with `-Wall`.
-Warnings in `gamecode` and `cemu_latte` are expected; that code is generated or vendored.
+
+## Decomp
+
+Any discoveries you find about the source code document and decompile it into the `decomp/` repo.

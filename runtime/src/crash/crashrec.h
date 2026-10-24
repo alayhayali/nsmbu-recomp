@@ -18,7 +18,7 @@ void service();
 
 void on_auto_saved(int n);
 
-input::PadState read(int pad);
+input::PadState read(int pad, int player = 0);
 
 struct AutoInfo {
     bool used = false;

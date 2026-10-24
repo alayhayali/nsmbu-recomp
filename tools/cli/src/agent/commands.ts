@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { parseButtonBits } from "./buttons.ts";
 import { AgentClient } from "./client.ts";
@@ -6,7 +6,7 @@ import { agentDir, agentPidPath, agentSocketPath } from "./paths.ts";
 import { isPidAlive, readAgentPid, removeAgentArtifacts } from "./process.ts";
 import { canConnectSocket, waitForSocket } from "./socket.ts";
 import { spawnPython } from "../run.ts";
-import { flagNumber, hasFlag, parseArgv } from "../parse.ts";
+import { flagNumber, flagString, hasFlag, parseArgv } from "../parse.ts";
 
 async function ensureNotRunning(repo: string): Promise<void> {
     const sock = agentSocketPath(repo);
@@ -24,7 +24,7 @@ export async function cmdOpen(repo: string, rest: string[]): Promise<void> {
     await ensureNotRunning(repo);
     mkdirSync(agentDir(repo), { recursive: true });
     const sock = agentSocketPath(repo);
-    const child = spawnPython(repo, "tools/launch.py", rest, {
+    const child = spawnPython(repo, "tools/run/launch.py", rest, {
         detached: true,
         stdio: "ignore",
         extraEnv: { NSMBU_AGENT_SOCK: sock },
@@ -147,6 +147,40 @@ export async function cmdWait(repo: string, argv: string[]): Promise<void> {
                 throw new Error(`wait timed out after ${timeoutMs / 1000}s`);
             }
             await new Promise((r) => setTimeout(r, 100));
+        }
+    } finally {
+        client.close();
+    }
+}
+
+export async function cmdEval(repo: string, argv: string[]): Promise<void> {
+    const { flags, positional } = parseArgv(argv, ["file", "timeout"], ["file", "timeout"]);
+    const file = flagString(flags, "file");
+    let code: string;
+    if (file !== undefined) {
+        if (positional.length > 0) {
+            throw new Error("usage: nsmbu eval [code] [--file PATH] [--timeout MS]");
+        }
+        code = readFileSync(isAbsolute(file) ? file : join(repo, file), "utf8");
+    } else if (positional.length > 0) {
+        code = positional.join(" ");
+    } else if (!process.stdin.isTTY) {
+        code = readFileSync(0, "utf8");
+    } else {
+        throw new Error("usage: nsmbu eval [code] [--file PATH] [--timeout MS]");
+    }
+    if (!code.trim()) {
+        throw new Error("usage: nsmbu eval [code] [--file PATH] [--timeout MS]");
+    }
+    const timeout = flagNumber(flags, "timeout", 5000);
+    const client = new AgentClient(repo);
+    try {
+        const r = await client.request({ cmd: "eval", code, timeout });
+        if (!r.ok) {
+            throw new Error(r.error ?? "eval failed");
+        }
+        if (r.output) {
+            process.stdout.write(r.output.endsWith("\n") ? r.output : `${r.output}\n`);
         }
     } finally {
         client.close();

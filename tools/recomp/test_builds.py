@@ -30,15 +30,22 @@ class Registry(unittest.TestCase):
 
     def test_known_builds(self):
         names = {b.name for b in builds.all_builds()}
-        self.assertEqual(names, {"USA", "USA_V0", "EU", "NSMBU_NSLU_USA", "NSMBU_NSLU_EU"})
+        self.assertEqual(names, {"USA", "USA_V0", "EU", "EU_V0", "NSMBU_NSLU_USA", "NSMBU_NSLU_EU"})
         self.assertEqual(builds.by_title("0005000010101d00").name, "USA")
         self.assertEqual(builds.by_title_version("0005000010101d00", 0).name, "USA_V0")
         self.assertEqual(builds.by_title("0005000010101e00").name, "EU")
+        self.assertEqual(builds.by_title_version("0005000010101e00", 0).name, "EU_V0")
+        self.assertEqual(
+            builds.by_sha256("2f4f2da59f99111546b89ecf512a4a0ecf6a2e292046ac500b1fb72ca19105c9").name,
+            "EU_V0",
+        )
         self.assertEqual(builds.by_title("000500001014b700").name, "NSMBU_NSLU_USA")
         self.assertEqual(builds.by_title("000500001014b800").name, "NSMBU_NSLU_EU")
         self.assertEqual(builds.by_name("eu").title_version, 80)
         self.assertEqual(builds.by_name("USA_V0").title_version, 0)
         self.assertFalse(builds.by_name("USA_V0").mods)
+        self.assertEqual(builds.by_name("EU_V0").title_version, 0)
+        self.assertFalse(builds.by_name("EU_V0").mods)
         self.assertTrue(builds.canonical_build().mods)
         self.assertEqual(builds.by_name("NSMBU_NSLU_USA").title_version, 0)
         self.assertEqual(builds.by_name("NSMBU_NSLU_EU").title_version, 0)
@@ -71,9 +78,14 @@ class Hooks(unittest.TestCase):
             [(site, addr) for site, _, addr, _ in entries],
             [(False, 0x02ACD218), (False, 0x024D752C), (True, 0x022A79C4),
              (False, 0x02994164), (False, 0x029CBBB4), (False, 0x024BAD4C),
-             (False, 0x024BD86C), (True, 0x024BD96C), (True, 0x024BE280),
+             (False, 0x024BD86C), (True, 0x024B8324), (False, 0x0226FBC4),
+             (True, 0x0226FD14), (True, 0x0226FECC), (True, 0x02270310),
+             (True, 0x022703A4), (True, 0x0227CCF4), (True, 0x0227E2A8),
+             (True, 0x024BD96C), (True, 0x024BE280),
              (False, 0x025D8B28), (False, 0x02672C90), (False, 0x02681BFC),
-             (False, 0x0267CB3C), (False, 0x0252F900), (False, 0x025CF020)],
+             (False, 0x0267CB3C), (False, 0x0252F900), (False, 0x025CF020),
+             (False, 0x029C52CC), (False, 0x024FBF6C),
+             (False, 0x029C4FE4), (False, 0x024F30DC)],
         )
         for site, canon, addr, where in entries:
             self.assertEqual(canon, addr, where)

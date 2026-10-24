@@ -18,6 +18,7 @@
 #include "gx2/gx2.h"
 #include "input/input.h"
 #include "metal.h"
+namespace gfx { uint64_t shader_warm_activity(); }
 #include "gfx/renderer.h"
 #include "core/runtime.h"
 #include "hooks/interp.h"
@@ -607,6 +608,13 @@ void run_appkit_loop() {
         std::_Exit(0);
     }];
     // test runs: NSMBU_EXIT_AT_FRAME=n quits (orderly) once the renderer reached frame n
+    if (env::SHADER_WARM() && *env::SHADER_WARM() && strcmp(env::SHADER_WARM(), "0"))
+        [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer* t) {
+            if (!render::shader_warm_tick(gfx::shader_warm_activity())) return;
+            [t invalidate];
+            LOG("[warm] done");
+            [NSApp terminate:nil];
+        }];
     if (const char* e = env::EXIT_AT_FRAME()) {
         uint64_t at = strtoull(e, nullptr, 10);
         if (at)

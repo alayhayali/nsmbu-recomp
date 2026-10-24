@@ -22,6 +22,8 @@ instructions.
 import os
 import re
 
+import ppc2c
+
 # NSMBU_RECOMP_LEAF_POISON=1: a checking build; at each return the scratch registers the function
 # used get garbage, so a caller that relied on one would break visibly
 POISON = os.environ.get("NSMBU_RECOMP_LEAF_POISON", "0") == "1"
@@ -131,13 +133,19 @@ def transform(stmts):
 
 # ---------------------------------------------------------------- functions with calls
 # The same locals in a function that calls others. Before each call the registers the function
-# assigned since the last sync go back to the Cpu struct (the callee may read any of them); after
-# it, every register the function uses is read again. The callee-saved ones (r1, r14-r31, f14-f31)
-# are read again too, although the PowerPC EABI has callees preserve them: a full save state may
-# replace a thread's registers while it waits inside a call, and the compiler's save/restore
-# helpers change them on purpose. Between calls the values stay in locals, so the C compiler can
-# keep them in host registers and drop the stores of values that are overwritten before the next
-# call or exit. Functions whose code passes the Cpu to anything else keep the struct form.
+# assigned since the last sync go back to the Cpu struct. A later return, tail call or loop-head
+# sync also stores them when they are dirty. After the call, a register is read again only when it
+# is live (NSMBU_RECOMP_NONLEAF_LIVE=0 reads every used register again). r0, r11 and r12 are still
+# tracked as dirty locals between calls like any other register, but they are always written back
+# before a call (a callee loads them from the struct in its prologue) and always reloaded when live
+# after a call (a callee with calls writes them back at its own calls). One float half does not
+# stand in for the other: a store writes only the half that changed. The callee-saved registers
+# (r1, r14-r31, f14-f31) are read again when they are live, although the PowerPC EABI has callees
+# preserve them: a full save state may replace a thread's registers while it waits inside a call,
+# and the compiler's save/restore helpers change them on purpose. Between calls the values stay in
+# locals, so the C compiler can keep them in host registers and drop the stores of values that are
+# overwritten before the next call or exit. Functions whose code passes the Cpu to anything else
+# keep the struct form.
 _NL_CALL = re.compile(r"(?<!MUSTTAIL return )\b(f_[0-9A-F]{8}(?:_orig)?|imp_\w+|ppc_dispatch|site_[0-9A-F]{8})\(c\);"
                       r"|\b(?:ppc_trap|ppc_unimplemented)\(c[^;]*\);")
 _C_USE = re.compile(r"\b(\w+)\(c\b")
@@ -158,6 +166,145 @@ def _assigned(text):
     for m in _ASSIGN_F.finditer(text):
         regs.add(32 + int(m.group(1) or m.group(2)))
     return regs
+
+
+_LHS_R = re.compile(r"\br\d+\s*=(?!=)")
+_LHS_F = re.compile(r"\bf\d+_[01]\s*=(?!=)")
+_ADDR_REG = re.compile(r"&(?:r\d+|f\d+_[01])\b")
+_READ_R = re.compile(r"\br(\d+)\b")
+_READ_F = re.compile(r"\bf(\d+)_[01]\b")
+
+reloads_written = 0
+reloads_left_out = 0
+reload_calls = 0
+
+
+def reset_stats():
+    global reloads_written, reloads_left_out, reload_calls
+    reloads_written = 0
+    reloads_left_out = 0
+    reload_calls = 0
+
+
+_READ_FH = re.compile(r"\bf(\d+)_([01])\b")
+_DEF_FH = re.compile(r"\bf(\d+)_([01])\s*=(?!=)|&f(\d+)_([01])\b")
+
+
+def _half_id(n, half):
+    return 32 + 2 * int(n) + int(half)
+
+
+def _mask_halves(halves, fn_used):
+    out = set()
+    for h in halves:
+        if h < 32:
+            if h in fn_used:
+                out.add(h)
+        elif 32 + (h - 32) // 2 in fn_used:
+            out.add(h)
+    return out
+
+
+def _half_defs(text):
+    regs = set()
+    for m in _ASSIGN_R.finditer(text):
+        regs.add(int(m.group(1) or m.group(2)))
+    for m in _DEF_FH.finditer(text):
+        regs.add(_half_id(m.group(1) or m.group(3), m.group(2) or m.group(4)))
+    return regs
+
+
+def _half_reads(text):
+    text = _LHS_R.sub(" ", text)
+    text = _LHS_F.sub(" ", text)
+    text = _ADDR_REG.sub(" ", text)
+    regs = {int(n) for n in _READ_R.findall(text)}
+    regs |= {_half_id(n, h) for n, h in _READ_FH.findall(text)}
+    return regs
+
+
+def _wholes(halves):
+    regs = {h for h in halves if h < 32}
+    for h in halves:
+        if h >= 32:
+            regs.add(32 + (h - 32) // 2)
+    return regs
+
+
+def _all_dead(fn_used, halves):
+    dead = set()
+    for r in fn_used:
+        if r < 32:
+            if r not in halves:
+                dead.add(r)
+        else:
+            n = r - 32
+            if _half_id(n, 0) not in halves and _half_id(n, 1) not in halves:
+                dead.add(r)
+    return dead
+
+
+def _kept_across_call(live):
+    reload = _wholes(live)
+    kill = set()
+    for w in reload:
+        if w < 32:
+            kill.add(w)
+        else:
+            n = w - 32
+            kill.add(_half_id(n, 0))
+            kill.add(_half_id(n, 1))
+    return live - kill
+
+
+def used(text):
+    text = _LHS_R.sub(" ", text)
+    text = _LHS_F.sub(" ", text)
+    text = _ADDR_REG.sub(" ", text)
+    regs = {int(n) for n in _READ_R.findall(text)}
+    regs |= {32 + int(n) for n in _READ_F.findall(text)}
+    return regs
+
+
+def _poison(regs):
+    parts = ["r%d = 0xDEADBEEFu;" % n for n in sorted(n for n in regs if n < 32)]
+    parts += ["f%d_0 = f%d_1 = __builtin_nan(\"\");" % (n - 32, n - 32)
+              for n in sorted(n for n in regs if n >= 32)]
+    return " ".join(parts)
+
+
+def _live_after_calls(kills, reads, succ, extra):
+    n = len(kills)
+    live_in = [set() for _ in range(n)]
+    after = [[set() for _ in range(len(kills[i]) - 1)] for i in range(n)]
+    preds = [[] for _ in range(n)]
+    for i, nx in enumerate(succ):
+        for j in nx:
+            preds[j].append(i)
+    work = list(range(n))
+    queued = [True] * n
+    while work:
+        i = work.pop()
+        queued[i] = False
+        live = set()
+        for j in succ[i]:
+            live |= live_in[j]
+        last = len(kills[i]) - 1
+        for k in range(last, -1, -1):
+            if k == last:
+                live = extra[i] | live
+            live = reads[i][k] | (live - kills[i][k])
+            if k > 0:
+                if not live <= after[i][k - 1]:
+                    after[i][k - 1] |= live
+                live = _kept_across_call(live)
+        if not live <= live_in[i]:
+            live_in[i] |= live
+            for p in preds[i]:
+                if not queued[p]:
+                    queued[p] = True
+                    work.append(p)
+    return after
 
 
 def transform_nonleaf(stmts, addrs):
@@ -182,19 +329,37 @@ def transform_nonleaf(stmts, addrs):
                 return None
     if not gprs and not fprs:
         return None
-    used = gprs | {32 + n for n in fprs}
+    fn_used = gprs | {32 + n for n in fprs}
     n = len(out)
     index = {a: i for i, a in enumerate(addrs)}
+    live_on = ppc2c.pass_on("NSMBU_RECOMP_NONLEAF_LIVE")
+    poison_on = os.environ.get("NSMBU_RECOMP_LEAF_POISON", "0") == "1"
+    global reloads_written, reloads_left_out, reload_calls
+
+    def every_half():
+        out_regs = {r for r in fn_used if r < 32}
+        for r in fn_used:
+            if r >= 32:
+                nreg = r - 32
+                out_regs.add(_half_id(nreg, 0))
+                out_regs.add(_half_id(nreg, 1))
+        return out_regs
+
     # per statement: segments between calls (assignments), the calls, successors
-    segs, calls, succ = [], [], []
+    reads, kills, calls, succ = [], [], [], []
     for i, s in enumerate(out):
-        parts, pos, cs = [], 0, []
+        rparts, kparts, pos, cs = [], [], 0, []
         for m in _NL_CALL.finditer(s):
-            parts.append(_assigned(s[pos:m.start()]) & used)
+            chunk = s[pos:m.start()]
+            rparts.append(_mask_halves(_half_reads(chunk), fn_used))
+            kparts.append(_mask_halves(_half_defs(chunk), fn_used))
             cs.append(m)
             pos = m.end()
-        parts.append(_assigned(s[pos:]) & used)
-        segs.append(parts)
+        chunk = s[pos:]
+        rparts.append(_mask_halves(_half_reads(chunk), fn_used))
+        kparts.append(_mask_halves(_half_defs(chunk), fn_used))
+        reads.append(rparts)
+        kills.append(kparts)
         calls.append(cs)
         nx = [i + 1] if i + 1 < n else []  # falling through (a superset after an unconditional jump: safe)
         nx += [index[int(t, 16)] for t in _GOTO.findall(s) if int(t, 16) in index]
@@ -208,10 +373,10 @@ def transform_nonleaf(stmts, addrs):
     while work:
         i = work.pop()
         d = set(d_in[i])
-        for k, part in enumerate(segs[i]):
+        for k, part in enumerate(kills[i]):
             d |= part
             if k < len(calls[i]):
-                d = set()  # written back, and the volatile ones read again
+                d = set()
         for j in succ[i]:
             arrive = set() if (j in heads and j > i) else d  # a forward edge into a loop head syncs
             if d_in[j] is None or not arrive <= d_in[j]:
@@ -219,12 +384,45 @@ def transform_nonleaf(stmts, addrs):
                 work.append(j)
     for i in range(n):
         if d_in[i] is None:
-            d_in[i] = set(used)  # not reached by the analysis (cannot happen): write back everything
+            d_in[i] = every_half()  # not reached by the analysis (cannot happen): write back everything
+
+    def for_return(regs):
+        out_regs = {r for r in regs if r < 32 and r in RET_GPR}
+        out_regs |= {h for h in regs if h >= 32 and (h - 32) // 2 in RET_FPR}
+        return out_regs
+
+    exit_at, end_at = [], []
+    for i in range(n):
+        ed, end = set(d_in[i]), set(d_in[i])
+        for k, part in enumerate(kills[i]):
+            ed |= part
+            end |= part
+            if k < len(calls[i]):
+                end = set()
+        exit_at.append(ed)
+        end_at.append(end)
+    extra = [set() for _ in range(n)]
+    for i, s in enumerate(out):
+        ed = exit_at[i]
+        if _RET.search(s):
+            extra[i] |= for_return(ed)
+        if _TAIL.search(s):
+            extra[i] |= ed
+        for t in _GOTO.findall(s):
+            tgt = int(t, 16)
+            if tgt in index and index[tgt] in heads and index[tgt] > i:
+                extra[i] |= ed
+                break
+        if i + 1 < n and i + 1 in heads:
+            extra[i] |= end_at[i]
+    extra[-1] |= end_at[-1]
+    live_after = _live_after_calls(kills, reads, succ, extra)
 
     def wb(regs):
         parts = ["c->r[%d] = r%d;" % (r, r) for r in sorted(r for r in regs if r < 32)]
-        parts += ["c->f[%d].ps0 = f%d_0; c->f[%d].ps1 = f%d_1;" % (r - 32, r - 32, r - 32, r - 32)
-                  for r in sorted(r for r in regs if r >= 32)]
+        for h in sorted(h for h in regs if h >= 32):
+            nreg, half = divmod(h - 32, 2)
+            parts.append("c->f[%d].ps%d = f%d_%d;" % (nreg, half, nreg, half))
         return " ".join(parts)
 
     def rl(gset, fset):
@@ -232,22 +430,35 @@ def transform_nonleaf(stmts, addrs):
         parts += ["f%d_0 = c->f[%d].ps0; f%d_1 = c->f[%d].ps1;" % (r, r, r, r) for r in sorted(fset)]
         return " ".join(parts)
 
-    reload_all = rl(gprs, fprs)
-    ret_regs = RET_GPR | {32 + r for r in RET_FPR}
     final = []
     for i, s in enumerate(out):
         d = set(d_in[i])
-        exit_dirty = set(d)  # for returns and tail calls in this statement: a superset is safe
+        exit_dirty = exit_at[i]
         pieces, pos = [], 0
         for k, m in enumerate(calls[i]):
-            d |= segs[i][k]
-            exit_dirty |= segs[i][k]
+            d |= kills[i][k]
             pieces.append(s[pos:m.start()])
-            pieces.append("{ %s %s %s }" % (wb(d), m.group(0), reload_all))
+            wb_regs = set(d)
+            live = live_after[i][k]
+            reload_regs = set(fn_used if not live_on else _wholes(live))
+            if live_on:
+                reloads_written += len(reload_regs)
+                reloads_left_out += len(_all_dead(fn_used, live))
+            else:
+                reloads_written += len(fn_used)
+            reload_calls += 1
+            poison_txt = ""
+            if poison_on and live_on:
+                keep = set(reload_regs)
+                poison_txt = _poison(fn_used - keep)
+            inner = " ".join(p for p in (
+                wb(wb_regs), m.group(0),
+                rl({r for r in reload_regs if r < 32}, {r - 32 for r in reload_regs if r >= 32}),
+                poison_txt) if p)
+            pieces.append("{ %s }" % inner)
             pos = m.end()
             d = set()
         pieces.append(s[pos:])
-        exit_dirty |= segs[i][-1]
         s = "".join(pieces)
         # forward jumps into a loop head write back first (see heads above)
         sync = wb(exit_dirty)
@@ -255,34 +466,21 @@ def transform_nonleaf(stmts, addrs):
             s = _GOTO.sub(lambda m: "{ %s %s }" % (sync, m.group(0))
                           if int(m.group(1), 16) in index and index[int(m.group(1), 16)] in heads and index[int(m.group(1), 16)] > i
                           else m.group(0), s)
-        ret_wb, all_wb = wb(exit_dirty & ret_regs), wb(exit_dirty)
+        ret_wb, all_wb = wb(for_return(exit_dirty)), wb(exit_dirty)
         if POISON:
             # checking build: the volatile registers this function sets get garbage at its returns
             g_set = {r for r in exit_dirty if r < 32 and r not in RET_GPR}
-            f_set = {r - 32 for r in exit_dirty if r >= 32 and (r - 32) not in RET_FPR}
+            f_set = {(h - 32) // 2 for h in exit_dirty if h >= 32 and (h - 32) // 2 not in RET_FPR}
             ret_wb = (ret_wb + " " + " ".join(["c->r[%d] = 0xDEADBEEFu;" % r for r in sorted(g_set)] +
                       ["c->f[%d].ps0 = c->f[%d].ps1 = __builtin_nan(\"\");" % (r, r) for r in sorted(f_set)])).strip()
         s = _TAIL.sub(lambda m: "{ %s %s }" % (all_wb, m.group(0)) if all_wb else m.group(0),
                       _RET.sub(lambda m: "{ %s return; }" % ret_wb if ret_wb else "return;", s))
-        # falling through into a loop head: write back at the end of this statement
-        if i + 1 < n and i + 1 in heads:
-            d_end = set(d_in[i])
-            for k, part in enumerate(segs[i]):
-                d_end |= part
-                if k < len(calls[i]):
-                    d_end = set()
-            if d_end:
-                s += " " + wb(d_end)
+        if i + 1 < n and i + 1 in heads and end_at[i]:
+            s += " " + wb(end_at[i])
         final.append(s)
-    # falling off the end continues in the next function: what is dirty after the last statement
-    last = set(d_in[-1])
-    for k, part in enumerate(segs[-1]):
-        last |= part
-        if k < len(calls[-1]):
-            last = set()
     prologue = []
     if gprs:
         prologue.append("uint32_t %s;" % ", ".join("r%d = c->r[%d]" % (r, r) for r in sorted(gprs)))
     if fprs:
         prologue.append("double %s;" % ", ".join("f%d_0 = c->f[%d].ps0, f%d_1 = c->f[%d].ps1" % (r, r, r, r) for r in sorted(fprs)))
-    return prologue, final, wb(last)
+    return prologue, final, wb(end_at[-1])

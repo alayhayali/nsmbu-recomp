@@ -195,8 +195,8 @@ void frame_done() {
     if (!enabled()) return;
     std::lock_guard<std::mutex> lk(g_mu);
 
-    const int frames = interp::frames_per_step();
-    const int64_t target = !interp::mode() ? 33'333'333 : frames <= 2 ? 16'666'667 : 33'333'333 / frames;
+    const int out = interp::mode() ? std::max(30, interp::output_fps()) : 60;
+    const int64_t target = 1'000'000'000LL / out;
     if (g_changed) {
 
         g_changed = false;

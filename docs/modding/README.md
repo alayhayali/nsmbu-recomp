@@ -30,4 +30,4 @@ Mod SDK: [../../modding/sdk/](../../modding/sdk/).
 
 | Doc | What it covers |
 | --- | --- |
-| [intro-skip.md](intro-skip.md) | Boot path for `example.intro-skip`; open work is which confirm button the popup uses |
+| [intro-skip.md](intro-skip.md) | Native boot path; open work is which confirm button the popup uses |

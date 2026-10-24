@@ -23,12 +23,17 @@ namespace mods { double game_time(){return 0;} }
 namespace agent_ctl { void apply_pad(input::PadState&) {} }
 static uint64_t g_logic_steps=0;
 static bool g_course=true;
+static bool g_input_enabled=true;
+static interp::PlayerSnapshot g_snapshot{0,5,0,0,2,600,-848,3000};
+static int g_mode_sets=0;
 namespace interp {
 void set_mode(int){}
 uint64_t logic_steps(){return g_logic_steps;}
 bool course_play_active(){return g_course;}
+bool input_enabled(){return g_input_enabled;}
 bool player_witness(float&, float&, float&){return false;}
-bool player_snapshot(interp::PlayerSnapshot&, int){return false;}
+bool player_snapshot(interp::PlayerSnapshot& out, int player){if(player!=0)return false;out=g_snapshot;return true;}
+bool set_player_mode(int player, int mode){if(player!=0)return false;++g_mode_sets;g_snapshot.mode=mode;return true;}
 }
 namespace timebase { uint64_t now(){return 0;} }
 void log_msg(const char*,...){}
@@ -150,40 +155,109 @@ int main(){
  }
  rumble::reset();
  {
+  SDL_VirtualJoystickDesc second;SDL_INIT_INTERFACE(&second);
+  second.type=SDL_JOYSTICK_TYPE_GAMEPAD;second.naxes=SDL_GAMEPAD_AXIS_COUNT;second.nbuttons=SDL_GAMEPAD_BUTTON_COUNT;second.name="second test pad";
+  const SDL_JoystickID pad2=SDL_AttachVirtualJoystick(&second);assert(pad2);
+  for(SDL_Event e;SDL_PollEvent(&e);)input::handle_event(e);
+  assert(input::controller_connected(0)&&input::controller_connected(1));
+  assert(!input::controller_name(1).empty());
+
+  auto config=input_map::config();
+  config.sync=false;
+  config.players[0]=input_map::Mapping::defaults();
+  config.players[1]=input_map::Mapping::defaults();
+  config.players[0].pad[input_map::kA]=input_map::kPadA;
+  config.players[0].pad[input_map::kB]=input_map::kPadNone;
+  config.players[1].pad[input_map::kA]=input_map::kPadX;
+  config.players[1].pad[input_map::kY]=input_map::kPadNone;
+  input_map::set_config(config,false);
+
+  SDL_Joystick* first=SDL_GetJoystickFromID(padId);
+  SDL_Joystick* other=SDL_GetJoystickFromID(pad2);
+  assert(first&&other);
+  SDL_SetJoystickVirtualButton(first,SDL_GAMEPAD_BUTTON_SOUTH,true);
+  SDL_SetJoystickVirtualButton(other,SDL_GAMEPAD_BUTTON_WEST,true);
+  SDL_UpdateJoysticks();
+  input::update();
+  assert(input::read(0).buttons==input::kA);
+  assert(input::read(1).buttons==input::kA);
+  assert(input::read(2).buttons==0);
+  input::release_keys();
+  SDL_SetJoystickVirtualButton(first,SDL_GAMEPAD_BUTTON_SOUTH,false);
+  SDL_SetJoystickVirtualButton(other,SDL_GAMEPAD_BUTTON_WEST,false);
+  SDL_UpdateJoysticks();
+  input::update();
+  assert(input::read(0).buttons==0&&input::read(1).buttons==0);
+  input_map::set_config(input_map::Config::defaults(),false);
+  SDL_DetachVirtualJoystick(pad2);
+  for(SDL_Event e;SDL_PollEvent(&e);)input::handle_event(e);
+ }
+ {
   const char* rec="input_record_test.txt";
   remove(rec);
   set_env(env::RECORD_INPUT,rec);
+  set_env(env::RECORD_COURSE,"2-1");
   g_logic_steps=4;
   input::release_keys();
   input::read();
   set_env(env::RECORD_INPUT,nullptr);
+  set_env(env::RECORD_COURSE,nullptr);
   FILE* rf=fopen(rec,"r");
   assert(rf);
   char buf[512]={};
   assert(fread(buf,1,sizeof buf-1,rf)>0);
   fclose(rf);
-  assert(strstr(buf,"# nsmbu-replay"));
+  assert(strstr(buf,"version=1"));
+  assert(strstr(buf,"course=2-1"));
+  assert(strstr(buf,"origin=control"));
+  assert(strstr(buf,"mode=fire"));
+  assert(strstr(buf,"player_coins=0"));
+  assert(strstr(buf,"\ncoins=0"));
+  assert(!strstr(buf,"pos="));
   assert(strstr(buf,"\n0 "));
   remove(rec);
   const char* rep="input_replay_test.txt";
   FILE* wf=fopen(rep,"w");
   assert(wf);
-  fputs("# nsmbu-input 2\n0 00000000 0 0 0 0 0 0 0\n10 00008000 0.5 -1 0 0 1 0.25 0.5\n20 00000000 0 0 0 0 0 0 0\n",wf);
+  fputs("version=1\ncourse=1-1\norigin=control\nplayer=0\nmode=fire\n"
+        "# step buttons lx ly rx ry touch tx ty x y z\n"
+        "0 - 0 0 0 0 0 0 0 600 -848 3000\n"
+        "10 A+Y 0.5 -1 0 0 1 0.25 0.5 600 -848 3000\n"
+        "12 00008000 0 0 0 0 0 0 0 600 -848 3000\n"
+        "20 - 0 0 0 0 0 0 0 600 -848 3000\n",wf);
   fclose(wf);
   set_env(env::REPLAY_INPUT,rep);
+  g_input_enabled=false;
+  g_snapshot.mode=0;
   g_logic_steps=0;
+  auto gated=input::read();
+  assert(gated.buttons==0&&!gated.touch&&g_mode_sets==0);
+  g_input_enabled=true;
   auto early=input::read();
   assert(early.buttons==0&&early.lx==0&&!early.touch);
+  assert(g_mode_sets==1&&g_snapshot.mode==2);
   g_logic_steps=10;
   auto played=input::read();
-  assert(played.buttons==input::kA&&played.lx==0.5f&&played.ly==-1.f&&played.touch&&played.tx==0.25f&&played.ty==0.5f);
+  assert(played.buttons==(input::kA|input::kY)&&played.lx==0.5f&&played.ly==-1.f&&played.touch&&played.tx==0.25f&&played.ty==0.5f);
+  g_snapshot.x=600.1f;
+  auto again=input::read();
+  assert(again.buttons==(input::kA|input::kY)&&again.lx==0.5f);
+  g_snapshot.x=600;
+  for(SDL_Event pending;SDL_PollEvent(&pending);) assert(pending.type!=SDL_EVENT_QUIT);
   g_logic_steps=11;
-  assert(input::read().buttons==input::kA);
+  assert(input::read().buttons==(input::kA|input::kY));
+  g_snapshot.y=-847.f;
   g_logic_steps=12;
   assert(input::read().buttons==input::kA);
+  g_snapshot.y=-848.f;
+  for(SDL_Event pending;SDL_PollEvent(&pending);) assert(pending.type!=SDL_EVENT_QUIT);
+  g_snapshot.y=-800.f;
   g_logic_steps=20;
   auto done=input::read();
   assert(done.buttons==0&&done.lx==0);
+  bool quit=false;
+  for(SDL_Event pending;SDL_PollEvent(&pending);) if(pending.type==SDL_EVENT_QUIT) quit=true;
+  assert(quit);
   remove(rep);
  }
  SDL_DestroyWindow(controls);SDL_DestroyWindow(game);input::set_prompt_window(nullptr);

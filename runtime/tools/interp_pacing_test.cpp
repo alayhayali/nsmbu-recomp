@@ -35,6 +35,21 @@ static void test_fractions() {
     CHECK_NEAR(pass_fraction(0, 2, false), 1.0 / 3.0, 1e-7);
     CHECK_NEAR(pass_fraction(1, 2, false), 2.0 / 3.0, 1e-7);
     CHECK(pass_fraction(2, 2, false) == 1.0f);
+
+    CHECK_NEAR(even_fraction(1, 1, 90), 2.0 / 3.0, 1e-6);
+    CHECK_NEAR(even_fraction(2, 2, 90), 1.0 / 3.0, 1e-6);
+    CHECK(even_fraction(3, 2, 90) == 1.f);
+    CHECK_NEAR(even_fraction(4, 3, 90), 2.0 / 3.0, 1e-6);
+    double prev = 0;
+    for (int n = 1; n <= 12; n++) {
+        const int step = int((n * 60 + 143) / 144);
+        const double tau = n * 60.0 / 144.0;
+        const double t = even_fraction((uint64_t)n, (uint64_t)step, 144);
+        const double shown = (step - 1) + t;
+        CHECK_NEAR(shown, tau, 1e-5);
+        CHECK(shown + 1e-6 >= prev);
+        prev = shown;
+    }
 }
 
 static void test_blends() {
@@ -94,10 +109,10 @@ static void test_cap() {
     CHECK(cap_fps(240, 60, true) == 60);
     CHECK(cap_fps(120, 60, true) == 60);
     CHECK(cap_fps(120, 144, true) == 120);
-    CHECK(cap_fps(240, 144, true) == 120);
+    CHECK(cap_fps(240, 144, true) == 144);
     CHECK(cap_fps(240, 165, true) == 165);
     CHECK(cap_fps(165, 165, true) == 165);
-    CHECK(cap_fps(165, 144, true) == 120);
+    CHECK(cap_fps(165, 144, true) == 144);
     CHECK(cap_fps(240, 240, true) == 240);
     CHECK(cap_fps(240, 239, true) == 240);
     CHECK(cap_fps(120, 119, true) == 120);
@@ -105,7 +120,34 @@ static void test_cap() {
     CHECK(cap_fps(60, 30, true) == 60);
     CHECK(cap_fps(240, 0, true) == 240);
     CHECK(cap_fps(240, 60, false) == 240);
-    CHECK(cap_fps(100, 240, true) == 60);
+    CHECK(cap_fps(100, 240, true) == 120);
+    CHECK(valid_fps(0) == 60);
+    CHECK(valid_fps(59) == 60);
+    CHECK(valid_fps(100) == 120);
+    CHECK(valid_fps(150) == 144);
+    CHECK(valid_fps(360) == 240);
+}
+
+static void test_ladder() {
+    static const int rates[] = {60, 120, 144, 165, 240};
+    for (int r : rates) {
+        int frames = 0;
+        for (int i = 0; i < 240; i++) frames += frames_for_step(r, i);
+        CHECK_NEAR(frames, 4.0 * r, 0.5);
+    }
+    CHECK(frames_for_step(60, 0) == 1);
+    CHECK(frames_for_step(120, 0) == 2);
+    CHECK(frames_for_step(240, 0) == 4);
+    int total = 0;
+    for (int i = 0; i < 240; i++) total += frames_for_step(165, i);
+    CHECK_NEAR(total, 11.0 * 60, 1.0);
+    CHECK(granule_quarter(1, 0) == 4);
+    CHECK(granule_quarter(2, 0) == 2);
+    CHECK(granule_quarter(2, 1) == 2);
+    CHECK(granule_quarter(3, 0) == 1);
+    CHECK(granule_quarter(3, 1) == 1);
+    CHECK(granule_quarter(3, 2) == 2);
+    CHECK(granule_quarter(4, 0) == 1);
 }
 
 static void test_plan_and_next() {
@@ -260,6 +302,7 @@ int main() {
     test_blends();
     test_slerp();
     test_cap();
+    test_ladder();
     test_plan_and_next();
     test_simulation();
     if (g_failed) {

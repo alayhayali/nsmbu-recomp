@@ -11,6 +11,7 @@ type AgentResponse = {
     pid?: number;
     player?: { x: number; y: number; z: number };
     path?: string;
+    output?: string;
 };
 
 export class AgentClient {

@@ -12,6 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import setup
 
 KEY_HEX = "0011223344556677"   "8899aabbccddeeff"
+OTHER_HEX = "ffeeddccbbaa99887766554433221100"
+TITLE_ID = "0005000010101d00"
 
 class Keys(unittest.TestCase):
     def test_raw_and_hex(self):
@@ -22,6 +24,8 @@ class Keys(unittest.TestCase):
         self.assertEqual(setup.parse_key("0x" + KEY_HEX), bytes.fromhex(KEY_HEX))
         self.assertEqual(setup.parse_key(" ".join(KEY_HEX[i:i + 8] for i in range(0, 32, 8))), bytes.fromhex(KEY_HEX))
         self.assertEqual(setup.parse_key(KEY_HEX.encode()), bytes.fromhex(KEY_HEX))
+        self.assertEqual(setup.parse_key("\ufeff" + KEY_HEX), bytes.fromhex(KEY_HEX))
+        self.assertEqual(setup.parse_key(b"\xef\xbb\xbf" + KEY_HEX.encode()), bytes.fromhex(KEY_HEX))
 
     def test_malformed(self):
         for bad in ("", "1234", KEY_HEX[:-1], KEY_HEX + "0", "zz" * 16, b"\xff" * 15, b"\xff" * 17):
@@ -30,21 +34,113 @@ class Keys(unittest.TestCase):
     def test_key_file(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "k.key")
-            with open(p, "wb") as f:
-                f.write(bytes(range(16)))
-            self.assertEqual(setup.read_key_file(p), bytes(range(16)))
-            with open(p, "w") as f:
-                f.write(KEY_HEX + "\n")
-            self.assertEqual(setup.read_key_file(p), bytes.fromhex(KEY_HEX))
+            for kind in ("disc", "common"):
+                with open(p, "wb") as f:
+                    f.write(bytes(range(16)))
+                self.assertEqual(setup.read_key_file(p, kind), bytes(range(16)), kind)
+                with open(p, "w") as f:
+                    f.write(KEY_HEX + "\n")
+                self.assertEqual(setup.read_key_file(p, kind), bytes.fromhex(KEY_HEX), kind)
             with open(p, "wb") as f:
                 f.write(b"x" * 5000)
-            self.assertIsNone(setup.read_key_file(p))
-            self.assertIsNone(setup.read_key_file(os.path.join(d, "missing")))
+            self.assertIsNone(setup.read_key_file(p, "disc"))
+            self.assertIsNone(setup.read_key_file(p, "common"))
+            self.assertIsNone(setup.read_key_file(os.path.join(d, "missing"), "disc"))
+            self.assertIsNone(setup.read_key_file(os.path.join(d, "missing"), "common"))
 
     def test_stdin_blob(self):
         k = setup.Keys()
         k.disc, k.common = bytes(16), bytes.fromhex(KEY_HEX)
         self.assertEqual(k.stdin_blob(), ("disc %s\ncommon %s\n" % ("00" * 16, KEY_HEX)).encode())
+
+class KeyFiles(unittest.TestCase):
+    def write(self, d, data, name="keys.txt"):
+        p = os.path.join(d, name)
+        with open(p, "wb") as f:
+            f.write(data)
+        return p
+
+    def test_cemu_keys_txt(self):
+        text = ("# Cemu keys\n"
+                "common = %s\n"
+                "disc = %s\n"
+                "%s = %s\n" % (KEY_HEX, OTHER_HEX, TITLE_ID, OTHER_HEX))
+        with tempfile.TemporaryDirectory() as d:
+            p = self.write(d, text.encode())
+            self.assertEqual(setup.read_key_file(p, "common"), bytes.fromhex(KEY_HEX))
+            self.assertEqual(setup.read_key_file(p, "disc"), bytes.fromhex(OTHER_HEX))
+            self.assertEqual(setup.keys_in_text(text)["title"], [(TITLE_ID, bytes.fromhex(OTHER_HEX))])
+            self.assertIsNone(setup.key_file_problem(p, "common"))
+            self.assertIsNone(setup.key_file_problem(p, "disc"))
+
+    def test_encodings(self):
+        text = "common = %s\r\ndisc = %s\r\n" % (KEY_HEX, OTHER_HEX)
+        blobs = {
+            "utf-8-sig": text.encode("utf-8-sig"),
+            "utf-8-bom": b"\xef\xbb\xbf" + text.encode("utf-8"),
+            "utf-16-le-bom": b"\xff\xfe" + text.encode("utf-16-le"),
+            "utf-16-be-bom": b"\xfe\xff" + text.encode("utf-16-be"),
+        }
+        with tempfile.TemporaryDirectory() as d:
+            for name, data in blobs.items():
+                p = self.write(d, data, name + ".txt")
+                self.assertEqual(setup.read_key_file(p, "common"), bytes.fromhex(KEY_HEX), name)
+                self.assertEqual(setup.read_key_file(p, "disc"), bytes.fromhex(OTHER_HEX), name)
+
+    def test_bare_crlf(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self.write(d, (KEY_HEX.upper() + "\r\n").encode())
+            self.assertEqual(setup.read_key_file(p, "disc"), bytes.fromhex(KEY_HEX))
+            self.assertEqual(setup.read_key_file(p, "common"), bytes.fromhex(KEY_HEX))
+
+    def test_named_line_wins(self):
+        text = "disc = %s\n%s\n" % (OTHER_HEX, KEY_HEX)
+        with tempfile.TemporaryDirectory() as d:
+            p = self.write(d, text.encode())
+            self.assertEqual(setup.read_key_file(p, "disc"), bytes.fromhex(OTHER_HEX))
+            self.assertEqual(setup.read_key_file(p, "common"), bytes.fromhex(KEY_HEX))
+
+    def test_quoted_and_comments(self):
+        text = '// keys\n\n"common" : "%s"\n' % KEY_HEX
+        with tempfile.TemporaryDirectory() as d:
+            p = self.write(d, text.encode())
+            self.assertEqual(setup.read_key_file(p, "common"), bytes.fromhex(KEY_HEX))
+
+    def test_title_only(self):
+        text = "%s = %s\n" % (TITLE_ID, OTHER_HEX)
+        with tempfile.TemporaryDirectory() as d:
+            p = self.write(d, text.encode())
+            self.assertIsNone(setup.read_key_file(p, "common"))
+            self.assertIsNone(setup.read_key_file(p, "disc"))
+            self.assertIn(setup.format_title_id(TITLE_ID), setup.key_file_problem(p, "common"))
+            self.assertIn("not the Wii U common key", setup.key_file_problem(p, "common"))
+            self.assertIn("not the disc key", setup.key_file_problem(p, "disc"))
+
+    def test_no_key(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self.write(d, b"# nothing here\n")
+            for kind in ("common", "disc"):
+                self.assertIsNone(setup.read_key_file(p, kind))
+                self.assertIn("keys.txt", setup.key_file_problem(p, kind))
+                self.assertIn("16 raw bytes", setup.key_file_problem(p, kind))
+            self.assertIn("cannot be read", setup.key_file_problem(os.path.join(d, "missing"), "common"))
+
+    def test_discovery(self):
+        if any(os.path.isfile(os.path.join(setup.PKG, n)) for n in ("common.key", "keys.txt")):
+            self.skipTest("a key file is in the release folder")
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("WIIU_COMMON_KEY", None)
+            image = os.path.join(d, "game.wux")
+            open(image, "wb").close()
+            p = self.write(d, ("disc = %s\n%s\n" % (OTHER_HEX, KEY_HEX)).encode())
+            self.assertEqual(setup.find_common_key(image), (None, None))
+            with open(p, "w") as f:
+                f.write("common = %s\n" % KEY_HEX)
+            self.assertEqual(setup.find_common_key(image), (p, bytes.fromhex(KEY_HEX)))
+            side = os.path.join(d, "game.key")
+            with open(side, "w") as f:
+                f.write("disc = %s\n" % OTHER_HEX)
+            self.assertEqual(setup.find_sidecar_disc_key(image), side)
 
 class Paths(unittest.TestCase):
     def test_clean_path(self):
@@ -152,8 +248,14 @@ class ArchiveTitles(unittest.TestCase):
 
     def test_european_wrong_version(self):
         eu = _title("0005000010101e00", 64)
-        with self.assertRaisesRegex(setup.SetupError, "version 64.*title version 80"):
+        with self.assertRaisesRegex(setup.SetupError, "version 64.*title version 0 or 80"):
             setup.archive_choice(self.info([eu], eu))
+
+    def test_european_base_disc(self):
+        eu = _title("0005000010101e00", 0)
+        folder, notes = setup.archive_choice(self.info([eu], eu))
+        self.assertEqual(folder, "0005000010101e00_v0")
+        self.assertEqual(notes, [])
 
     def test_other_region(self):
         with self.assertRaisesRegex(setup.SetupError, "archive contains the Japan version"):
@@ -472,6 +574,28 @@ class BundledPython(unittest.TestCase):
 
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "gui", "console_setup_win.cpp")) as f:
             self.assertIn('"tools\\\\python\\\\python.exe"', f.read())
+
+class ShaderWarm(unittest.TestCase):
+    def test_progress_line(self):
+        self.assertIsNone(setup.parse_warm_progress("boot"))
+        self.assertIsNone(setup.parse_warm_progress("[warm] done"))
+        self.assertEqual(setup.parse_warm_progress("[warm] progress 12 0 12 shaders compiled\n"),
+                         (12, 0, "12 shaders compiled"))
+        self.assertEqual(setup.parse_warm_progress("[warm] progress 3 10 pixel"), (3, 10, "pixel"))
+
+    def test_cancel_line(self):
+        self.assertTrue(setup.shader_cancel_request('{"cmd":"shaders_cancel","id":0}\n'))
+        self.assertFalse(setup.shader_cancel_request('{"cmd":"shaders"}'))
+        self.assertFalse(setup.shader_cancel_request("not json"))
+
+    def test_failure_message(self):
+        text = setup.shader_warm_failure(1, 4, ["[warm] progress 4 0 4 shaders compiled", "FATAL: no device"])
+        self.assertIn("exit code 1", text)
+        self.assertIn("FATAL: no device", text)
+        self.assertNotIn("[warm] progress", text)
+        self.assertIn("play anyway", text)
+        none = setup.shader_warm_failure(0, 0, [])
+        self.assertIn("did not compile any shaders", none)
 
 class NonInteractive(unittest.TestCase):
     def test_ui_refuses_to_prompt(self):
