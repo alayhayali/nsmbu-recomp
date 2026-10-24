@@ -195,12 +195,13 @@ void setup_style() {
     s.WindowTitleAlign = ImVec2(0.5f, 0.5f);
     ImVec4* c = s.Colors;
 
-    c[ImGuiCol_WindowBg] = ImVec4(0.03f, 0.07f, 0.12f, 0.975f);
+    c[ImGuiCol_WindowBg] = ImVec4(0.03f, 0.07f, 0.12f, 1.0f);
     c[ImGuiCol_ChildBg] = ImVec4(0.06f, 0.13f, 0.20f, 0.35f);
     c[ImGuiCol_PopupBg] = ImVec4(0.05f, 0.11f, 0.18f, 0.98f);
     c[ImGuiCol_Border] = ImVec4(0.30f, 0.62f, 0.70f, 0.45f);
-    c[ImGuiCol_TitleBg] = ImVec4(0.05f, 0.20f, 0.30f, 1.0f);
-    c[ImGuiCol_TitleBgActive] = ImVec4(0.06f, 0.27f, 0.38f, 1.0f);
+    c[ImGuiCol_TitleBg] = c[ImGuiCol_WindowBg];
+    c[ImGuiCol_TitleBgActive] = c[ImGuiCol_WindowBg];
+    c[ImGuiCol_TitleBgCollapsed] = c[ImGuiCol_WindowBg];
     c[ImGuiCol_FrameBg] = ImVec4(0.10f, 0.22f, 0.32f, 0.85f);
     c[ImGuiCol_FrameBgHovered] = ImVec4(0.14f, 0.34f, 0.46f, 0.90f);
     c[ImGuiCol_FrameBgActive] = ImVec4(0.17f, 0.42f, 0.54f, 1.0f);
@@ -1448,7 +1449,7 @@ void perf_window(bool menu_open) {
 void settings_window() {
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 ds = io.DisplaySize;
-    const ImVec2 size(std::min(860.0f, ds.x * 0.94f), std::min(620.0f, ds.y * 0.92f));
+    const ImVec2 size(std::min(1040.0f, ds.x * 0.96f), std::min(620.0f, ds.y * 0.92f));
     ImGui::SetNextWindowPos(ImVec2(ds.x * 0.5f, ds.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
     ImGuiWindowFlags fl = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -1458,7 +1459,15 @@ void settings_window() {
         ImGui::SetNextWindowFocus();
         U.just_opened = false;
     }
-    if (ImGui::Begin(app_title::kSettings, &open, fl)) {
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+    const bool begun = ImGui::Begin(app_title::kSettings, &open, fl);
+    ImGui::PopStyleVar();
+    if (begun) {
+        const ImVec2 wp = ImGui::GetWindowPos();
+        const float th = ImGui::GetFrameHeight();
+        ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(wp.x, wp.y + th - 2),
+                                                 ImVec2(wp.x + ImGui::GetWindowWidth(), wp.y + th + 2),
+                                                 ImGui::GetColorU32(ImGuiCol_WindowBg));
 
         if (U.cap_action < 0 && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId)) {
             if (controller_pressed(input_map::kPadLB)) U.select_tab = (U.tab + kTabs - 1) % kTabs;

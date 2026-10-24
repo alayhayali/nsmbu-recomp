@@ -19,6 +19,7 @@ Use the `changelog` skill when editing.
 ### Changed
 
 - The renderer uses less CPU each frame, so busy scenes and high frame rate settings hold their speed better.
+- The settings overlay is wider, and its title bar matches the panel with no separator line so it no longer looks like a movable window.
 - Cleanup the installer UI layout.
 - Removed framerate in title name.
 
