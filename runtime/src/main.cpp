@@ -60,6 +60,14 @@ void mem_setup_heaps(uint32_t data_end);
 void trace_dump(FILE* f, unsigned last);
 void mem_init_data_imports(uint32_t alloc_slot, uint32_t alloc_ex_slot, uint32_t free_slot);
 
+static bool crash_cli_no_dialog() {
+#ifndef NDEBUG
+    return env::CLI.enabled();
+#else
+    return false;
+#endif
+}
+
 #ifndef _WIN32
 
 static int g_crash_fd = -1;
@@ -151,15 +159,17 @@ static void crash_handler(int sig, siginfo_t* si, void* uctx) {
         if (f) { trace_dump(f, 3000); fclose(f); if (write(2, "[trace] wrote trace_dump.txt\n", 29) < 0) {} }
     }
     input::stop_rumble_now();
+    if (!crash_cli_no_dialog()) {
 #ifndef __ANDROID__
-    if (fork() == 0) {
-        std::string msg = "The game crashed.\n\nA crash log was written to:\n";
-        msg += path;
-        msg += "\n\nReport crash opens GitHub and the logs folder; describe what happened yourself.";
-        user_error::show_fatal(msg, user_error::IssueKind::InGame);
-        _exit(0);
-    }
+        if (fork() == 0) {
+            std::string msg = "The game crashed.\n\nA crash log was written to:\n";
+            msg += path;
+            msg += "\n\nReport crash opens GitHub and the logs folder; describe what happened yourself.";
+            user_error::show_fatal(msg, user_error::IssueKind::InGame);
+            _exit(0);
+        }
 #endif
+    }
     _exit(128 + sig);
 }
 
@@ -231,6 +241,10 @@ static LONG WINAPI crash_handler(EXCEPTION_POINTERS* ex) {
     if(fd>=0){win_crash_log_only(fd,"\n--- last log lines ---\n",24); log_ring_write(fd,win_crash_log_only); _close(fd); fprintf(stderr,"[crash] wrote %s\n",path);}
     if(g_ppc_trace) { FILE* f=fopen("trace_dump.txt","w"); if(f){trace_dump(f,3000);fclose(f);} }
     input::stop_rumble_now();
+    if (crash_cli_no_dialog()) {
+        fflush(stderr);
+        _exit(1);
+    }
     {
         std::string msg = "The game crashed.\n\nA crash log was written to:\n";
         msg += path;

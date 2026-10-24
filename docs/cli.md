@@ -72,13 +72,13 @@ Commands call into existing APIs: `render::frame_count()`, `interp::logic_steps(
 Package name and binary name are `nsmbu`.
 Entry: `tools/cli/bin/nsmbu.ts` with shebang / `package.json` `"bin":{"nsmbu":"…"}`, `"type":"module"`, `"engines":{"node":">=24"}`.
 
-The CLI exports `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout as before).
+The CLI exports `NSMBU_CLI=1` and `NSMBU_USER_DIR=<repo>/nsmbu` on every dev command (same layout as before).
 
 | Command | Role |
 | --- | --- |
 | `nsmbu build` / `build --release` / `build --sanitizer` | `tools/build/build.py` |
 | `nsmbu launch` (+ `--no-debug`, `--trace`, `--gdb`, `--lldb`) | `tools/run/launch.py` |
-| `nsmbu crash` | launch with `NSMBU_TEST_HOST_CRASH=1` to exercise the Report crash dialog |
+| `nsmbu crash` | launch with `NSMBU_TEST_HOST_CRASH=1`; in a Debug build the process exits non-zero and prints the crash log path instead of the Report crash dialog |
 | `nsmbu wine` (+ `--no-debug`, `--trace`) | cross-build `build/windows/nsmbu.exe` then `tools/run/launch.py --wine` |
 | `nsmbu run` / `run --release` | build then launch |
 | `nsmbu extract` | `tools/disc/extract.py` |

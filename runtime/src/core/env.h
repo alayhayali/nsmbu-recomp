@@ -42,6 +42,7 @@ const char* path(const Var& var);
 #define ENV(id, lit) inline const Var id{lit};
 
 // Session. Userdata, language, the log file, the renderer choice, and process hints.
+ENV(CLI, "NSMBU_CLI")
 ENV(USER_DIR, "NSMBU_USER_DIR")
 ENV(LOG_FILE, "NSMBU_LOG_FILE")
 ENV(SETTINGS, "NSMBU_SETTINGS")

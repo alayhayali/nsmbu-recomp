@@ -31,7 +31,7 @@ const COMMANDS: CommandSpec[] = [
     },
     {
         name: "crash",
-        description: "Crash on purpose to test the Report crash dialog",
+        description: "Crash on purpose (Debug: exit non-zero, no dialog)",
         noFiles: true,
     },
     {
