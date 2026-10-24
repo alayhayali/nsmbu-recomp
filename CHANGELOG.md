@@ -20,6 +20,8 @@ Use the `changelog` skill when editing.
 ### Changed
 
 - The renderer uses less CPU each frame, so busy scenes and high frame rate settings hold their speed better.
+- Save states are small again.
+  Turn on Full save states in the Saves tab for an exact copy of the running game.
 - The settings overlay is wider, and its title bar matches the panel with no separator line so it no longer looks like a movable window.
 - Cleanup the installer UI layout.
 - Removed framerate in title name.
