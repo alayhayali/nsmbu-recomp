@@ -8,6 +8,8 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-24
+
 ### Removed
 
 - Opening a course directly no longer rewrites the loading card's world name or green level number.
@@ -15,9 +17,9 @@ Use the `changelog` skill when editing.
 ### Fixed
 
 - The world map accepts input after the opening cinematic.
+- The world map shows the course number after the opening cinematic.
 - Loading another course while you are already playing one no longer crashes.
 - Quitting to the world map from a course you opened no longer crashes.
-- The world map shows the course number after the opening cinematic.
 
 ## [0.6.0] - 2026-10-24
 
@@ -180,7 +182,8 @@ Use the `changelog` skill when editing.
 
 - The TV and GamePad present together on one vsync.
 
-[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.4.1...v0.4.2
