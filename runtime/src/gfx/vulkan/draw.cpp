@@ -1830,6 +1830,20 @@ UploadSlice vertex_window_smoke_snapshot(uint32_t binding,uint32_t address,
                                 windowLength,data,poisonUnused);
 }
 
+void resolve_color_target_sizes(std::array<Surface*, 8>& colors, uint32_t width, uint32_t height) {
+  bool dropped = false;
+  for (auto*& c : colors)
+    if (c && (c->extent.width < width || c->extent.height < height)) {
+      c = nullptr;
+      dropped = true;
+    }
+  if (!dropped) return;
+  static bool logged = false;
+  if (logged) return;
+  logged = true;
+  LOG("[gfx] dropped a color target smaller than %ux%u", width, height);
+}
+
 void reset_pipeline_lookup_cache() { lastPipelineLookup = {}; pipelineLookaside = {}; samplerMemo = {}; drawBatchState = {}; }
 uint64_t draw_batch_submissions() { return drawBatchSubmissions; }
 void draw(const uint32_t *r, uint32_t prim, uint32_t count, uint32_t indexType,
@@ -2026,9 +2040,7 @@ void draw(const uint32_t *r, uint32_t prim, uint32_t count, uint32_t indexType,
     return;
   uint32_t width = target->extent.width, height = target->extent.height;
   float sx = target->sx, sy = target->sy;
-  for (auto *&c : colors)
-    if (c && (c->extent.width != width || c->extent.height != height))
-      throw std::runtime_error("mismatched Vulkan attachments");
+  resolve_color_target_sizes(colors, width, height);
   if (depth && (depth->extent.width < width || depth->extent.height < height))
     depth = nullptr;
   rprof::mark(rprof::kTargets);

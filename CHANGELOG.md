@@ -8,6 +8,10 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
+### Fixed
+
+- The screen no longer freezes while the music keeps playing if a frame's pictures are different sizes.
+
 ## [0.6.1] - 2026-10-24
 
 ### Removed

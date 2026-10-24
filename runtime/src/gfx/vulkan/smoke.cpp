@@ -9,7 +9,11 @@
 #include "Cafe/HW/Latte/LatteAddrLib/LatteAddrLib.h"
 #include "shaders.h"
 #include "gx2/gx2.h"
+#include "Cafe/HW/Latte/Core/LatteCachedFBO.h"
+#include "Cafe/HW/Latte/ISA/LatteReg.h"
 #include "Cafe/HW/Latte/ISA/RegDefines.h"
+#include "Cafe/HW/Latte/LegacyShaderDecompiler/LatteDecompiler.h"
+#include <array>
 #include "core/runtime.h"
 #include <algorithm>
 #include <cmath>
@@ -290,6 +294,47 @@ void depth_copy_check() {
  fprintf(stderr,"[renderer smoke] depth/stencil target resized by aspect ratio and resolution without blits passed\n");
 }
 
+void mismatched_color_targets() {
+ set_frame_aspect(16.0f/9.0f);set_res_scale(1);latch_res_scale();
+ std::vector<uint32_t> regs(0x10000,0);
+ auto sizeFor=[](uint32_t pitch,uint32_t height){return (pitch/8-1)|(((height*pitch)/64-1)<<10);};
+ auto bind=[&](int i,uint32_t w,uint32_t h){
+  regs[mmCB_COLOR0_BASE+i]=mem::host_alloc(160*160*4,256);
+  regs[mmCB_COLOR0_SIZE+i]=sizeFor(128,128);
+  regs[mmCB_COLOR0_INFO+i]=0x1Au<<2;
+  regs[mmCB_COLOR0_TILE+i]=w;
+  regs[mmCB_COLOR0_FRAG+i]=h;
+  regs[mmCB_COLOR0_VIEW+i]=0;
+ };
+ bind(0,128,128);
+ bind(1,64,64);
+ regs[Latte::REGADDR::CB_TARGET_MASK]=0xFFu;
+ regs[Latte::REGADDR::PA_SC_GENERIC_SCISSOR_TL]=1u<<31;
+ regs[Latte::REGADDR::PA_SC_GENERIC_SCISSOR_BR]=64u|(64u<<16);
+ LatteDecompilerShader ps(LatteConst::ShaderType::Pixel);
+ ps.pixelColorOutputMask=3;
+ const auto& lcr=*reinterpret_cast<const LatteContextRegister*>(regs.data());
+ require(LatteMRT::GetActiveColorBufferMask(&ps,lcr)==3,"pitch-sized color targets were dropped before the size check");
+ std::array<Surface*,8> colors{};
+ uint32_t slices[8]{};
+ auto load=[&]{
+  colors={};
+  uint8_t mask=LatteMRT::GetActiveColorBufferMask(&ps,lcr);
+  for(int i=0;i<8;i++) if(mask&(1u<<i)) colors[i]=color_target(regs.data(),i,&slices[i]);
+ };
+ load();
+ require(colors[0]&&colors[0]->extent.width==128&&colors[0]->extent.height==128,"primary color target extent differs");
+ require(colors[1]&&colors[1]->extent.width==64&&colors[1]->extent.height==64,"smaller color target extent differs");
+ resolve_color_target_sizes(colors,colors[0]->extent.width,colors[0]->extent.height);
+ require(colors[0]&&colors[0]->extent.width==128,"primary color target was dropped");
+ require(!colors[1],"smaller color target aborted the frame instead of being dropped");
+ bind(1,160,160);
+ require(LatteMRT::GetActiveColorBufferMask(&ps,lcr)==3,"larger color target was dropped by the scissor check");
+ load();
+ resolve_color_target_sizes(colors,colors[0]->extent.width,colors[0]->extent.height);
+ require(colors[1]&&colors[1]->extent.width==160&&colors[1]->extent.height==160,"larger color target was dropped");
+ fprintf(stderr,"[renderer smoke] mismatched color targets keep the frame and drop only a smaller attachment\n");
+}
 void volume_target_check() {
  if(!R.imageView2DOn3DImage){fprintf(stderr,"[renderer smoke] volume render targets skipped (no imageView2DOn3DImage)\n");return;}
  const uint32_t w=8,h=8,depth=4,slice=2;
@@ -785,6 +830,7 @@ int renderer_smoke_test() {
     set_res_scale(1);latch_res_scale();
     fprintf(stderr,"[renderer smoke] guest upload into a render target created at 2x passed\n");
    }
+   mismatched_color_targets();
   }
 
   command_buffer();flush();require(R.garbageBuffers.empty()&&R.garbageImages.empty()&&R.garbageCacheRegions.empty(),"deferred Vulkan resources were not reclaimed");

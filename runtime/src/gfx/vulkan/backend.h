@@ -195,6 +195,7 @@ VkImageView sampled_texture_view(Surface*,const uint32_t* texWords);
 Surface* find_or_create_surface(const SurfaceDesc&,bool forRendering);
 void invalidate_surface_lookup();
 Surface* color_target(const uint32_t*,int,uint32_t* slice=nullptr);
+void resolve_color_target_sizes(std::array<Surface*, 8>& colors, uint32_t width, uint32_t height);
 Surface* depth_target(const uint32_t*,uint32_t* slice=nullptr);
 Surface* surface_from_color_buffer(uint32_t,uint32_t* firstSlice=nullptr,uint32_t* numSlices=nullptr);
 Surface* surface_from_depth_buffer(uint32_t,uint32_t* firstSlice=nullptr,uint32_t* numSlices=nullptr);
