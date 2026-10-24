@@ -8,6 +8,16 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
+### Removed
+
+- Opening a course directly no longer rewrites the loading card's world name or green level number.
+
+### Fixed
+
+- The world map accepts input after the opening cinematic.
+- Quitting to the world map from a course you opened no longer crashes.
+- The world map shows the course number after the opening cinematic.
+
 ## [0.6.0] - 2026-10-24
 
 ### Added

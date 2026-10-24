@@ -136,8 +136,8 @@ The debug tab shows the active pack, resolved file, and current status.
   heap.
 - Resources on persistent heaps outside the course heap.
 - Edits to files that were not opened again by the course transition.
-- In-place patching of the running course. Actors, tiles, collision, and
-  models are rebuilt only by the course transition.
+- In-place patching of the running course.
+  Actors, tiles, collision, and models are rebuilt only by the course transition.
 
 ## Verification
 

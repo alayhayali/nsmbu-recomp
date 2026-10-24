@@ -1,49 +1,20 @@
 #include "core/runtime.h"
 #include "mods/packages.h"
-#include "mods/sdk/nsmbu.h"
 #include "guest_addr.h"
 
 #include <cstdio>
-#include <cstring>
-#include <string>
 
 extern "C" void f_02994164_orig(Cpu* c);
 extern "C" void nsmbu_note_scene_src(uint32_t src, uint32_t factory);
-extern "C" void f_024BAD4C_orig(Cpu* c);
-extern "C" void f_024BD86C_orig(Cpu* c);
 extern "C" void f_0226FBC4_orig(Cpu* c);
-extern "C" void f_025D8B28_orig(Cpu* c);
-extern "C" void f_02672C90_orig(Cpu* c);
-extern "C" void f_02681BFC_orig(Cpu* c);
-extern "C" void f_0267CB3C_orig(Cpu* c);
-extern "C" void f_0252F900_orig(Cpu* c);
-extern "C" void f_025CF020_orig(Cpu* c);
 
-namespace threads {
-Cpu* current();
-}
-
-static const uint32_t kAreaTask = GD(0x101D1598);
 static const uint32_t kCourseInfo = GD(0x101D18EC);
 static const uint32_t kCourseSelectMgr = GD(0x101CBE14);
-static const uint32_t kCourseTask = GD(0x101D15F0);
 static const uint32_t kFieldGame = GD(0x101D1604);
 static const uint32_t kMainGame = GD(0x101E7D7C);
 static const uint32_t kSaveMgr = GD(0x101E7DA4);
 static const uint32_t kSaveSlotSize = 0x204u;
-static const uint32_t kCreatorMap = GC(0x020292B8);
-static const uint32_t kCreatorCourseSelect = GC(0x0202B86C);
 static const uint32_t kPathNodeSize = 0x68;
-
-static bool g_banner_armed = false;
-
-static uint32_t g_world_course_textbox = 0;
-static uint32_t g_world_course_multi2d = 0;
-
-static void write_three_glyphs(uint32_t base, const uint8_t g[3]) {
-    if (base == 0) return;
-    for (int i = 0; i < 3; i++) st8(base + (uint32_t)i, g[i]);
-}
 
 static bool course_pair_ok(uint8_t world, uint8_t course) {
     return world != 0xFFu && world <= 8u && course != 0xFFu && course <= 40u;
@@ -88,13 +59,6 @@ static bool course_banner_state(uint8_t g[3], uint8_t* world_out, uint8_t* cours
     if (world_out) *world_out = world;
     if (course_out) *course_out = course;
     return true;
-}
-
-static void seed_maingame_course_tags(uint8_t world, uint8_t course) {
-    uint32_t game = ld32(kMainGame);
-    if (game == 0) return;
-    st32(game + 0x19Cu, world);
-    st32(game + 0x1A8u, course);
 }
 
 static bool in_mem2(uint32_t ea) {
@@ -159,6 +123,8 @@ static void write_checkpoint(uint32_t data, int32_t index, uint8_t world, uint8_
     st8(data + 0x0Du, 0xFF);
     st8(data + 0x0Eu, 0xFF);
     st8(data + 0x0Fu, 0xFF);
+    const uint32_t slot = (uint32_t)index < 2u ? (uint32_t)index : 0u;
+    st8(data + 0x0Eu + slot, 0);
     for (int i = 0; i < 3; i++) st8(data + 0x10u + (uint32_t)i, banner[i]);
 }
 
@@ -185,7 +151,10 @@ static void seed_player_map_fields(uint32_t player, uint32_t node, uint8_t world
     }
 }
 
+static bool g_left_course = false;
+
 static void seed_map_return_pose(uint32_t player, bool pack_create_pos) {
+    if (!g_left_course) return;
     uint8_t world = 0;
     uint8_t course = 0;
     if (!read_course_info(&world, &course)) return;
@@ -236,119 +205,22 @@ static void seed_map_return_pose(uint32_t player, bool pack_create_pos) {
     seed_player_map_fields(player, node, world, section, course_slot, pack_create_pos);
 }
 
-static std::string textbox_name_string(uint32_t textbox) {
-    if (!in_mem2(textbox) || textbox + 0xACu > mem::kMem2End) return {};
-    uint32_t name_p = ld32(textbox + 0xA8);
-    if (!in_mem2(name_p)) return {};
-    uint8_t b0 = ld8(name_p);
-    if (b0 >= 0x20 && b0 < 0x7F) return mem::read_cstr(name_p);
-    if (name_p + 8u > mem::kMem2End) return {};
-    uint32_t q = ld32(name_p + 4);
-    if (in_mem2(q) && ld8(q) >= 0x20 && ld8(q) < 0x7F) return mem::read_cstr(q);
-    q = ld32(name_p);
-    if (in_mem2(q) && ld8(q) >= 0x20 && ld8(q) < 0x7F) return mem::read_cstr(q);
-    return {};
-}
+extern "C" void nsmbu_banner_entry_arm(void) {}
 
-static void reapply_world_course_textbox(Cpu* c) {
-    if (c == nullptr) c = threads::current();
-    if (c == nullptr) return;
-    uint8_t world = 0;
-    uint8_t course = 0;
-    if (read_course_info(&world, &course)) seed_maingame_course_tags(world, course);
-    uint32_t task = ld32(kCourseTask);
-    uint32_t pregame = task != 0 ? ld32(task + 0xCC) : 0;
-    uint32_t multi2d = in_mem2(pregame) ? ld32(pregame) : g_world_course_multi2d;
-    uint32_t textbox = g_world_course_textbox;
-    if (textbox == 0 && in_mem2(pregame) && pregame + 0x800u <= mem::kMem2End) {
-        for (uint32_t off = 0; off < 0x800; off += 4) {
-            uint32_t cand = ld32(pregame + off);
-            if (!in_mem2(cand)) continue;
-            std::string name = textbox_name_string(cand);
-            if (name.find("WorldCourse") == std::string::npos) continue;
-            textbox = cand;
-            g_world_course_textbox = cand;
-            g_world_course_multi2d = multi2d;
-            break;
-        }
-    }
-    if (textbox == 0) return;
-    uint32_t saved[6] = {c->r[3], c->r[4], c->r[5], c->r[6], c->r[7], c->r[8]};
-    c->r[3] = textbox;
-    c->r[4] = 0;
-    f_02681BFC_orig(c);
-    c->r[3] = saved[0];
-    c->r[4] = saved[1];
-    c->r[5] = saved[2];
-    c->r[6] = saved[3];
-    c->r[7] = saved[4];
-    c->r[8] = saved[5];
-}
-
-static void fill_course_banner_digits(Cpu* c, uint32_t glyph_base, bool refresh) {
-    if (!g_banner_armed) return;
-    if (mods::lua_sdk::story_leave_pending()) return;
-    uint8_t g[3];
-    uint8_t world = 0;
-    uint8_t course = 0;
-    if (!course_banner_state(g, &world, &course)) return;
-    seed_maingame_course_tags(world, course);
-    if (glyph_base != 0) {
-        write_three_glyphs(glyph_base, g);
-        write_three_glyphs(glyph_base + 0x12D, g);
-    }
-    uint32_t task = ld32(kCourseTask);
-    if (task != 0) {
-        write_three_glyphs(task + 0x134, g);
-        write_three_glyphs(task + 0x261, g);
-    }
-    uint32_t field_game = ld32(kFieldGame);
-    if (field_game != 0) {
-        uint32_t data = field_game + 0x10;
-        write_three_glyphs(data + 0x10, g);
-        write_three_glyphs(data + 0x13D, g);
-    }
-    if (refresh) reapply_world_course_textbox(c != nullptr ? c : threads::current());
-}
-
-extern "C" void nsmbu_banner_entry_arm(void) {
-    g_banner_armed = true;
-}
-
-extern "C" void nsmbu_fill_course_banner_digits(void) {
-    fill_course_banner_digits(threads::current(), 0, true);
-}
-
-extern "C" void hook_025CF020(Cpu* c) {
-    if (ld32(kAreaTask) == 0) {
-        c->r[3] = 0;
-        return;
-    }
-    f_025CF020_orig(c);
-}
-
-extern "C" void hook_0252F900(Cpu* c) {
-    if (ld32(kAreaTask) == 0) return;
-    f_0252F900_orig(c);
-}
+extern "C" void nsmbu_fill_course_banner_digits(void) {}
 
 extern "C" void hook_02994164(Cpu* c) {
     uint32_t factory = ld32(c->r[5] + 4);
+    if (factory == GC(0x0202B4C8)) g_left_course = false;
     nsmbu_note_scene_src(c->r[4], factory);
-    if (g_banner_armed && (factory == kCreatorMap || factory == kCreatorCourseSelect))
-        g_banner_armed = false;
     f_02994164_orig(c);
     mods::packages::scene_change(factory);
 }
 
 extern "C" void hook_029CBBB4(Cpu*) {}
 
-extern "C" void hook_024BD86C(Cpu* c) {
-    if (mods::lua_sdk::story_leave_pending() && ld32(kCourseTask) != 0) return;
-    f_024BD86C_orig(c);
-}
-
 extern "C" void site_024B8324(Cpu* c) {
+    g_left_course = true;
     seed_map_return_pose(0, false);
 }
 
@@ -376,6 +248,7 @@ extern "C" void site_022703A4(Cpu* c) {
 }
 
 static void retarget_focus_node(Cpu* c, int copied_reg) {
+    if (!g_left_course) return;
     seed_map_return_pose(0, false);
     uint8_t world = 0;
     uint8_t course = 0;
@@ -387,8 +260,10 @@ static void retarget_focus_node(Cpu* c, int copied_reg) {
     uint32_t path = mgr != 0 ? cs_get_path(mgr, world, section) : 0;
     uint32_t node = cs_get_node(path, node_idx);
     if (node == 0 || !in_mem2(node)) return;
+    int32_t title_course = (int32_t)ld32(node + 0x50u);
+    if (title_course < 0) return;
     c->r[3] = node;
-    if (copied_reg >= 0) c->r[copied_reg] = ld32(node + 0x50u);
+    if (copied_reg >= 0) c->r[copied_reg] = (uint32_t)title_course;
 }
 
 extern "C" void site_0227CCF4(Cpu* c) {
@@ -397,89 +272,4 @@ extern "C" void site_0227CCF4(Cpu* c) {
 
 extern "C" void site_0227E2A8(Cpu* c) {
     retarget_focus_node(c, 11);
-}
-
-extern "C" void hook_024BAD4C(Cpu* c) {
-    uint32_t dest = c->r[3];
-    f_024BAD4C_orig(c);
-    fill_course_banner_digits(c, dest + 0x10, true);
-}
-
-extern "C" void site_024BD96C(Cpu* c) {
-    uint32_t task = ld32(kCourseTask);
-    uint32_t base = task != 0 ? task + 0x134 : c->r[31] + 0x134;
-    fill_course_banner_digits(c, base, true);
-}
-
-extern "C" void site_024BE280(Cpu* c) {
-    fill_course_banner_digits(c, 0, true);
-}
-
-extern "C" void hook_025D8B28(Cpu* c) {
-    if (!g_banner_armed) {
-        f_025D8B28_orig(c);
-        return;
-    }
-    fill_course_banner_digits(c, 0, false);
-    f_025D8B28_orig(c);
-    reapply_world_course_textbox(c);
-}
-
-extern "C" void hook_0267CB3C(Cpu* c) {
-    if (mods::lua_sdk::story_leave_pending()) return;
-    if (!g_banner_armed) {
-        f_0267CB3C_orig(c);
-        return;
-    }
-    uint8_t course = 0;
-    uint32_t before = c->r[4];
-    if (read_course_info(nullptr, &course)) {
-        if (before == 0xFFFFFFFFu || (int32_t)before < 0)
-            c->r[4] = course;
-        else if (course <= 11)
-            c->r[4] = course;
-    }
-    static int logged = 0;
-    if (logged++ < 40)
-        LOG("[banner-cb3c] in=%u out=%u course=%u lr=%08X", before, c->r[4], course, c->lr);
-    f_0267CB3C_orig(c);
-}
-
-extern "C" void hook_02681BFC(Cpu* c) {
-    if (mods::lua_sdk::story_leave_pending()) return;
-    if (!g_banner_armed) {
-        f_02681BFC_orig(c);
-        return;
-    }
-    uint32_t textbox = c->r[3];
-    uint8_t world = 0;
-    uint8_t course = 0;
-    if (read_course_info(&world, &course)) seed_maingame_course_tags(world, course);
-    f_02681BFC_orig(c);
-    std::string name = textbox_name_string(textbox);
-    if (name.find("WorldCourse") != std::string::npos) {
-        g_world_course_textbox = textbox;
-        uint32_t task = ld32(kCourseTask);
-        if (task != 0) {
-            uint32_t pregame = ld32(task + 0xCC);
-            if (pregame != 0) g_world_course_multi2d = ld32(pregame);
-        }
-    }
-}
-
-extern "C" void hook_02672C90(Cpu* c) {
-    if (!g_banner_armed) {
-        f_02672C90_orig(c);
-        return;
-    }
-    uint32_t multi2d = c->r[3];
-    uint32_t textbox = c->r[4];
-    uint8_t world = 0;
-    uint8_t course = 0;
-    if (read_course_info(&world, &course)) seed_maingame_course_tags(world, course);
-    f_02672C90_orig(c);
-    if (textbox_name_string(textbox).find("WorldCourse") != std::string::npos) {
-        g_world_course_textbox = textbox;
-        g_world_course_multi2d = multi2d;
-    }
 }
