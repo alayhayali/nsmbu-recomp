@@ -26,6 +26,6 @@ Agent control (single game instance):
   nsmbu rstick <x> <y> [--frames N]
   nsmbu screenshot [path]
   nsmbu eval [code] [--file PATH] [--timeout MS]
-  nsmbu wait --frame N | --step N [--timeout SEC]
+  nsmbu wait --frame N | --step N | --scene NAME [--timeout SEC]
   nsmbu quit | close
 `;

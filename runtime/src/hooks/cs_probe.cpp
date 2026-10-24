@@ -1,5 +1,6 @@
 #include "core/runtime.h"
 #include "mods/packages.h"
+#include "mods/sdk/nsmbu.h"
 #include "guest_addr.h"
 
 #include <cstdio>
@@ -7,7 +8,11 @@
 extern "C" void f_02994164_orig(Cpu* c);
 extern "C" void nsmbu_note_scene_src(uint32_t src, uint32_t factory);
 extern "C" void f_0226FBC4_orig(Cpu* c);
+extern "C" void f_024BD86C_orig(Cpu* c);
+extern "C" void f_0252F900_orig(Cpu* c);
+extern "C" void f_025CF020_orig(Cpu* c);
 
+static const uint32_t kAreaTask = GD(0x101D1598);
 static const uint32_t kCourseInfo = GD(0x101D18EC);
 static const uint32_t kCourseSelectMgr = GD(0x101CBE14);
 static const uint32_t kFieldGame = GD(0x101D1604);
@@ -218,6 +223,24 @@ extern "C" void hook_02994164(Cpu* c) {
 }
 
 extern "C" void hook_029CBBB4(Cpu*) {}
+
+extern "C" void hook_024BD86C(Cpu* c) {
+    if (mods::lua_sdk::story_leave_pending()) return;
+    f_024BD86C_orig(c);
+}
+
+extern "C" void hook_025CF020(Cpu* c) {
+    if (ld32(kAreaTask) == 0) {
+        c->r[3] = 0;
+        return;
+    }
+    f_025CF020_orig(c);
+}
+
+extern "C" void hook_0252F900(Cpu* c) {
+    if (ld32(kAreaTask) == 0) return;
+    f_0252F900_orig(c);
+}
 
 extern "C" void site_024B8324(Cpu* c) {
     g_left_course = true;

@@ -15,6 +15,7 @@ Use the `changelog` skill when editing.
 ### Fixed
 
 - The world map accepts input after the opening cinematic.
+- Loading another course while you are already playing one no longer crashes.
 - Quitting to the world map from a course you opened no longer crashes.
 - The world map shows the course number after the opening cinematic.
 

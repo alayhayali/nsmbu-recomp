@@ -113,19 +113,22 @@ Commands talk to the single running game over the fixed control socket.
 - `nsmbu open [slot|course|course-file] […]` — ensure binary, spawn the game with agent control enabled, wait until the socket accepts.
   A course file is a `course_res_pack` archive, such as `game/content/Common/course_res_pack/1-27.szs`, and starts that course the same way as `1-27`.
   Refuse if a game is already running.
-- `nsmbu status` — frame, logic step, player snapshot when in course, pid.
+- `nsmbu status` — one line from the guest thread: frame, logic step, pid, scene name, whether the world map or a course task is alive, course pack, entering pack when it differs, save file, map checkpoint, map node and world, and the player snapshot or `player=none`.
+  Fields that are not ready are omitted.
 - `nsmbu press A` / `press 8000` — short pulse (configurable frames).
 - `nsmbu stick <x> <y> [--frames N]` / `rstick …`
 - `nsmbu screenshot [path]` — wait until PNG written; print path.
 - `nsmbu eval [code] [--file PATH] [--timeout MS]` — run Lua on the game thread and print its output.
   The state persists between calls, has the mod SDK as the global `nsmbu`, and reads code from stdin when no code or file is given.
   `--timeout` limits execution time in milliseconds (default 5000) so a runaway loop errors instead of freezing the game.
-- `nsmbu wait --frame N` / `wait --step N` — poll `status` until bound.
+- `nsmbu wait --frame N` / `wait --step N` / `wait --scene NAME` — poll `status` until every bound is met.
+  `--scene` matches the scene name (`Boot`, `Flow`, `FileSelect`, `SaveSelect`, `Title`, `Menu`, `Map`, `CourseTask`, `CourseSelect`).
+  A timeout includes the last status line.
 - `nsmbu quit` / `close` — graceful quit and tear down control files under `.tmp/agent/`.
 
-These commands block until their work is done: `open` waits for the socket, `press` / `stick` hold for their frames, `screenshot` waits for the PNG, `eval` waits for the game thread to run the code, and `wait` polls until the frame or step bound.
+These commands block until their work is done: `open` waits for the socket, `press` / `stick` hold for their frames, `screenshot` waits for the PNG, `eval` waits for the game thread to run the code, `status` waits for the guest thread to read the scene, and `wait` polls until the frame, step, or scene bound.
 Do not add shell sleeps between control commands.
-Use `wait --step N` when the next action needs guest progress.
+Use `wait --step N` or `wait --scene NAME` when the next action needs guest progress.
 
 Headless boots that use `tools/run/scripted-run.sh` stay available as `nsmbu scripted <name>` so agents can still do exit-at-frame dumps without a second path.
 Live `open` / `press` / `screenshot` is the interactive loop.
@@ -137,8 +140,9 @@ New small module (for example `runtime/src/agent/agent_ctl.cpp` and header):
 - Start listener when `NSMBU_AGENT_SOCK` (or equivalent `env::` entry in `runtime/src/core/env.h`) is set by the CLI.
 - Accept one local client connection at a time (or multiplex simple request IDs).
 - Apply pad overlay each `input::read()`.
-- Service screenshot, status, and quit on the render/host thread safely (queue commands, apply on known threads — same discipline as overlay / `hostui::post`).
-- Service `eval` on the guest thread next to `mods::packages::frame()`, so Lua reads and writes game state at the same point as mods.
+- Service screenshot and quit on the render/host thread safely (queue commands, apply on known threads — same discipline as overlay / `hostui::post`).
+- Service `status` and `eval` on the guest thread next to `mods::packages::frame()`, so reads and writes see game state at the same point as mods.
+  `status` also runs on a held frame so a stuck logic step still answers.
   Keep one persistent `lua_mod` instance for the console and reuse `mods::lua_eval` from `runtime/src/mods/lua_eval.cpp`.
 - Wire quit to the existing SDL quit path.
 
@@ -147,7 +151,8 @@ No change to the replay file format or `NSMBU_PRESS` start-only tables except co
 ## Docs and agent skills
 
 `CONTRIBUTING.md`, `docs/nsmbu/port.md`, `docs/automation.md`, `AGENTS.md`, and `.agents/skills/build/SKILL.md` use `nsmbu …` for CLI invocations.
-`.agents/skills/nsmbu/SKILL.md` documents install, the single-instance control loop (`open` → `status` / `screenshot` → `press` → `wait` → `close`), and that complex input stays on `record` / `replay`.
+`.agents/skills/nsmbu/SKILL.md` documents the single-instance control loop: read `nsmbu status` before `eval`, then `press`, `wait --scene`, and `close`.
+Complex input stays on `record` / `replay`.
 
 ## Implementation notes
 

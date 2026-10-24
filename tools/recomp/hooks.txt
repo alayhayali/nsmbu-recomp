@@ -7,6 +7,7 @@
 @022A79C4  # DistantViewMgr::calcView_: scale the flicker before it is added to the projection
 02994164  # Scene::setNextScene: onSceneChange and scene src for mod API transitions
 029CBBB4  # error viewer: this port does not draw it, so the call must not pause the game
+024BD86C  # course setup: skip while a story load is leaving the live course
 @024B8324  # course out: after enter type 3, seed map checkpoint/pose if still missing
 0226FBC4  # CourseSelectPlayer setup: seed map pose before path resolve / spawn
 @0226FD14  # CourseSelectPlayer spawn: seed MainGame pose again before the read
@@ -15,6 +16,8 @@
 @022703A4  # CourseSelectPlayer createImmediately fallback: seed before pack
 @0227CCF4  # map focus: copy the opened course node into the camera pose
 @0227E2A8  # map focus: same copy on the second pose setup
+0252F900  # course HUD: AreaTask is null while a course change replaces the area
+025CF020  # course HUD helper: AreaTask is null during course teardown
 029C52CC  # ApplicationFramework::procCalc_: start a frame; an in-between pass skips the task-tree logic
 024FBF6C  # RenderObjRenderMgr::calcView: bake the in-between camera projection for the draw
 029C4FE4  # ApplicationFramework::procDraw_: a 30 fps step draws no frame

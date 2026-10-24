@@ -38,15 +38,48 @@ export async function cmdOpen(repo: string, rest: string[]): Promise<void> {
     console.log(`ready (pid ${child.pid}, socket ${sock})`);
 }
 
-function printStatus(r: Awaited<ReturnType<AgentClient["status"]>>): void {
+function formatStatus(r: Awaited<ReturnType<AgentClient["status"]>>): string {
     const parts = [`frame=${r.frame ?? "?"}`, `step=${r.step ?? "?"}`];
     if (r.pid !== undefined) {
         parts.push(`pid=${r.pid}`);
     }
+    if (r.scene) {
+        parts.push(`scene=${r.scene}`);
+    }
+    if (r.map !== undefined) {
+        parts.push(`map=${r.map ? 1 : 0}`);
+    }
+    if (r.course !== undefined) {
+        parts.push(`course=${r.course ? 1 : 0}`);
+    }
+    if (r.pack) {
+        parts.push(`pack=${r.pack}`);
+    }
+    if (r.entering) {
+        parts.push(`entering=${r.entering}`);
+    }
+    if (r.file !== undefined) {
+        parts.push(`file=${r.file}`);
+    }
+    if (r.cp !== undefined) {
+        parts.push(`cp=${r.cp}`);
+    }
+    if (r.node !== undefined) {
+        parts.push(`node=${r.node}`);
+    }
+    if (r.world !== undefined) {
+        parts.push(`world=${r.world}`);
+    }
     if (r.player) {
         parts.push(`player=(${r.player.x}, ${r.player.y}, ${r.player.z})`);
+    } else {
+        parts.push("player=none");
     }
-    console.log(parts.join(" "));
+    return parts.join(" ");
+}
+
+function printStatus(r: Awaited<ReturnType<AgentClient["status"]>>): void {
+    console.log(formatStatus(r));
 }
 
 export async function cmdStatus(repo: string): Promise<void> {
@@ -125,26 +158,34 @@ export async function cmdScreenshot(repo: string, argv: string[]): Promise<void>
 }
 
 export async function cmdWait(repo: string, argv: string[]): Promise<void> {
-    const { flags } = parseArgv(argv, ["frame", "step", "timeout"]);
+    const { flags } = parseArgv(argv, ["frame", "step", "scene", "timeout"]);
     const frameTarget = hasFlag(flags, "frame") ? flagNumber(flags, "frame", 0) : null;
     const stepTarget = hasFlag(flags, "step") ? flagNumber(flags, "step", 0) : null;
-    if (frameTarget === null && stepTarget === null) {
-        throw new Error("usage: nsmbu wait --frame N | --step N [--timeout SEC]");
+    const sceneTarget = flagString(flags, "scene");
+    if (hasFlag(flags, "scene") && sceneTarget === undefined) {
+        throw new Error("usage: nsmbu wait --frame N | --step N | --scene NAME [--timeout SEC]");
+    }
+    if (frameTarget === null && stepTarget === null && sceneTarget === undefined) {
+        throw new Error("usage: nsmbu wait --frame N | --step N | --scene NAME [--timeout SEC]");
     }
     const timeoutMs = flagNumber(flags, "timeout", 120) * 1000;
     const client = new AgentClient(repo);
     const start = Date.now();
+    let last = "";
     try {
         for (;;) {
             const r = await client.status();
+            last = formatStatus(r);
             const frameOk = frameTarget === null || (r.frame ?? 0) >= frameTarget;
             const stepOk = stepTarget === null || (r.step ?? 0) >= stepTarget;
-            if (frameOk && stepOk) {
-                printStatus(r);
+            const sceneOk = sceneTarget === undefined || r.scene === sceneTarget;
+            if (frameOk && stepOk && sceneOk) {
+                console.log(last);
                 return;
             }
             if (Date.now() - start >= timeoutMs) {
-                throw new Error(`wait timed out after ${timeoutMs / 1000}s`);
+                const detail = last ? `: ${last}` : "";
+                throw new Error(`wait timed out after ${timeoutMs / 1000}s${detail}`);
             }
             await new Promise((r) => setTimeout(r, 100));
         }
