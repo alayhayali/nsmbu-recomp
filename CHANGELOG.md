@@ -8,30 +8,36 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-24
+
 ### Added
 
-- Europe v0 is supported.
-  Mods still need the 1.3.0 update.
+- The Europe base disc runs without the 1.3.0 update.
+  Mods still need that update.
 - Up to four controllers work as separate players, with per-player bindings and an option to keep one layout for every player.
 - Setup can precompile shaders before you play, with a progress bar.
   You can skip it, and shaders still compile during play which may cause stutters.
-- Experimental higher frame rate options.
 
 ### Changed
 
+- Higher frame rates keep normal game speed and draw in-between frames, so characters move between the game's 60 steps.
+  144 fps is available, and these options are experimental.
 - The renderer uses less CPU each frame, so busy scenes and high frame rate settings hold their speed better.
 - Save states are small again.
   Turn on Full save states in the Saves tab for an exact copy of the running game.
+  A full state already in a slot still loads when it is the newest file there.
 - The settings overlay is wider, and its title bar matches the panel with no separator line so it no longer looks like a movable window.
-- Cleanup the installer UI layout.
-- Removed framerate in title name.
+
+### Removed
+
+- The frame rate is removed from the window title.
 
 ### Fixed
 
-- After opening a course with `nsmbu run` or `nsmbu open`, quitting to the world map puts Mario on that course’s node.
+- Quitting to the world map from a course you started in puts Mario on that course's node.
+- Frames stay evenly spaced while the game is waiting for the display.
 - The Keys screen takes the disc key and the Wii U common key typed or pasted as 32 hex digits.
   A key file saved by Notepad or a Cemu `keys.txt` works too.
-- Frame stuttering should be improved.
 
 ## [0.5.0] - 2026-10-19
 
@@ -163,7 +169,8 @@ Use the `changelog` skill when editing.
 
 - The TV and GamePad present together on one vsync.
 
-[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.4.0...v0.4.1
