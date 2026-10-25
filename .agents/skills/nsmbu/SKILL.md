@@ -1,6 +1,6 @@
 ---
 name: nsmbu
-description: "nsmbu CLI, status, Lua eval, scripted headless boots, playtests, and NSMBU_* env vars. Use when driving the game, reading nsmbu status, waiting for a scene, running Lua in the running game, measuring a Release replay, running a dev recipe, nsmbu scripted, nsmbu test, scripted inputs or exit frames, or adding, renaming, or reading an NSMBU_* variable."
+description: "nsmbu CLI, status, scripted headless boots, playtests, and NSMBU_* env vars. Use when driving the game, reading nsmbu status, waiting for a scene, measuring a Release replay, running a dev recipe, nsmbu scripted, nsmbu test, scripted inputs or exit frames, or adding, renaming, or reading an NSMBU_* variable."
 ---
 
 # nsmbu
@@ -19,9 +19,18 @@ Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable.
 Only one game process is supported.
 If `nsmbu open` refuses because a game is already running, run `nsmbu status` or `nsmbu close`.
 
+## Prefer playtests
+
+Do not drive regressions by chatting with a live game.
+Add or extend a case in `tools/cli/src/playtest/cases.ts` and run `nsmbu test [name]`.
+`nsmbu test --list` prints the case names.
+Each case gets its own save under `.tmp/playtest/<name>/save`.
+
+Use live `open` / `status` / `press` / `stick` / `screenshot` / `wait` only for a short look at the screen or a one-off pad pulse while writing that case.
+
 ## Observe
 
-Read `nsmbu status` before any `eval`.
+Read `nsmbu status` before acting.
 The line names the scene, whether the world map or a course is up, the course pack, and the player position.
 
 ```text
@@ -43,27 +52,14 @@ Take a screenshot when the question is what is on screen.
 
 ## Move
 
-Change scenes with one `nsmbu eval` call, then wait.
-
-```bash
-nsmbu eval 'return nsmbu.Scene.load_pack("1-5")'
-nsmbu wait --scene CourseTask
-```
-
-`open_first_save` and `open_title` are the other transitions.
 `nsmbu wait --scene NAME` polls status until `scene` matches.
 `--timeout` is seconds.
 A timeout prints the last status line.
 
-`open`, `press`, `stick`, `screenshot`, `eval`, `status`, and `wait` block until their work is done.
+`open`, `press`, `stick`, `screenshot`, `status`, and `wait` block until their work is done.
 Use `wait --step N` or `wait --scene NAME` when the next action needs guest progress.
 
-## Lua
-
-`nsmbu eval` runs on the guest thread and keeps state between calls.
-The global `nsmbu` is the mod SDK.
-Use `Guest.read` only for a field the status line does not name.
-Take the offset from the port or `docs/`, not from an earlier session.
+## Inputs
 
 A long pad timeline stays on `record` and `replay`.
 Use `replay --release` for a measured course.
