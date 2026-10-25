@@ -15,6 +15,11 @@ Use the `changelog` skill when editing.
   The file shows that course progress, and opening the file keeps it.
 - Save states can be taken on the world map and inside a course.
 
+### Security
+
+- Portable save states check the save image's block checksums before they load.
+- Release builds ignore the developer control socket.
+
 ## [0.6.2] - 2026-10-24
 
 ### Fixed

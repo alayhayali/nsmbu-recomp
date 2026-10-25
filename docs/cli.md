@@ -111,7 +111,8 @@ Non-finite `f32` values (star coin coordinates) are written as `0x`-prefixed 32-
 Commands talk to the single running game over the fixed control socket.
 Use them for a short look while writing a playtest case; lasting coverage stays in `tools/cli/src/playtest/cases.ts` and `nsmbu test`.
 
-- `nsmbu open [slot|course|course-file] […]` — ensure binary, spawn the game with agent control enabled, wait until the socket accepts.
+- `nsmbu open [slot|course|course-file] […]` — ensure a debug binary, spawn the game with agent control enabled, wait until the socket accepts.
+  Release builds ignore `NSMBU_AGENT_SOCK`.
   A course file is a `course_res_pack` archive, such as `game/content/Common/course_res_pack/1-27.szs`, and starts that course the same way as `1-27`.
   Refuse if a game is already running.
 - `nsmbu status` — one line from the guest thread: frame, logic step, pid, scene name, whether the world map or a course task is alive, course pack, entering pack when it differs, save file, map checkpoint, map node and world, and the player snapshot or `player=none`.

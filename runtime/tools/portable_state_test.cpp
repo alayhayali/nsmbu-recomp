@@ -191,8 +191,16 @@ int main() {
 
     auto nsmbu_image = [](int slot) {
         std::vector<uint8_t> image(kNsmbuSaveDataSize, 0);
-        for (size_t i = 0; i < 32; i++) image[i] = (uint8_t)(i + 1);
+        image[0] = 'R';
+        image[1] = 'P';
+        image[2] = 'S';
+        image[3] = 'D';
+        image[4] = 1;
+        image[5] = 0;
+        image[6] = 0;
         image[7] = (uint8_t)slot;
+        for (size_t i = 8; i < 32; i++) image[i] = (uint8_t)(i + 1);
+        seal_nsmbu_savedata(image);
         return image;
     };
     auto header = [](State& s) {
@@ -279,6 +287,33 @@ int main() {
         bad.savedata = nsmbu_image(0);
         bad.file_slot = 0;
         CHECK(write(bad, why).empty());
+    }
+
+    {
+        State course;
+        header(course);
+        course.place = "course";
+        course.file_slot = 1;
+        course.world = 0;
+        course.course = 0;
+        course.stage = "1-1";
+        course.pos[0] = 0;
+        course.savedata = nsmbu_image(1);
+        CHECK(nsmbu_savedata_ok(course.savedata));
+        course.savedata[0x20] ^= 0xFF;
+        CHECK(!nsmbu_savedata_ok(course.savedata));
+        std::string t = write(course, why);
+        CHECK(!t.empty());
+        State back;
+        CHECK(!read(t, back, why));
+        CHECK(why.find("save data checksum") != std::string::npos);
+        course.savedata = nsmbu_image(1);
+        course.savedata[0] = 'X';
+        seal_nsmbu_savedata(course.savedata);
+        t = write(course, why);
+        CHECK(!t.empty());
+        CHECK(!read(t, back, why));
+        CHECK(why.find("save data checksum") != std::string::npos);
     }
 
     CHECK(crc32("123456789", 9) == 0xCBF43926u);

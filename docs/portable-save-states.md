@@ -105,6 +105,7 @@ The place has these fields:
 That image is 0xB134 bytes from SaveMgr.
 It holds the story save files.
 The reader checks that byte 7 of the image is `file_slot`.
+It also checks the `RPSD` magic, version `1.0`, and the same block CRC-32 trailers the game uses on `rp_savedata.dat`.
 
 `checksum` is the CRC-32 of every line before it.
 

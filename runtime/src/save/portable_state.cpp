@@ -190,6 +190,44 @@ bool savedata_checksum_ok(const std::vector<uint8_t>& block) {
     return rd32(&block[kSaveChecksumAt]) == s && rd32(&block[kSaveChecksumAt + 4]) == c;
 }
 
+bool block_crc_ok(const uint8_t* block, size_t payload) {
+    return rd32(block + payload) == crc32(block, payload);
+}
+
+void seal_block(uint8_t* block, size_t payload) { be32(block + payload, crc32(block, payload)); }
+
+void seal_nsmbu_savedata(std::vector<uint8_t>& block) {
+    if (block.size() != kNsmbuSaveDataSize) return;
+    uint8_t* p = block.data();
+    seal_block(p, kNsmbuHeaderCrcAt);
+    for (size_t i = 0; i < kNsmbuSlotCount; i++) {
+        seal_block(p + kNsmbuMainOff + i * kNsmbuSlotSize, kNsmbuSlotDataSize);
+        seal_block(p + kNsmbuQuickOff + i * kNsmbuSlotSize, kNsmbuSlotDataSize);
+    }
+    seal_block(p + kNsmbuChallengeOff, kNsmbuChallengeCrcAt);
+    seal_block(p + kNsmbuBoostOff, kNsmbuBoostCrcAt);
+    seal_block(p + kNsmbuCoinOff, kNsmbuCoinCrcAt);
+    seal_block(p + kNsmbuTelemetryOff, kNsmbuTelemetryCrcAt);
+    seal_block(p + kNsmbuMiiOff, kNsmbuMiiCrcAt);
+}
+
+bool nsmbu_savedata_ok(const std::vector<uint8_t>& block) {
+    if (block.size() != kNsmbuSaveDataSize) return false;
+    const uint8_t* p = block.data();
+    if (std::memcmp(p, "RPSD", 4) != 0) return false;
+    if (p[4] != 1 || p[5] != 0) return false;
+    if (!block_crc_ok(p, kNsmbuHeaderCrcAt)) return false;
+    for (size_t i = 0; i < kNsmbuSlotCount; i++) {
+        if (!block_crc_ok(p + kNsmbuMainOff + i * kNsmbuSlotSize, kNsmbuSlotDataSize)) return false;
+        if (!block_crc_ok(p + kNsmbuQuickOff + i * kNsmbuSlotSize, kNsmbuSlotDataSize)) return false;
+    }
+    return block_crc_ok(p + kNsmbuChallengeOff, kNsmbuChallengeCrcAt) &&
+           block_crc_ok(p + kNsmbuBoostOff, kNsmbuBoostCrcAt) &&
+           block_crc_ok(p + kNsmbuCoinOff, kNsmbuCoinCrcAt) &&
+           block_crc_ok(p + kNsmbuTelemetryOff, kNsmbuTelemetryCrcAt) &&
+           block_crc_ok(p + kNsmbuMiiOff, kNsmbuMiiCrcAt);
+}
+
 std::string write(const State& s, std::string& why) {
     const bool nsmbu = s.place == "course" || s.place == "map";
     if (!nsmbu && !s.place.empty()) { why = "invalid place"; return ""; }
@@ -376,6 +414,10 @@ bool read(const std::string& text, State& out, std::string& why) {
         }
         if ((int)s.savedata[7] != s.file_slot) {
             why = "save file does not match this state";
+            return false;
+        }
+        if (!nsmbu_savedata_ok(s.savedata)) {
+            why = "save data checksum mismatch";
             return false;
         }
         out = std::move(s);
