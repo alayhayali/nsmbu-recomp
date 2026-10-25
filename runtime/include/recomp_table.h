@@ -13,6 +13,7 @@ extern const unsigned g_recomp_func_count;
 extern const RecompImport g_recomp_imports[];
 extern const unsigned g_recomp_import_count;
 extern const uint32_t g_recomp_entry_point;
+uint32_t recomp_fn_containing(uint32_t addr);
 #ifdef __cplusplus
 }
 #endif

@@ -68,6 +68,42 @@ static bool crash_cli_no_dialog() {
 #endif
 }
 
+static int crash_append(char* buf, int n, int cap, const char* fmt, uint32_t v) {
+    if (n < 0 || n >= cap) return cap - 1;
+    int wrote = snprintf(buf + n, (size_t)(cap - n), fmt, v);
+    if (wrote < 0 || n + wrote >= cap) return cap - 1;
+    return n + wrote;
+}
+
+static void crash_guest_cpu(int fd, void (*out)(int, const char*, size_t)) {
+    Cpu* c = threads::current();
+    if (!c) return;
+    char buf[320];
+    int n = snprintf(buf, sizeof buf, "  guest lr=%08X", c->lr);
+    if (uint32_t fn = recomp_fn_containing(c->lr)) n = crash_append(buf, n, (int)sizeof buf, " fn=%08X", fn);
+    n = crash_append(buf, n, (int)sizeof buf, " ctr=%08X", c->ctr);
+    if (uint32_t fn = recomp_fn_containing(c->ctr)) n = crash_append(buf, n, (int)sizeof buf, " fn=%08X", fn);
+    n = crash_append(buf, n, (int)sizeof buf, " cr=%08X\n", ppc_mfcr(c));
+    out(fd, buf, (size_t)n);
+    for (int i = 0; i < 32; i += 8) {
+        n = snprintf(buf, sizeof buf, "  r%-2d %08X %08X %08X %08X %08X %08X %08X %08X\n", i, c->r[i], c->r[i + 1],
+                     c->r[i + 2], c->r[i + 3], c->r[i + 4], c->r[i + 5], c->r[i + 6], c->r[i + 7]);
+        if (n < 0) n = (int)sizeof buf - 1;
+        if (n > (int)sizeof buf) n = (int)sizeof buf;
+        out(fd, buf, (size_t)n);
+    }
+    out(fd, "  guest call chain:", 19);
+    uint32_t sp = c->r[1];
+    for (int i = 0; i < 24 && sp >= 0x10000000u && sp < 0xF0000000u; i++) {
+        uint32_t prev = ld32(sp);
+        if (!prev || prev <= sp || prev - sp > 0x100000u) break;
+        n = snprintf(buf, sizeof buf, " %08X", ld32(prev + 4));
+        if (n > 0) out(fd, buf, (size_t)n);
+        sp = prev;
+    }
+    out(fd, "\n", 1);
+}
+
 #ifndef _WIN32
 
 static int g_crash_fd = -1;
@@ -123,27 +159,7 @@ static void crash_handler(int sig, siginfo_t* si, void* uctx) {
         n = crash_addr::fit(snprintf(line, sizeof line, "  fault address %p%s\n", si->si_addr, where), sizeof line);
         crash_out(fd, line, n);
     }
-    Cpu* c = threads::current();
-    if (c) {
-        n = snprintf(buf, sizeof buf, "  guest lr=%08X ctr=%08X cr=%08X\n", c->lr, c->ctr, ppc_mfcr(c));
-        crash_out(fd, buf, n);
-        for (int i = 0; i < 32; i += 8) {
-            n = snprintf(buf, sizeof buf, "  r%-2d %08X %08X %08X %08X %08X %08X %08X %08X\n", i, c->r[i], c->r[i + 1],
-                         c->r[i + 2], c->r[i + 3], c->r[i + 4], c->r[i + 5], c->r[i + 6], c->r[i + 7]);
-            crash_out(fd, buf, n);
-        }
-
-        crash_out(fd, "  guest call chain:", 19);
-        uint32_t sp = c->r[1];
-        for (int i = 0; i < 24 && sp >= 0x10000000u && sp < 0xF0000000u; i++) {
-            uint32_t prev = ld32(sp);
-            if (!prev || prev <= sp || prev - sp > 0x100000u) break;
-            n = snprintf(buf, sizeof buf, " %08X", ld32(prev + 4));
-            crash_out(fd, buf, n);
-            sp = prev;
-        }
-        crash_out(fd, "\n", 1);
-    }
+    crash_guest_cpu(fd, crash_out);
     crash_addr::host_backtrace(fd, crash_out, uctx);
     crash_context::note(fd, crash_out);
     crashrec::crash_note(fd, crash_out);
@@ -214,7 +230,7 @@ static LONG WINAPI crash_handler(EXCEPTION_POINTERS* ex) {
     strftime(name,sizeof name,"crash-%Y%m%d-%H%M%S.log",&tmv);
     std::snprintf(path,sizeof path,"%s/%s", g_crash_log_dir[0] ? g_crash_log_dir : "logs", name);
     int fd=_open(path,_O_WRONLY|_O_CREAT|_O_TRUNC|_O_BINARY,_S_IREAD|_S_IWRITE);
-    char buf[256]; int n;
+    int n;
 
     char where[384], mpath[512]="", line[1024];
     using crash_addr::fit;
@@ -234,7 +250,7 @@ static LONG WINAPI crash_handler(EXCEPTION_POINTERS* ex) {
         if(n>(int)sizeof line-2) n=(int)sizeof line-2;
         line[n++]='\n'; win_crash_out(fd,line,n);
     }
-    if(Cpu* c=threads::current()){n=snprintf(buf,sizeof buf,"guest lr=%08X ctr=%08X\n",c->lr,c->ctr); win_crash_out(fd,buf,n);}
+    crash_guest_cpu(fd, win_crash_out);
     crash_addr::host_backtrace(fd,win_crash_out,ex->ContextRecord);
     crash_context::note(fd,win_crash_out);
     crashrec::crash_note(fd,win_crash_out);

@@ -1268,7 +1268,7 @@ bool same_chain(const Cpu& cur, const Cpu& saved) {
     return true;
 }
 
-uint32_t fn_start(uint32_t addr) {
+extern "C" uint32_t recomp_fn_containing(uint32_t addr) {
     const RecompEntry* b = g_recomp_funcs;
     const RecompEntry* e = g_recomp_funcs + g_recomp_func_count;
     const RecompEntry* it = std::lower_bound(b, e, addr, [](const RecompEntry& r, uint32_t a) { return r.addr < a; });
@@ -1279,6 +1279,10 @@ uint32_t fn_start(uint32_t addr) {
     if (next != e && addr >= next->addr) return 0;
     if (next == e && addr - it->addr > 0x20000) return 0;
     return it->addr;
+}
+
+static uint32_t fn_start(uint32_t addr) {
+    return recomp_fn_containing(addr);
 }
 
 struct HostFrame { uint32_t fn; uintptr_t* slot; };
