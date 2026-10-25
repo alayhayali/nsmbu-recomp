@@ -18,16 +18,46 @@ export function runPython(
     args: string[],
     extraEnv: Record<string, string> = {},
 ): void {
+    const status = runPythonChecked(repo, script, args, extraEnv);
+    process.exit(status);
+}
+
+export function runPythonChecked(
+    repo: string,
+    script: string,
+    args: string[],
+    extraEnv: Record<string, string> = {},
+): number {
     const r = spawnSync("python3", [join(repo, script), ...args], {
         cwd: repo,
         env: baseEnv(repo, extraEnv),
         stdio: "inherit",
     });
     if (r.error) {
-        console.error(r.error.message);
-        process.exit(1);
+        throw r.error;
     }
-    process.exit(r.status ?? 1);
+    return r.status ?? 1;
+}
+
+export function runPythonCapture(
+    repo: string,
+    script: string,
+    args: string[],
+    extraEnv: Record<string, string> = {},
+): { status: number; stdout: string; stderr: string } {
+    const r = spawnSync("python3", [join(repo, script), ...args], {
+        cwd: repo,
+        env: baseEnv(repo, extraEnv),
+        encoding: "utf8",
+    });
+    if (r.error) {
+        throw r.error;
+    }
+    return {
+        status: r.status ?? 1,
+        stdout: r.stdout ?? "",
+        stderr: r.stderr ?? "",
+    };
 }
 
 export function spawnPython(

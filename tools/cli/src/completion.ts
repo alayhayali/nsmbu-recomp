@@ -47,7 +47,20 @@ const COMMANDS: CommandSpec[] = [
             { name: "trace", description: "Trace launch" },
         ],
     },
-    { name: "extract", description: "Extract game files" },
+    {
+        name: "game",
+        description: "Set up / select dump, extract, optional recomp",
+        noFiles: true,
+        flags: [
+            { name: "list", description: "Print dump JSON (no TUI)" },
+            { name: "extract", description: "Extract (or re-extract) after activating" },
+            { name: "recomp", description: "Recomp after activating" },
+            { name: "import", description: "Import a .wux/.wud from PATH", takesFile: true },
+            { name: "id", description: "Version folder id (with --import)" },
+            { name: "create", description: "Create an empty version folder" },
+        ],
+    },
+    { name: "extract", description: "Extract the active dump (prefer nsmbu game)", noFiles: true },
     {
         name: "save",
         description: "Convert save data to JSON and back",

@@ -6,7 +6,18 @@ _SLOT = re.compile(r"^([1-5])$")
 _WORLD = re.compile(r"^\d+-\d+$")
 _FILE_PACK = re.compile(r"^([1-9])-([1-9]\d*)$")
 LOAD_FRAME = 200
-_COURSE_RES_PACK = os.path.join("game", "content", "Common", "course_res_pack")
+def _course_res_packs():
+    packs = [os.path.join("game", "content", "Common", "course_res_pack")]
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, here)
+    try:
+        import game_versions as gv
+        packs.append(os.path.join(gv.active_dir(), "content", "Common", "course_res_pack"))
+    except Exception:
+        packs.append(
+            os.path.join(os.path.dirname(os.path.dirname(here)), "game", "content", "Common", "course_res_pack")
+        )
+    return packs
 
 
 def course_file_pack(arg):
@@ -20,7 +31,14 @@ def course_file_pack(arg):
         sys.exit(f"course file name must look like 1-27.szs: {base}")
     path = arg
     if "/" not in arg and "\\" not in arg:
-        path = os.path.join(_COURSE_RES_PACK, base)
+        path = None
+        for pack in _course_res_packs():
+            candidate = os.path.join(pack, base)
+            if os.path.isfile(candidate):
+                path = candidate
+                break
+        if path is None:
+            path = os.path.join(_course_res_packs()[0], base)
     if not os.path.isfile(path):
         sys.exit(f"missing course file {path}")
     return f"{match.group(1)}-{pack_no}"

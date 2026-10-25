@@ -16,7 +16,8 @@ Initialize the LuaJIT submodule before the first build: `git submodule update --
 | Command | Result |
 |---------|--------|
 | `nsmbu` | List commands (`nsmbu` with no args prints help) |
-| `nsmbu extract` | Check `game/update/` (USA or Europe 1.3.0), extract `game/game.wux`, then apply the update |
+| `nsmbu game` | Pick/create a dump under `game/<id>/`, extract when ready, optional recomp |
+| `nsmbu extract` | Extract the active dump only (prefer `nsmbu game`) |
 | `nsmbu build` | Configure `build/debug` in Debug and build `nsmbu` |
 | `nsmbu build --release` | Build in Release |
 | `nsmbu build --sanitizer` | Build with AddressSanitizer and UBSan |

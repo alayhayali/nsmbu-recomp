@@ -8,6 +8,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import game_versions as gv
 import slot
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -87,9 +88,12 @@ def link_compile_commands(build_dir):
 
 def ensure_gen_dir():
     gen = os.path.join(ROOT, "build", "gen")
-    rpx = os.path.join(ROOT, "game", "code", "red-pro2.rpx")
+    try:
+        rpx = os.path.join(gv.active_dir(), "code", "red-pro2.rpx")
+    except gv.GameVersionsError:
+        rpx = ""
     os.makedirs(gen, exist_ok=True)
-    if os.path.isfile(rpx):
+    if rpx and os.path.isfile(rpx):
         table = os.path.join(gen, "table.c")
         stale = (
             gen_is_stub(gen)

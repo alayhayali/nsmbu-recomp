@@ -1,6 +1,6 @@
 ---
 name: nsmbu
-description: "Playtests (`nsmbu test`), cases.ts helpers, status, scripted boots, and NSMBU_* env vars. Use when adding or running a playtest, reproducing a game bug as a case, reading nsmbu status, measuring a Release replay, running nsmbu scripted, or adding, renaming, or reading an NSMBU_* variable."
+description: "Playtests (`nsmbu test`), cases.ts helpers, status, scripted boots, NSMBU_* env vars, and swapping the active game dump (usa/eu). Use when adding or running a playtest, reproducing a game bug as a case, switching region or version under game/, reading nsmbu status, measuring a Release replay, running nsmbu scripted, or adding, renaming, or reading an NSMBU_* variable."
 ---
 
 # nsmbu
@@ -13,6 +13,31 @@ Run `nsmbu --help` for the command list.
 Read `docs/automation.md` for playtests, `nsmbu scripted`, and replay inputs.
 Read `docs/cli.md` for install, build/launch, and the short live control commands.
 Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable.
+Read `game/README.md` for dump folder layout.
+
+## Dump (no TUI)
+
+Agents must not run bare `nsmbu game` (that opens the TUI).
+Use flags only.
+
+```bash
+nsmbu game --list
+nsmbu game eu-1.3.0 --recomp
+nsmbu build
+```
+
+`--list` prints JSON (`active`, `versions`, `loose_images`).
+`nsmbu game <id>` writes `game/active` and skips prompts.
+Add `--extract` to extract (or re-extract) the disc.
+Add `--recomp` to refresh `build/gen` from that dump’s RPX (needed when switching USA ↔ Europe).
+Then `nsmbu build` (and playtests / `nsmbu open`) use that dump.
+
+Other non-interactive forms:
+
+```bash
+nsmbu game --import path/to/disc.wux --id eu-base --extract --recomp
+nsmbu game --create eu-base
+```
 
 ## Playtest
 

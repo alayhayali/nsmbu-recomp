@@ -70,7 +70,7 @@ The repo `nsmbu/save` stays unread by the game.
 | `NSMBU_NO_AUDIO` | `1` | Skips opening an audio output device |
 | `NSMBU_RES_SCALE` | `1` unless already set | Internal resolution scale (1–4) |
 
-The binary also receives `--game <repo>/game` and `--save .tmp/<name>/save`.
+The binary also receives `--game` set to the active dump under `game/<id>/` and `--save .tmp/<name>/save`.
 
 ### Environment you set
 

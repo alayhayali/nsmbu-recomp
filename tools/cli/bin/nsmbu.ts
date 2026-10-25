@@ -6,6 +6,7 @@ import {
     cmdBuild,
     cmdCrash,
     cmdExtract,
+    cmdGame,
     cmdInstaller,
     cmdLaunch,
     cmdLint,
@@ -93,6 +94,9 @@ async function main(): Promise<void> {
             }
             case "extract":
                 cmdExtract(repo, rest);
+                break;
+            case "game":
+                await cmdGame(repo, rest);
                 break;
             case "save": {
                 const { flags, positional } = parseArgv(rest, ["output"], ["output"]);

@@ -6,7 +6,11 @@ Usage:
   nsmbu crash
   nsmbu wine [--no-debug] [--trace] [slot|course] […]
   nsmbu run [--release] [slot|course] […]
-  nsmbu extract […]
+  nsmbu game [id] [--extract] [--recomp]
+  nsmbu game --list
+  nsmbu game --import PATH --id ID [--extract] [--recomp]
+  nsmbu game --create ID
+  nsmbu extract
   nsmbu save <save.dat|save.json> [output] [--output PATH]
   nsmbu record <course> [name] […]
   nsmbu replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name> […]
