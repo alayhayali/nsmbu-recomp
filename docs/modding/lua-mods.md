@@ -234,7 +234,7 @@ The runtime still checks the RPX identity, as it does today.
 ### Example script
 
 These snippets use the calls in [api.md](api.md).
-This script matches the native fixture in `runtime/tools/mod_fixture.cpp`, plus a guest read.
+This script matches the native fixture in `runtime/test/mod_fixture.cpp`, plus a guest read.
 The address is a placeholder.
 A real mod uses a named field from the generated address table.
 
@@ -452,7 +452,7 @@ This document is the reason to stop extending either path.
 | `runtime/src/mods/guest_mods.cpp` and `guest_mods.h` | Removed. A Lua hook dispatcher can replace the entry later if the flag check remains. |
 | `guest_validation.h`, `guest_heap.h`, `guest_files.h`, `guest_build.h`, `guest_identity.h`, `guest_state_section.h` | Removed. |
 | `runtime/src/mods/code_mods.cpp` and `code_mods.h` | Removed with the rebuild UI. |
-| `runtime/tools/guest_*_test.cpp`, `code_mods_test.cpp` | Removed. |
+| `runtime/test/guest_*_test.cpp`, `code_mods_test.cpp` | Removed. |
 | `.github/workflows/guestmods.yml` | Removed. |
 | `PPC_MOD_HOOK` / `--mod-hooks` | Removed for guest mods. Reintroduce only if a Lua hook dispatcher needs the flag check. |
 | `Cpu::mod_skip` and `g_mod_bodies` | Removed with the guest loader. Reintroduce only if Lua replacements call the original body through that skip. |
@@ -462,7 +462,7 @@ This document is the reason to stop extending either path.
 | Item | Action |
 | --- | --- |
 | `runtime/include/nsmbu_mod.h` | Removed. |
-| `runtime/tools/mod_fixture.cpp` | Removed. Replace with a Lua fixture when Lua lands. |
+| `runtime/test/mod_fixture.cpp` | Removed. Replace with a Lua fixture when Lua lands. |
 | `kind == "native"` load path in `packages.cpp` (`dlopen` / `LoadLibrary`, `nsmbu_mod_init_v1`) | Removed. |
 | Native confirmation dialog and `native_trust` | Removed after installed native packages are rejected. |
 | `NSMBU_TEST_TRUST_NATIVE_MODS` | Removed. |
