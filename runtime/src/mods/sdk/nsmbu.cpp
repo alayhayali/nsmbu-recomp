@@ -2408,6 +2408,43 @@ int l_scene_load_pack(lua_State* L) {
     return 1;
 }
 
+int l_hooks_call(lua_State* L) {
+    if (!t_guest_cpu) return fail(L, "no guest cpu");
+    if (!lua_isnumber(L, 1)) return fail(L, "bad type");
+    lua_Number addr = lua_tonumber(L, 1);
+    if (addr < 0 || addr > (lua_Number)0xFFFFFFFFu || addr != (lua_Number)(uint32_t)addr) return fail(L, "bad address");
+    uint32_t fn = (uint32_t)addr;
+    if (!dispatch::lookup(fn)) return fail(L, "not a game function");
+    uint32_t regs[8] = {};
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
+        if (!lua_istable(L, 2)) return fail(L, "bad type");
+        static const char* names[] = {"r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10"};
+        for (int i = 0; i < 8; i++) {
+            lua_getfield(L, 2, names[i]);
+            if (!lua_isnil(L, -1)) {
+                if (!lua_isnumber(L, -1)) {
+                    lua_pop(L, 1);
+                    return fail(L, "bad type");
+                }
+                lua_Number v = lua_tonumber(L, -1);
+                if (v < 0 || v > (lua_Number)0xFFFFFFFFu || v != (lua_Number)(uint32_t)v) {
+                    lua_pop(L, 1);
+                    return fail(L, "bad register");
+                }
+                regs[i] = (uint32_t)v;
+            }
+            lua_pop(L, 1);
+        }
+    }
+    static thread_local int depth = 0;
+    if (depth >= 8) return fail(L, "call nested too deep");
+    depth++;
+    guest_call(t_guest_cpu, fn, {regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7]});
+    depth--;
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 void install_game(lua_State* L) {
     install_player_meta(L);
     install_actor_meta(L);
@@ -2546,7 +2583,9 @@ void install_modules(lua_State* L, Instance* inst) {
     set_loaded(L, "nsmbu.Guest");
 
     set_empty_module(L, "nsmbu.Fn");
-    set_empty_module(L, "nsmbu.Hooks");
+    lua_newtable(L);
+    bind_guest(L, "call", l_hooks_call);
+    set_loaded(L, "nsmbu.Hooks");
     lua_newtable(L);
     bind(L, inst, "press", l_input_press);
     lua_newtable(L);
