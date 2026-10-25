@@ -32,6 +32,9 @@ Add `--extract` to extract (or re-extract) the disc.
 Add `--recomp` to refresh `build/gen` from that dump’s RPX (needed when switching USA ↔ Europe).
 Then `nsmbu build` (and playtests / `nsmbu open`) use that dump.
 
+Issue playtests that use `Scene` open / apply-save need a `*-1.3.0` (or combo) dump.
+Use `*-base` only to check boot and title-version messaging; mods and those Scene paths are unsupported there.
+
 Other non-interactive forms:
 
 ```bash
@@ -43,11 +46,12 @@ nsmbu game --create eu-base
 
 Repro and regression work is a case, not a live control chat.
 
-1. Reuse or extend helpers in `tools/cli/src/playtest/cases.ts` (`reachMap`, `loadPack`, `leaveCourse`, `quickSaveHere`, and the other locals in that file).
-2. Add or extend a `PlayCase` in the same file.
-3. Run `nsmbu test [name]`.
-   `nsmbu test --list` prints the names.
-4. Done when that case exits 0 (or fails with an assertion you can fix).
+1. Reuse or extend helpers in `tools/cli/src/playtest/cases.ts` (`reachMap`, `loadPack`, `leaveCourse`, `enterCourse`, `quickSaveHere`, and the other locals in that file).
+2. Map round-trips use `leaveCourse` / `enterCourse`; do not build a case on `Scene.leave_course` alone.
+3. Add or extend a `PlayCase` in the same file.
+4. Run `nsmbu test [name]`.
+   `nsmbu test --list` prints the names (only `--list` is a valid flag).
+5. Done when that case exits 0 (or fails with an assertion you can fix).
 
 Each case uses its own save under `.tmp/playtest/<name>/save`.
 Scene moves and map reads that need guest Lua stay inside the case through `Session` helpers.
@@ -71,6 +75,9 @@ Fields that are not ready are left off the line.
 
 Only one game process is supported.
 If `nsmbu open` refuses because a game is already running, run `nsmbu status` or `nsmbu close`.
+
+Do not run `nsmbu game … --recomp` or change `game/active` while a playtest or `nsmbu open` is in flight.
+Serialize dump switches: finish the test or close the game, then switch and rebuild.
 
 ## Live look
 

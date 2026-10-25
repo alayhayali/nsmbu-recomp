@@ -1,6 +1,6 @@
 ---
 name: guest
-description: "Guest code f_XXXXXXXX, hooks, recomp build/gen, guest_stubs, PPC_MEM_BASE and ea, headers_names.txt, names.py, regional rebuild addresses, threads. Use when editing generated game code, hooks, recompiler output, stubs, guest memory, or naming symbols by USA v1.3.0 address."
+description: "Guest code f_XXXXXXXX, hooks, recomp build/gen, guest_stubs, PPC_MEM_BASE and ea, headers_names.txt, names.py, regional rebuild addresses, crash lr/ctr canon mapping, threads. Use when editing generated game code, hooks, recompiler output, stubs, guest memory, naming symbols by USA v1.3.0 address, or mapping a crash log's guest PCs to USA symbols."
 ---
 
 # Guest code
@@ -36,6 +36,19 @@ A normal build reads `tools/recomp/headers_names.txt` from git.
 `names.py` refreshes that file from a local `references/headers` checkout.
 
 `references/` checkouts are gitignored and are not part of the build.
+
+## Crash log addresses
+
+Guest `lr` / `ctr` / call-chain / aux values in a crash dump are addresses of the **running** build, not USA canon ids.
+
+1. Save attachments under `.tmp/issues/`.
+2. Read the boot line for region and title (`USA` / `Europe`, title id, and whether it is 1.3.0 or base).
+3. Load that build from `tools/recomp/builds.py` (`eu`, `eu_v0`, `usa_v0`, combo maps).
+4. Call `Build.canon_code(guest_addr)` (and `canon_data` for data) to get the USA id.
+5. Nearest lower line in `tools/recomp/headers_names.txt` names the symbol.
+6. Match `CHANGELOG.md` Unreleased and `nsmbu test --list` summaries that cite the issue before inventing a new flow.
+
+USA 1.3.0 is the identity map: guest PC equals canon.
 
 ## Docs
 

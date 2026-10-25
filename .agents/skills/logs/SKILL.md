@@ -8,3 +8,6 @@ Player and developer paths are in [docs/logs.md](../../../docs/logs.md).
 In a source checkout with the `nsmbu` CLI, the current run log is `nsmbu/logs/nsmbu.log`.
 The previous run is `nsmbu/logs/nsmbu-previous.log`.
 Crash dumps in that folder are `crash-YYYYMMDD-HHMMSS.log`.
+
+Issue attachments: download into `.tmp/issues/`.
+Guest `lr` / `ctr` / call-chain mapping is in the `guest` skill (Crash log addresses).

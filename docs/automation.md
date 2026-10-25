@@ -8,21 +8,21 @@ Long pad timelines stay on `record` / `replay`.
 
 `nsmbu test` boots the debug game once per case and checks issue and release regressions.
 Add or extend a case in `tools/cli/src/playtest/cases.ts`.
-Reuse the helpers already in that file (`reachMap`, `loadPack`, `leaveCourse`, `quickSaveHere`, and the other locals) before inventing a new flow.
+Reuse the helpers already in that file (`reachMap`, `loadPack`, `leaveCourse`, `enterCourse`, `quickSaveHere`, and the other locals) before inventing a new flow.
+Map round-trips use `leaveCourse` / `enterCourse`, not `Scene.leave_course` alone.
 Scene moves that need guest Lua stay inside the case through `Session` helpers.
 
-`nsmbu test --list` prints the case names.
+`nsmbu test --list` prints the case names and summaries (the live list).
 `nsmbu test opened-course` runs one case.
+Only `--list` is a valid flag; other options are rejected.
 Each case copies or creates a save under `.tmp/playtest/<name>/save`, so `nsmbu/save` stays unread.
 
-The cases are:
+Issue links that the cases cover:
 
-- `startup` — [#6](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/6): the process stays up past Boot and the frame counter advances.
-- `opened-course` — 0.6.1 course-open fixes: open `1-5` without rewriting the loading card, load `1-2` from there, leave to map node `W102` with a checkpoint.
-- `opening-cinematic` — 0.6.1 map input / [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): after Story Mode the map takes the stick and still shows a course number.
-- `save-roundtrip` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): the map Quick Save menu stores the current node, a restarted process is still on that node, the file-select slot log names the quick record, and continuing writes that progress into the story record.
-- `course-enter` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14) at 165 fps: enter a course, leave, enter another without freezing.
-- `save-state` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): a portable save state writes on the world map and inside a course.
+- `startup` — [#6](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/6)
+- `opening-cinematic`, `save-roundtrip`, `course-enter`, `save-state` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14) (Quick Save / story map / high fps)
+- `course-enter-120` — [#15](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/15) at 120 fps
+- `opened-course` — 0.6.1 course-open / leave-to-map regressions
 
 Closed-issue coverage outside playtests:
 
