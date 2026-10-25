@@ -188,6 +188,10 @@ function onMap(s: PlayStatus): boolean {
     return s.map === true;
 }
 
+function onWorldMap(s: PlayStatus): boolean {
+    return s.map === true && s.scene === "Map";
+}
+
 function inCourse(s: PlayStatus): boolean {
     return s.course === true && s.map !== true && s.player != null && !!s.pack;
 }
@@ -247,7 +251,7 @@ async function leaveCourse(session: Session): Promise<void> {
     await session.advance(180, 30);
     const start = Date.now();
     while (Date.now() - start < 60_000) {
-        if (onMap(await session.status())) return;
+        if (onWorldMap(await session.status())) return;
         await session.press("B", 15);
         await session.advance(20, 15);
         await session.press("Plus", 20);
@@ -261,7 +265,7 @@ async function leaveCourse(session: Session): Promise<void> {
         await session.press("A", 20);
         const until = Date.now() + 8_000;
         while (Date.now() < until) {
-            if (onMap(await session.status())) return;
+            if (onWorldMap(await session.status())) return;
             await session.advance(30, 15);
         }
     }
