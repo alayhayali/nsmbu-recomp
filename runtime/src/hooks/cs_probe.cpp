@@ -2,6 +2,7 @@
 #include "mods/packages.h"
 #include "mods/sdk/nsmbu.h"
 #include "guest_addr.h"
+#include "input/input.h"
 
 #include <cstdio>
 
@@ -217,6 +218,12 @@ extern "C" void nsmbu_fill_course_banner_digits(void) {}
 extern "C" void hook_02994164(Cpu* c) {
     uint32_t factory = ld32(c->r[5] + 4);
     if (factory == GC(0x0202B4C8)) g_left_course = false;
+    if (factory == GC(0x0298AD3C))
+        LOG("[scene] FileSelect (controller %s)", input::pro_controller() ? "Pro" : "GamePad");
+    else if (factory == GC(0x0202B570))
+        LOG("[scene] empty save -> Begin Story Mode (controller %s)", input::pro_controller() ? "Pro" : "GamePad");
+    else if (factory == GC(0x0202B86C))
+        LOG("[scene] CourseSelect from save (controller %s)", input::pro_controller() ? "Pro" : "GamePad");
     nsmbu_note_scene_src(c->r[4], factory);
     f_02994164_orig(c);
     mods::packages::scene_change(factory);

@@ -505,6 +505,17 @@ int main(int argc, char** argv) {
     if (m.entry != g_recomp_entry_point) fatal("%s does not match the recompiled code", rpx.c_str());
     LOG("[boot] loaded %s (%s build, title %s): entry %08X sda %08X sda2 %08X data end %08X", rpx.c_str(),
         g_guest_build_name, g_guest_build_title_id, m.entry, m.sda_base, m.sda2_base, m.data_end);
+    {
+        std::string common = config::save_dir + "/common/rp_savedata.dat";
+        std::string personal = config::save_dir + "/user/rp_personal_savedata.dat";
+        struct stat st{};
+        if (stat(common.c_str(), &st) == 0)
+            LOG("[boot] save dir %s (rp_savedata.dat %lld bytes)", config::save_dir.c_str(), (long long)st.st_size);
+        else
+            LOG("[boot] save dir %s (no rp_savedata.dat yet)", config::save_dir.c_str());
+        if (stat(personal.c_str(), &st) == 0)
+            LOG("[boot] rp_personal_savedata.dat %lld bytes", (long long)st.st_size);
+    }
 
     dispatch::init();
     init_data_imports();
