@@ -27,6 +27,26 @@ class Keys(unittest.TestCase):
         self.assertEqual(setup.parse_key("\ufeff" + KEY_HEX), bytes.fromhex(KEY_HEX))
         self.assertEqual(setup.parse_key(b"\xef\xbb\xbf" + KEY_HEX.encode()), bytes.fromhex(KEY_HEX))
 
+    def test_issue_11_windows_common_key_paste(self):
+        want = bytes.fromhex(KEY_HEX)
+        for pasted in (
+            KEY_HEX,
+            KEY_HEX.upper(),
+            KEY_HEX + "\r\n",
+            KEY_HEX.upper() + "\r",
+            "0x" + KEY_HEX,
+            " ".join(KEY_HEX[i:i + 2] for i in range(0, 32, 2)),
+            "-".join(KEY_HEX[i:i + 8] for i in range(0, 32, 8)),
+            "\ufeff" + KEY_HEX + "\r\n",
+            b"\xef\xbb\xbf" + KEY_HEX.encode() + b"\r\n",
+        ):
+            self.assertEqual(setup.parse_key(pasted), want, repr(pasted))
+        with tempfile.TemporaryDirectory() as d:
+            notepad = os.path.join(d, "common.key")
+            with open(notepad, "wb") as f:
+                f.write(b"\xff\xfe" + (KEY_HEX + "\r\n").encode("utf-16-le"))
+            self.assertEqual(setup.read_key_file(notepad, "common"), want)
+
     def test_malformed(self):
         for bad in ("", "1234", KEY_HEX[:-1], KEY_HEX + "0", "zz" * 16, b"\xff" * 15, b"\xff" * 17):
             self.assertIsNone(setup.parse_key(bad), bad)

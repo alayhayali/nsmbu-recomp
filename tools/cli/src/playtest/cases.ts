@@ -1,4 +1,6 @@
-import type { Session } from "./session.ts";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { PlayStatus, Session } from "./session.ts";
 
 export type PlayCase = {
     name: string;
@@ -165,6 +167,126 @@ async function waitCourse(session: Session, pack: string, timeoutSec: number): P
     await session.wait((s) => s.course === true && s.map !== true && s.pack === pack && s.player != null, timeoutSec);
 }
 
+async function reachMap(session: Session, timeoutSec: number): Promise<void> {
+    await session.wait((s) => s.scene !== undefined && s.scene !== "Boot", 180);
+    const start = Date.now();
+    let last = "";
+    while (Date.now() - start < timeoutSec * 1000) {
+        const s = await session.status();
+        if (s.map === true && (s.scene === "Map" || s.scene === "CourseSelect")) return;
+        last = await session.eval("return nsmbu.Scene.open_first_save(0)");
+        if (!last.startsWith("true")) {
+            await session.eval("return nsmbu.Scene.open_title()");
+            await session.press("A", 15);
+        }
+        await session.advance(40, 20);
+    }
+    throw new Error(`opening never reached the map: ${last} ${session.last}`);
+}
+
+function onMap(s: PlayStatus): boolean {
+    return s.map === true;
+}
+
+function inCourse(s: PlayStatus): boolean {
+    return s.course === true && s.map !== true && s.player != null && !!s.pack;
+}
+
+async function reachWorldMap(session: Session, timeoutSec: number): Promise<PlayStatus> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutSec * 1000) {
+        const s = await session.status();
+        if (onMap(s)) return s;
+        await session.press("A", 20);
+        await session.advance(50, 20);
+    }
+    throw new Error(`never reached the world map: ${session.last}`);
+}
+
+async function enterCourse(session: Session): Promise<string> {
+    await session.advance(90, 20);
+    const start = Date.now();
+    while (Date.now() - start < 90_000) {
+        const s = await session.status();
+        if (inCourse(s)) return s.pack ?? "";
+        if (!s.entering) await session.press("A", 25);
+        await session.advance(60, 20);
+    }
+    throw new Error(`course did not start: ${session.last}`);
+}
+
+async function leaveCourse(session: Session): Promise<void> {
+    await session.advance(180, 30);
+    const start = Date.now();
+    while (Date.now() - start < 60_000) {
+        if (onMap(await session.status())) return;
+        await session.press("B", 15);
+        await session.advance(20, 15);
+        await session.press("Plus", 20);
+        await session.advance(40, 15);
+        await session.press("Down", 15);
+        await session.advance(25, 15);
+        await session.press("A", 20);
+        await session.advance(40, 15);
+        await session.press("Right", 15);
+        await session.advance(25, 15);
+        await session.press("A", 20);
+        const until = Date.now() + 8_000;
+        while (Date.now() < until) {
+            if (onMap(await session.status())) return;
+            await session.advance(30, 15);
+        }
+    }
+    throw new Error(`did not return to the map: ${session.last}`);
+}
+
+async function walkToOtherNode(session: Session, from: number | undefined): Promise<PlayStatus> {
+    const start = Date.now();
+    while (Date.now() - start < 60_000) {
+        await session.stick(1, 0, 180);
+        await session.advance(200, 20);
+        const s = await session.status();
+        if (onMap(s) && s.node !== undefined && s.node !== from) return s;
+    }
+    throw new Error(`map node did not change: ${session.last}`);
+}
+
+function hostQuickNode(saveDir: string, file = 0): { exists: number; node: number } | null {
+    let buf: Buffer;
+    try {
+        buf = readFileSync(join(saveDir, "common", "rp_savedata.dat"));
+    } catch {
+        return null;
+    }
+    const off = 0xc28 + file * 0x204;
+    if (buf.length < off + 7) return null;
+    return { exists: buf[off], node: buf[off + 6] };
+}
+
+async function quickSaveHere(session: Session): Promise<number> {
+    await session.advance(120, 30);
+    const here = await session.status();
+    if (!onMap(here) || here.node === undefined) throw new Error(`not on the map: ${session.last}`);
+    const node = here.node;
+    await session.press("Plus", 20);
+    await session.advance(45, 15);
+    await session.press("Down", 15);
+    await session.advance(30, 15);
+    await session.press("A", 20);
+    await session.advance(60, 15);
+    await session.press("Right", 15);
+    await session.advance(30, 15);
+    await session.press("A", 20);
+    const start = Date.now();
+    let host = hostQuickNode(session.saveDir);
+    while (Date.now() - start < 30_000) {
+        host = hostQuickNode(session.saveDir);
+        if (host && host.exists !== 0 && host.node === node) return node;
+        await session.advance(20, 15);
+    }
+    throw new Error(`quick save did not store node ${node} (host exists=${host?.exists} node=${host?.node}) ${session.last}`);
+}
+
 async function loadPack(session: Session, pack: string): Promise<void> {
     const start = Date.now();
     let last = "";
@@ -187,8 +309,24 @@ return string.format("%d %d %d", a, b, c)
 
 export const CASES: PlayCase[] = [
     {
+        name: "startup",
+        summary: "Regression for #6: the game stays up past Boot with a prepared save.",
+        run: async (session) => {
+            await session.start({ save: "repo" });
+            await session.wait((s) => s.scene !== undefined && s.scene !== "Boot", 180);
+            const s = await session.status();
+            if ((s.frame ?? 0) < 1) throw new Error(`no frames after boot: ${session.last}`);
+            await session.advance(60, 30);
+            const again = await session.status();
+            if ((again.frame ?? 0) <= (s.frame ?? 0)) {
+                throw new Error(`frame counter stuck after boot: ${session.last}`);
+            }
+        },
+    },
+    {
         name: "opened-course",
-        summary: "Direct open loads the pack, a second pack does not crash, and quitting returns to that course's map node.",
+        summary:
+            "0.6.1 course-open regressions: loading card stays put, a second pack loads, leave returns to W102.",
         run: async (session) => {
             await session.start({ save: "repo", open: "1-5" });
             await waitCourse(session, "1-5", 180);
@@ -210,30 +348,47 @@ export const CASES: PlayCase[] = [
     },
     {
         name: "opening-cinematic",
-        summary: "After the opening cinematic the world map takes input and shows a course number.",
+        summary: "0.6.1 / #14 map regress: after Story Mode the map takes input and shows a course number.",
         run: async (session) => {
             await session.start({ save: "fresh" });
-            await session.wait((s) => s.scene !== undefined && s.scene !== "Boot", 180);
-            const start = Date.now();
-            let last = "";
-            while (Date.now() - start < 180_000) {
-                const s = await session.status();
-                if (s.map === true && (s.scene === "Map" || s.scene === "CourseSelect")) break;
-                last = await session.eval("return nsmbu.Scene.open_first_save(0)");
-                if (!last.startsWith("true")) {
-                    await session.eval("return nsmbu.Scene.open_title()");
-                    await session.press("A", 15);
-                }
-                await session.advance(40, 20);
-            }
-            const arrived = await session.status();
-            if (!(arrived.map === true && (arrived.scene === "Map" || arrived.scene === "CourseSelect"))) {
-                throw new Error(`opening never reached the map: ${last} ${session.last}`);
-            }
+            await reachMap(session, 180);
             const movedTo = await waitUntilMoves(session, 240);
             if (movedTo.title < 0 || !isCourseNode(movedTo.name)) {
                 throw new Error(`course number hidden after input: ${movedTo.raw}`);
             }
+        },
+    },
+    {
+        name: "save-roundtrip",
+        summary: "Regression for #14: the map Quick Save survives a new process.",
+        run: async (session) => {
+            await session.start({ save: "repo" });
+            const start = await reachWorldMap(session, 180);
+            await walkToOtherNode(session, start.node);
+            const node = await quickSaveHere(session);
+            await session.restart();
+            const back = await reachWorldMap(session, 180);
+            if (back.node !== node) {
+                const host = hostQuickNode(session.saveDir);
+                throw new Error(`reloaded node is ${back.node}, want ${node} (host exists=${host?.exists} node=${host?.node})`);
+            }
+        },
+    },
+    {
+        name: "course-enter",
+        summary: "Regression for #14 at 165 fps: enter one course, leave, enter another without freezing.",
+        run: async (session) => {
+            await session.start({
+                save: "repo",
+                env: { NSMBU_INTERP: "1", NSMBU_INTERP_FPS: "165" },
+            });
+            await reachWorldMap(session, 180);
+            const first = await enterCourse(session);
+            await leaveCourse(session);
+            const back = await session.status();
+            await walkToOtherNode(session, back.node);
+            const second = await enterCourse(session);
+            if (second === first) throw new Error(`second course is still ${second}`);
         },
     },
 ];

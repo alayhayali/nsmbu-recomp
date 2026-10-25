@@ -72,6 +72,8 @@ export class Session {
     readonly saveDir: string;
     private client: AgentClient | null = null;
     private pid: number | null = null;
+    private openPack: string | undefined;
+    private env: Record<string, string> = {};
     last = "";
 
     constructor(repo: string, name: string) {
@@ -80,17 +82,33 @@ export class Session {
         this.saveDir = join(repo, ".tmp", "playtest", name, "save");
     }
 
-    async start(opts: { save: "fresh" | "repo"; open?: string }): Promise<void> {
+    async start(opts: { save: "fresh" | "repo" | "keep"; open?: string; env?: Record<string, string> }): Promise<void> {
         await ensureIdle(this.repo);
-        rmSync(join(this.repo, ".tmp", "playtest", this.name), { recursive: true, force: true });
-        mkdirSync(this.saveDir, { recursive: true });
-        if (opts.save === "repo") {
-            cpSync(join(this.repo, "nsmbu", "save"), this.saveDir, { recursive: true });
+        if (opts.save !== "keep") {
+            rmSync(join(this.repo, ".tmp", "playtest", this.name), { recursive: true, force: true });
+            mkdirSync(this.saveDir, { recursive: true });
+            if (opts.save === "repo") {
+                cpSync(join(this.repo, "nsmbu", "save"), this.saveDir, { recursive: true });
+            }
+        } else {
+            mkdirSync(this.saveDir, { recursive: true });
         }
+        this.openPack = opts.open;
+        this.env = opts.env ?? {};
+        await this.launch();
+    }
+
+    async restart(): Promise<void> {
+        await this.stop();
+        await this.launch();
+    }
+
+    private async launch(): Promise<void> {
+        await ensureIdle(this.repo);
         mkdirSync(agentDir(this.repo), { recursive: true });
         const sock = agentSocketPath(this.repo);
         const args = ["--save", this.saveDir];
-        if (opts.open) args.push(opts.open);
+        if (this.openPack) args.push(this.openPack);
         const child = spawnPython(this.repo, "tools/run/launch.py", args, {
             detached: true,
             stdio: "ignore",
@@ -101,6 +119,7 @@ export class Session {
                 NSMBU_NO_AUDIO: "1",
                 NSMBU_VK_PRESENT_MODE: "immediate",
                 NSMBU_RES_SCALE: "1",
+                ...this.env,
             },
         });
         child.unref();

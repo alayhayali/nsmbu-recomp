@@ -94,16 +94,28 @@ The picture is the big tree, the bricks, and Mario on the ground.
 
 ## Playtests
 
-`nsmbu test` boots the debug game once per case and checks the flows that broke in 0.6.0 and 0.6.1.
+`nsmbu test` boots the debug game once per case and checks issue and release regressions.
+Prefer a new case here over driving the game with live agent commands.
 
 `nsmbu test --list` prints the case names.
 `nsmbu test opened-course` runs one case.
+Add cases in `tools/cli/src/playtest/cases.ts`.
 Each case copies or creates a save under `.tmp/playtest/<name>/save`, so `nsmbu/save` stays unread.
 
 The cases are:
 
-- `opened-course` opens `1-5` directly, checks the loading card was not rewritten to level 5, loads `1-2` from inside that course, then quits to the world map on node `W102` with Mario and a checkpoint.
-- `opening-cinematic` starts a new file and checks that the map accepts the stick and still has a course number after the opening cinematic.
+- `startup` — [#6](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/6): the process stays up past Boot and the frame counter advances.
+- `opened-course` — 0.6.1 course-open fixes: open `1-5` without rewriting the loading card, load `1-2` from there, leave to map node `W102` with a checkpoint.
+- `opening-cinematic` — 0.6.1 map input / [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): after Story Mode the map takes the stick and still shows a course number.
+- `save-roundtrip` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): the map Quick Save menu stores the current node and a restarted process is still on that node.
+- `course-enter` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14) at 165 fps: enter a course, leave, enter another without freezing.
+
+Closed-issue coverage outside playtests:
+
+- [#9](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/9) multiplayer bindings — `ctest -R input_mapping` (`test_issue_9_multiplayer_bindings`).
+- [#11](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/11) Windows common-key paste — `tools/installer/test_setup.py` (`test_issue_11_windows_common_key_paste`).
+- [#7](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/7) choppy gameplay has no deterministic playtest; shader precompile and the Vulkan smoke suite cover the shipped mitigations.
+- 0.6.2 mismatched color-target freeze — Vulkan renderer smoke (`mismatched_color_targets`).
 
 Map reads use the USA v1.3.0 addresses in `docs/nsmbu/course-open.md` and `vendor/decomp/include/course_select/NOTES_map_spawn.md`.
 The run needs `game/` and a debug build.
