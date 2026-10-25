@@ -4,6 +4,7 @@
 #include "core/build_info.h"
 #include "core/env.h"
 #include "core/runtime.h"
+#include "guest_addr.h"
 #include "platform/host.h"
 
 #include <algorithm>
@@ -371,6 +372,8 @@ std::string report_issue_url(const std::string& message, IssueKind kind) {
     url += template_file;
     url += "&version=";
     url += url_encode(version);
+    url += "&game_version=";
+    url += url_encode(g_guest_build_label);
     url += "&platform=";
     url += url_encode(platform_label());
     url += "&hardware=";

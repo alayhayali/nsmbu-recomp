@@ -50,6 +50,12 @@ class Registry(unittest.TestCase):
         self.assertEqual(builds.by_name("NSMBU_NSLU_USA").title_version, 0)
         self.assertEqual(builds.by_name("NSMBU_NSLU_EU").title_version, 0)
         self.assertEqual(builds.canonical_build().title_version, 64)
+        self.assertEqual(builds.canonical_build().issue_label(), "USA 1.3.0")
+        self.assertEqual(builds.by_name("USA_V0").issue_label(), "USA base disc")
+        self.assertEqual(builds.by_name("EU").issue_label(), "Europe 1.3.0")
+        self.assertEqual(builds.by_name("EU_V0").issue_label(), "Europe base disc")
+        self.assertEqual(builds.by_name("NSMBU_NSLU_USA").issue_label(), "NSMBU + NSLU (USA)")
+        self.assertEqual(builds.by_name("NSMBU_NSLU_EU").issue_label(), "NSMBU + NSLU (Europe)")
         self.assertIsNone(builds.by_title("0005000010143500"))
 
     def test_titles_and_hashes_are_distinct(self):

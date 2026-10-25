@@ -19,7 +19,9 @@ extern const uint32_t g_guest_code_lo, g_guest_code_hi, g_guest_data_lo, g_guest
 extern const GuestChanged g_guest_changed_code[];
 extern const unsigned g_guest_changed_code_count;
 extern const char g_guest_build_name[];
+extern const char g_guest_build_label[];
 extern const char g_guest_build_title_id[];
+extern const int g_guest_build_title_version;
 extern const int g_guest_build_mods;
 #ifdef __cplusplus
 }

@@ -91,6 +91,17 @@ class Build:
         i = bisect.bisect_right(self._differ_starts, canon) - 1
         return i >= 0 and canon < self._differ_ends[i]
 
+    def issue_label(self):
+        """Label used in bug reports and boot logs (matches the GitHub issue form)."""
+        return {
+            "USA": "USA 1.3.0",
+            "USA_V0": "USA base disc",
+            "EU": "Europe 1.3.0",
+            "EU_V0": "Europe base disc",
+            "NSMBU_NSLU_USA": "NSMBU + NSLU (USA)",
+            "NSMBU_NSLU_EU": "NSMBU + NSLU (Europe)",
+        }.get(self.name, self.name)
+
     def __repr__(self):
         return "<Build %s title %s>" % (self.name, self.title_id)
 

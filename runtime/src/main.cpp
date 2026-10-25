@@ -464,6 +464,8 @@ int main(int argc, char** argv) {
     start_log_file();
 
     LOG("[boot] %s %s (%s), %s", app_title::kName, build::version(), build::commit(), reporthdr::os_description().c_str());
+    LOG("[boot] game version %s (%s, title %s, title version %d%s)", g_guest_build_label, g_guest_build_name,
+        g_guest_build_title_id, g_guest_build_title_version, g_guest_build_mods ? "" : ", mods unsupported");
 
     if (env::TEST_HOST_CRASH()) {
         LOG("[boot] NSMBU_TEST_HOST_CRASH: crashing on purpose in the C library");
@@ -503,8 +505,9 @@ int main(int argc, char** argv) {
     std::string rpx = config::rpx_path();
     if (!load_rpx(rpx, m)) fatal("cannot load %s", rpx.c_str());
     if (m.entry != g_recomp_entry_point) fatal("%s does not match the recompiled code", rpx.c_str());
-    LOG("[boot] loaded %s (%s build, title %s): entry %08X sda %08X sda2 %08X data end %08X", rpx.c_str(),
-        g_guest_build_name, g_guest_build_title_id, m.entry, m.sda_base, m.sda2_base, m.data_end);
+    LOG("[boot] loaded %s (%s / %s, title %s version %d): entry %08X sda %08X sda2 %08X data end %08X",
+        rpx.c_str(), g_guest_build_label, g_guest_build_name, g_guest_build_title_id, g_guest_build_title_version,
+        m.entry, m.sda_base, m.sda2_base, m.data_end);
     {
         std::string common = config::save_dir + "/common/rp_savedata.dat";
         std::string personal = config::save_dir + "/user/rp_personal_savedata.dat";

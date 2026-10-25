@@ -582,7 +582,9 @@ class Recompiler:
         b = self.build
         f.write('\n/* %s build: canonical (USA) address -> this build\'s (tools/recomp/builds.py) */\n' % b.name)
         f.write('const char g_guest_build_name[] = "%s";\n' % b.name)
+        f.write('const char g_guest_build_label[] = "%s";\n' % b.issue_label())
         f.write('const char g_guest_build_title_id[] = "%s";\n' % b.title_id)
+        f.write('const int g_guest_build_title_version = %d;\n' % b.title_version)
         f.write('const int g_guest_build_mods = %d;\n' % (1 if b.mods else 0))
         for kind, steps in (("code", b.code_steps()), ("data", b.data_steps())):
             f.write("const GuestStep g_guest_%s_steps[] = {%s};\n" % (
