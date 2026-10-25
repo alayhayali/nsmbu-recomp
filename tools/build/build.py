@@ -2,12 +2,16 @@
 import argparse
 import glob
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "recomp"))
+import builds
+import game_versions as gv
 import slot
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -85,16 +89,33 @@ def link_compile_commands(build_dir):
         os.remove(dst)
     os.symlink(os.path.relpath(src, tmp), dst)
 
+def gen_build_name(gen):
+    table = os.path.join(gen, "table.c")
+    if not os.path.isfile(table):
+        return None
+    with open(table, encoding="utf-8", errors="replace") as f:
+        text = f.read(4096)
+    m = re.search(r'g_guest_build_name\[\] = "([^"]+)"', text)
+    return m.group(1) if m else None
+
+
 def ensure_gen_dir():
     gen = os.path.join(ROOT, "build", "gen")
-    rpx = os.path.join(ROOT, "game", "code", "red-pro2.rpx")
+    try:
+        rpx = os.path.join(gv.active_dir(), "code", "red-pro2.rpx")
+    except gv.GameVersionsError:
+        rpx = ""
     os.makedirs(gen, exist_ok=True)
-    if os.path.isfile(rpx):
+    if rpx and os.path.isfile(rpx):
         table = os.path.join(gen, "table.c")
+        build = builds.identify(rpx) if os.path.isfile(rpx) else None
+        want = build.name if build else None
+        have = gen_build_name(gen)
         stale = (
             gen_is_stub(gen)
             or not os.path.isfile(table)
             or os.path.getmtime(rpx) > os.path.getmtime(table)
+            or (want is not None and have is not None and want != have)
         )
         if stale:
             subprocess.run(

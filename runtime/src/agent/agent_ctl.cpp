@@ -386,6 +386,10 @@ void expire_pad(uint64_t frame) {
 void init() {
     const char* sock = env::AGENT_SOCK();
     if (!sock || !*sock) return;
+#ifdef NDEBUG
+    LOG("[agent] control socket is disabled in release builds");
+    return;
+#else
     std::string path = sock;
     std::error_code ec;
     std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
@@ -393,6 +397,7 @@ void init() {
     g_stop = false;
     LOG("[agent] control enabled (%s)", path.c_str());
     g_thread = std::thread([path] { thread_main(path); });
+#endif
 }
 
 void shutdown() {

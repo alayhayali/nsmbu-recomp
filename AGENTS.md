@@ -3,10 +3,12 @@
 ## Rules
 
 Assume that the Typescript to Lua watcher is already running.
+Never comment on github issues.
 
 ## Verify
 
-The `nsmbu` cli is installed and can be used to interact with the game.
+The `nsmbu` cli is on `PATH`.
+Game regressions go in `tools/cli/src/playtest/cases.ts` and run with `nsmbu test`.
 
 ## Changelog
 

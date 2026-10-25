@@ -159,7 +159,18 @@ int32_t open_file(const std::string& gpath, const std::string& mode, uint32_t ou
     std::string m = mode;
     if (m.find('b') == std::string::npos) m += "b";
     FILE* f = fopen(hp.c_str(), m.c_str());
-    TRACE("[fs] open %s (%s) -> %s", gpath.c_str(), mode.c_str(), f ? "ok" : "not found");
+    if (gpath.compare(0, 9, "/vol/save") == 0) {
+        long bytes = -1;
+        struct stat st{};
+        if (f && mode.find_first_of("wa") == std::string::npos && fstat(fileno(f), &st) == 0) bytes = (long)st.st_size;
+        else if (!f && stat(hp.c_str(), &st) == 0) bytes = (long)st.st_size;
+        if (f && bytes >= 0)
+            LOG("[save] fs open %s (%s) -> ok host %s (%ld bytes)", gpath.c_str(), mode.c_str(), hp.c_str(), bytes);
+        else
+            LOG("[save] fs open %s (%s) -> %s host %s", gpath.c_str(), mode.c_str(), f ? "ok" : "not found", hp.c_str());
+    } else {
+        TRACE("[fs] open %s (%s) -> %s", gpath.c_str(), mode.c_str(), f ? "ok" : "not found");
+    }
     if (!f) return FS_NOT_FOUND;
     if (mode.find_first_of("wa+") == std::string::npos) {
         const size_t slash = gpath.find_last_of('/');
@@ -342,7 +353,12 @@ HLE(nn_save, SAVEInitSaveDir) {
 }
 HLE(nn_save, SAVEFlushQuota) { ret(c, 0); }
 HLE(nn_save, SAVEOpenFile) {
-    ret(c, open_file(save_path(arg(c, 2), mem::read_cstr(arg(c, 3))), mem::read_cstr(arg(c, 4)), arg(c, 5)));
+    uint32_t slot = arg(c, 2);
+    std::string rel = mem::read_cstr(arg(c, 3));
+    std::string mode = mem::read_cstr(arg(c, 4));
+    std::string gp = save_path(slot, rel);
+    LOG("[save] SAVEOpenFile slot=%u %s (%s)", slot, rel.c_str(), mode.c_str());
+    ret(c, open_file(gp, mode, arg(c, 5)));
 }
 HLE(nn_save, SAVEGetStat) { ret(c, stat_path(save_path(arg(c, 2), mem::read_cstr(arg(c, 3))), arg(c, 4))); }
 HLE(nn_save, SAVEOpenDir) {

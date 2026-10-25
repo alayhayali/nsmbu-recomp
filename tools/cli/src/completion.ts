@@ -31,7 +31,7 @@ const COMMANDS: CommandSpec[] = [
     },
     {
         name: "crash",
-        description: "Crash on purpose to test the Report crash dialog",
+        description: "Crash on purpose (Debug: exit non-zero, no dialog)",
         noFiles: true,
     },
     {
@@ -47,7 +47,20 @@ const COMMANDS: CommandSpec[] = [
             { name: "trace", description: "Trace launch" },
         ],
     },
-    { name: "extract", description: "Extract game files" },
+    {
+        name: "game",
+        description: "Set up / select dump, extract, optional recomp",
+        noFiles: true,
+        flags: [
+            { name: "list", description: "Print dump JSON (no TUI)" },
+            { name: "extract", description: "Extract (or re-extract) after activating" },
+            { name: "recomp", description: "Recomp after activating" },
+            { name: "import", description: "Import a .wux/.wud from PATH", takesFile: true },
+            { name: "id", description: "Version folder id (with --import)" },
+            { name: "create", description: "Create an empty version folder" },
+        ],
+    },
+    { name: "extract", description: "Extract the active dump (prefer nsmbu game)", noFiles: true },
     {
         name: "save",
         description: "Convert save data to JSON and back",
@@ -88,14 +101,6 @@ const COMMANDS: CommandSpec[] = [
     { name: "stick", description: "Pulse left stick", noFiles: true },
     { name: "rstick", description: "Pulse right stick", noFiles: true },
     { name: "screenshot", description: "Capture a PNG" },
-    {
-        name: "eval",
-        description: "Run Lua in the running game",
-        flags: [
-            { name: "file", description: "Read code from PATH", takesFile: true },
-            { name: "timeout", description: "Lua execution timeout in milliseconds" },
-        ],
-    },
     { name: "wait", description: "Wait for frame, step, or scene", noFiles: true },
     { name: "quit", description: "Quit the agent game", noFiles: true },
     { name: "close", description: "Quit the agent game", noFiles: true },

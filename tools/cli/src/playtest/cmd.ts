@@ -1,9 +1,23 @@
 import { CASES } from "./cases.ts";
 import { Session } from "./session.ts";
 
-export async function cmdTest(repo: string, rest: string[]): Promise<void> {
+export function parseTestArgs(rest: string[]): { list: boolean; names: string[] } {
     const list = rest.includes("--list");
-    const names = rest.filter((a) => a !== "--list");
+    const names: string[] = [];
+    const bad: string[] = [];
+    for (const a of rest) {
+        if (a === "--list") continue;
+        if (a.startsWith("-")) bad.push(a);
+        else names.push(a);
+    }
+    if (bad.length > 0) {
+        throw new Error(`unknown option: ${bad.join(", ")}\nusage: nsmbu test [--list] [name…]`);
+    }
+    return { list, names };
+}
+
+export async function cmdTest(repo: string, rest: string[]): Promise<void> {
+    const { list, names } = parseTestArgs(rest);
     if (list && names.length === 0) {
         for (const c of CASES) console.log(`${c.name}\t${c.summary}`);
         return;

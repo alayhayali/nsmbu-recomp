@@ -51,28 +51,43 @@ The upstream built-in mods and cheats are removed.
 
 ## Game files
 
-User files live under `game/`:
+User files live under `game/`.
+Drop any named `.wux` into `game/` plus keys (`common.key`, Cemu `keys.txt`, sidecar `.key`).
+`nsmbu game` imports the image into `game/<id>/game.wux`, stores the disc key as `game/<id>.key`, then can extract and recomp.
+Recommended ids are `usa-base`, `usa-1.3.0`, `eu-base`, `eu-1.3.0`, `nsmbu-nslu-usa`, and `nsmbu-nslu-eu`.
+Keep the base disc and the 1.3.0 merge in separate folders (`*-base` vs `*-1.3.0`).
+A version folder only needs `code/`, `content/`, and `meta/` to play; keys stay under `game/`.
+See [game/README.md](../../game/README.md) for the full recommended layout.
+`nsmbu game usa-1.3.0` activates that folder; add `--recomp` to recomp without the menu.
+It writes `game/active`.
+Build, launch, and playtests resolve the active folder with `game_versions.active_dir()` (for example `game/usa-1.3.0/`).
+`nsmbu extract` still extracts the active dump alone if you need that step by itself.
 
-- `game/game.wux` — disc image
-- `game/game.key` — title key next to the image
-- `game/common.key` — common key (or `WIIU_COMMON_KEY`)
-- `game/update/` — optional matching 1.3.0 update (USA title version 64, or Europe 80), with `code/`, `content/`, `meta/`.
+Inside a version folder:
+
+- `game.wux` — disc image after import (optional once extracted)
+- `update/` — optional matching 1.3.0 update (USA title version 64, or Europe 80), with `code/`, `content/`, `meta/`.
   Without it, a known USA or Europe base-disc RPX (title version 0) is allowed.
   Mods are unsupported on that build.
-- `game/code/`, `game/content/`, `game/meta/` — output of `nsmbu extract` (base disc plus update)
+- `code/`, `content/`, `meta/` — extract output (base disc, or base plus update for `*-1.3.0`)
+
+Keys under `game/`:
+
+- `common.key` or `keys.txt` (`common=`) or `WIIU_COMMON_KEY`
+- `<id>.key` or a sidecar next to a dropped `.wux`, or `disc=` in `keys.txt`
 
 In the setup window you can also type or paste each key as 32 hex digits instead of a key file.
 
 `.gitignore` ignores all of `game/` except `game/README.md` (layout and steps for this folder).
 
-`nsmbu extract` starts by checking `game/update/` is a known 1.3.0 build.
-It then extracts `game/game.wux` into `game/code`, `game/content`, and `game/meta`.
-It applies `game/update/` over those folders when present, then checks that `code/red-pro2.rpx` is a known build.
+Extract (from `nsmbu game` or `nsmbu extract`) checks `update/` under the active dump when present.
+It extracts `game.wux` into `code/`, `content/`, and `meta/`.
+It applies `update/` over those folders when present, then checks that `code/red-pro2.rpx` is a known build.
 See [docs/builds.md](../builds.md) for the address map between those builds.
 
 `nsmbu build` configures `build/` in **Debug** and builds `nsmbu`.
 
-If `game/code/red-pro2.rpx` exists, `nsmbu build` runs `recomp.py` into `build/gen` when the RPX is newer than the generated code.
+If the active dump has `code/red-pro2.rpx`, `nsmbu build` runs `recomp.py` into `build/gen` when the RPX is newer than the generated code.
 
 Otherwise it runs `stubgen.py` so the tree links without your RPX.
 
@@ -131,9 +146,9 @@ Use a Release binary (`nsmbu build --release`) for hitch checks.
 
 Install the CLI with `cd tools/cli && npm link`; see [cli.md](../cli.md).
 
-Put an extracted game you own in `game/`.
+Put an extracted game you own under `game/<id>/` and run `nsmbu game` to activate it.
 
-The layout is `game/code/`, `game/content/`, and `game/meta/`.
+Tools then use that folder’s `code/`, `content/`, and `meta/` directly.
 
 The headers match the USA v1.3.0 executable (title `0005000010101d00`, title version 64).
 
@@ -150,7 +165,7 @@ Use Clang.
 The generated C uses `musttail`.
 
 ```bash
-python3 tools/recomp/recomp.py game/code/red-pro2.rpx build/gen
+python3 tools/recomp/recomp.py game/usa-1.3.0/code/red-pro2.rpx build/gen
 cmake -S . -B build -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
 cmake --build build
 ```

@@ -6,13 +6,18 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "tools", "recomp"))
+sys.path.insert(0, os.path.join(ROOT, "tools", "lib"))
 import builds
+import game_versions as gv
 
 UPDATE_DIRNAME = "update"
 
 
 def game_root(path=None):
-    return os.path.abspath(path or os.path.join(ROOT, "game"))
+    """Active dump folder (game/<id>/), or `path` when given."""
+    if path:
+        return os.path.abspath(path)
+    return gv.active_dir()
 
 
 def update_root(game):

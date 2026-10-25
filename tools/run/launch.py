@@ -7,6 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 import devdata
+import game_versions as gv
 import slot
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -85,9 +86,12 @@ def main():
         exe = nsmbu_exe(prefer_release=args.no_debug)
         if not os.path.isfile(exe):
             sys.exit(f"missing {exe}; run: nsmbu build")
-    game = os.path.join(ROOT, "game")
-    if not os.path.isdir(game):
-        sys.exit("missing game/; run: nsmbu extract")
+    try:
+        game = gv.active_dir()
+    except gv.GameVersionsError as e:
+        sys.exit(str(e))
+    if not os.path.isdir(game) or not os.path.isfile(os.path.join(game, "code", "red-pro2.rpx")):
+        sys.exit("missing active dump; run: nsmbu extract / nsmbu game")
     env = os.environ.copy()
     _, save = devdata.apply_env(env, ROOT)
     if args.save:

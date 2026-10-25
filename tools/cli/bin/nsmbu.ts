@@ -6,6 +6,7 @@ import {
     cmdBuild,
     cmdCrash,
     cmdExtract,
+    cmdGame,
     cmdInstaller,
     cmdLaunch,
     cmdLint,
@@ -19,7 +20,6 @@ import {
     cmdWine,
 } from "../src/dev.ts";
 import {
-    cmdEval,
     cmdOpen,
     cmdPress,
     cmdQuit,
@@ -94,6 +94,9 @@ async function main(): Promise<void> {
             }
             case "extract":
                 cmdExtract(repo, rest);
+                break;
+            case "game":
+                await cmdGame(repo, rest);
                 break;
             case "save": {
                 const { flags, positional } = parseArgv(rest, ["output"], ["output"]);
@@ -194,9 +197,6 @@ async function main(): Promise<void> {
                 break;
             case "screenshot":
                 await cmdScreenshot(repo, rest);
-                break;
-            case "eval":
-                await cmdEval(repo, rest);
                 break;
             case "wait":
                 await cmdWait(repo, rest);

@@ -6,8 +6,11 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools", "recomp"))
+sys.path.insert(0, os.path.join(ROOT, "tools", "lib"))
 import builds
 import game_dump
+import game_keys
+import game_versions as gv
 
 
 def check_update(game):
@@ -45,17 +48,28 @@ def check_update(game):
 
 def main():
     game = game_dump.game_root()
-    image = os.path.join(game, "game.wux")
-    key = os.path.join(game, "game.key")
-    if not os.path.isfile(image):
-        sys.exit("put your dump as game/game.wux")
-    if not os.path.isfile(key):
-        sys.exit("put the title key as game/game.key (next to game.wux)")
+    image = gv.image_path(game)
+    if not image:
+        sys.exit("put a disc image in game/ and run nsmbu game, or place game.wux in the active dump (%s)" % game)
+
+    disc, disc_src = game_keys.find_disc_key(image)
+    common, common_src = game_keys.find_common_key(image)
+    if not disc:
+        sys.exit(
+            "disc key not found for %s; add a sidecar .key, game/<id>.key, or disc= in game/keys.txt"
+            % image
+        )
+    if not common:
+        sys.exit(
+            "Wii U common key not found; set WIIU_COMMON_KEY or put common.key / keys.txt under game/"
+        )
+    print("disc key: %s" % (disc_src or "?"))
+    print("common key: %s" % (common_src or "?"))
 
     have_update = check_update(game)
 
     print("")
-    print("extracting base disc into game/...")
+    print("extracting base disc into %s ..." % game)
     subprocess.run(
         [
             sys.executable,
@@ -69,7 +83,7 @@ def main():
     )
 
     if have_update:
-        print("applying game/%s onto game/..." % game_dump.UPDATE_DIRNAME)
+        print("applying %s onto %s ..." % (game_dump.UPDATE_DIRNAME, game))
         game_dump.apply_update(game)
 
     rpx = os.path.join(game, "code", "red-pro2.rpx")

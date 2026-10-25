@@ -240,6 +240,7 @@ static void test_config_json() {
 
 static void test_players() {
     set_config(Config::defaults(), false);
+    CHECK(kPlayers == 4);
     CHECK(sync_players());
     Mapping m = player(2);
     m.pad[kA] = kPadNone;
@@ -258,6 +259,29 @@ static void test_players() {
     set_sync_players(true, 1, false);
     CHECK(sync_players());
     for (int i = 0; i < kPlayers; i++) CHECK(player(i) == player(1));
+    set_config(Config::defaults(), false);
+}
+
+static void test_issue_9_multiplayer_bindings() {
+    Config c = Config::defaults();
+    c.sync = false;
+    const int pads[4] = {kPadA, kPadB, kPadX, kPadY};
+    for (int i = 0; i < kPlayers; i++) {
+        c.players[i] = Mapping::defaults();
+        c.players[i].pad[kA] = pads[i];
+        c.players[i].deadzone = 0.1f * (float)(i + 1);
+    }
+    std::string err;
+    Config r;
+    CHECK(config_from_json(config_to_json(c), r, &err) && err.empty());
+    CHECK(!r.sync);
+    for (int i = 0; i < kPlayers; i++) {
+        CHECK(r.players[i].pad[kA] == pads[i]);
+        CHECK(std::fabs(r.players[i].deadzone - 0.1f * (float)(i + 1)) < 1e-6);
+    }
+    set_config(r, false);
+    CHECK(!sync_players());
+    for (int i = 0; i < kPlayers; i++) CHECK(player(i).pad[kA] == pads[i]);
     set_config(Config::defaults(), false);
 }
 
@@ -327,6 +351,7 @@ int main() {
     test_json_partial_and_bad();
     test_config_json();
     test_players();
+    test_issue_9_multiplayer_bindings();
     test_deadzone();
     test_files();
     printf("input_map_test: %d passed, %d failed\n", g_pass, g_fail);

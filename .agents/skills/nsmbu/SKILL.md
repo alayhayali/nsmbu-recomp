@@ -1,6 +1,6 @@
 ---
 name: nsmbu
-description: "nsmbu CLI, status, Lua eval, scripted headless boots, playtests, and NSMBU_* env vars. Use when driving the game, reading nsmbu status, waiting for a scene, running Lua in the running game, measuring a Release replay, running a dev recipe, nsmbu scripted, nsmbu test, scripted inputs or exit frames, or adding, renaming, or reading an NSMBU_* variable."
+description: "Playtests (`nsmbu test`), cases.ts helpers, status, scripted boots, NSMBU_* env vars, and swapping the active game dump (usa/eu). Use when adding or running a playtest, reproducing a game bug as a case, switching region or version under game/, reading nsmbu status, measuring a Release replay, running nsmbu scripted, or adding, renaming, or reading an NSMBU_* variable."
 ---
 
 # nsmbu
@@ -10,60 +10,82 @@ Run `nsmbu --help` for the command list.
 
 ## Docs
 
-Read `docs/cli.md` for dev recipes and the agent control loop.
-Read `docs/automation.md` for `nsmbu scripted`, `nsmbu test`, and replay inputs.
+Read `docs/automation.md` for playtests, `nsmbu scripted`, and replay inputs.
+Read `docs/cli.md` for install, build/launch, and the short live control commands.
 Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable.
+Read `game/README.md` for dump folder layout.
 
-## One game
+## Dump (no TUI)
 
-Only one game process is supported.
-If `nsmbu open` refuses because a game is already running, run `nsmbu status` or `nsmbu close`.
+Agents must not run bare `nsmbu game` (that opens the TUI).
+Use flags only.
 
-## Observe
+```bash
+nsmbu game --list
+nsmbu game eu-1.3.0 --recomp
+nsmbu build
+```
 
-Read `nsmbu status` before any `eval`.
-The line names the scene, whether the world map or a course is up, the course pack, and the player position.
+`--list` prints JSON (`active`, `versions`, `loose_images`).
+`nsmbu game <id>` writes `game/active` and skips prompts.
+Add `--extract` to extract (or re-extract) the disc.
+Add `--recomp` to refresh `build/gen` from that dump’s RPX (needed when switching USA ↔ Europe).
+Then `nsmbu build` (and playtests / `nsmbu open`) use that dump.
+
+Issue playtests that use `Scene` open / apply-save need a `*-1.3.0` (or combo) dump.
+Use `*-base` only to check boot and title-version messaging; mods and those Scene paths are unsupported there.
+
+Other non-interactive forms:
+
+```bash
+nsmbu game --import path/to/disc.wux --id eu-base --extract --recomp
+nsmbu game --create eu-base
+```
+
+## Playtest
+
+Repro and regression work is a case, not a live control chat.
+
+1. Reuse or extend helpers in `tools/cli/src/playtest/cases.ts` (`reachMap`, `loadPack`, `leaveCourse`, `enterCourse`, `quickSaveHere`, and the other locals in that file).
+2. Map round-trips use `leaveCourse` / `enterCourse`; do not build a case on `Scene.leave_course` alone.
+3. Add or extend a `PlayCase` in the same file.
+4. Run `nsmbu test [name]`.
+   `nsmbu test --list` prints the names (only `--list` is a valid flag).
+5. Done when that case exits 0 (or fails with an assertion you can fix).
+
+Each case uses its own save under `.tmp/playtest/<name>/save`.
+Scene moves and map reads that need guest Lua stay inside the case through `Session` helpers.
+
+## Status
+
+`nsmbu status` is the observation line while writing a case or checking a stuck run.
 
 ```text
 frame=120 step=80 pid=1 scene=CourseSelect map=1 course=0 pack=1-1 entering=1-5 file=0 cp=-1 node=4 world=0 player=none
 ```
 
 `scene` is `Boot`, `Flow`, `FileSelect`, `SaveSelect`, `Title`, `Menu`, `Map`, `CourseTask`, or `CourseSelect`.
-`map=1` means the world-map select task is alive.
-`course=1` means a course task is alive.
-`pack` is the current course as `world-number`.
-`entering` is the course being loaded when it differs from `pack`.
-`cp` is the map checkpoint index.
-`world` and `node` are the map position when `map=1`.
-`player=none` means there is no course player snapshot.
+`map=1` / `course=1` mean those tasks are alive.
+`pack` and `entering` are course ids.
+`world` / `node` / `cp` are map fields when `map=1`.
 Fields that are not ready are left off the line.
+`nsmbu screenshot [path]` when the question is what is on screen.
 
-Take a screenshot when the question is what is on screen.
-`nsmbu screenshot [path]` blocks until the PNG exists and prints the path.
+## One game
 
-## Move
+Only one game process is supported.
+If `nsmbu open` refuses because a game is already running, run `nsmbu status` or `nsmbu close`.
 
-Change scenes with one `nsmbu eval` call, then wait.
+Do not run `nsmbu game … --recomp` or change `game/active` while a playtest or `nsmbu open` is in flight.
+Serialize dump switches: finish the test or close the game, then switch and rebuild.
 
-```bash
-nsmbu eval 'return nsmbu.Scene.load_pack("1-5")'
-nsmbu wait --scene CourseTask
-```
+## Live look
 
-`open_first_save` and `open_title` are the other transitions.
-`nsmbu wait --scene NAME` polls status until `scene` matches.
-`--timeout` is seconds.
-A timeout prints the last status line.
+`open` / `press` / `stick` / `screenshot` / `wait` are for a short look or one pad pulse while writing the case.
+They block until done, use `wait --scene NAME` or `wait --step N` instead of shell sleeps.
+A lasting check belongs in the playtest step above.
 
-`open`, `press`, `stick`, `screenshot`, `eval`, `status`, and `wait` block until their work is done.
-Use `wait --step N` or `wait --scene NAME` when the next action needs guest progress.
-
-## Lua
-
-`nsmbu eval` runs on the guest thread and keeps state between calls.
-The global `nsmbu` is the mod SDK.
-Use `Guest.read` only for a field the status line does not name.
-Take the offset from the port or `docs/`, not from an earlier session.
+## Inputs
 
 A long pad timeline stays on `record` and `replay`.
 Use `replay --release` for a measured course.

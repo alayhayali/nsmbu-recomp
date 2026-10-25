@@ -23,3 +23,22 @@
 029C4FE4  # ApplicationFramework::procDraw_: a 30 fps step draws no frame
 
 024F30DC  # ModelG3d::calcGPU: capture the model world pose and draw the in-between pass blended
+
+029D9E30  # SaveMgr::runState: log which save-thread state is starting (state in r5)
+@029D94C0  # end of loadSavedata: log read result and per-file exists flags
+@029D97B8  # end of saveSavedata: log write result and host file size
+@029D9CB8  # end of loadPersonalSavedata: log personal save read
+@029D9E2C  # end of savePersonalSavedata: log personal save write
+029D8270  # SaveMgr::startReadGame: log when a main save read is requested
+029D8304  # SaveMgr::startWriteGame: log when a main save write is requested
+029D82D4  # SaveMgr::startReadPersonalSavedata: log personal read request
+029D8394  # SaveMgr::startWritePersonalSavedata: log personal write request
+029872BC  # continueFirstSave: log empty vs CourseSelect decision
+029D8478  # clear the opened file's quick record: keep that progress in the story record first
+029D7648  # applySaveFile: log which file record is applied
+029D8C10  # startSaveGame: remember main vs quick before the live snapshot
+@029D8C48  # startSaveGame: if that snapshot did not move, keep the quick record in main
+@029D71A4  # file-select course flags: quick record when that slot path is the caller
+@02631BE4  # file-select completion byte, quick path (slot builder 0x02631B50)
+@0263ADD8  # file-select completion byte, quick path (slot builder 0x0263AD40)
+@02641A4C  # file-select completion byte, quick path (slot builder 0x02641974)

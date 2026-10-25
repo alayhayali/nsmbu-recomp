@@ -1,11 +1,49 @@
 # Automation runs
 
+Issue and release game regressions belong in playtests.
+Use `nsmbu scripted` when you need exit-at-frame dumps or a fixed `NSMBU_PRESS` timeline without a playtest case.
+Long pad timelines stay on `record` / `replay`.
+
+## Playtests
+
+`nsmbu test` boots the debug game once per case and checks issue and release regressions.
+Add or extend a case in `tools/cli/src/playtest/cases.ts`.
+Reuse the helpers already in that file (`reachMap`, `loadPack`, `leaveCourse`, `enterCourse`, `quickSaveHere`, and the other locals) before inventing a new flow.
+Map round-trips use `leaveCourse` / `enterCourse`, not `Scene.leave_course` alone.
+Scene moves that need guest Lua stay inside the case through `Session` helpers.
+
+`nsmbu test --list` prints the case names and summaries (the live list).
+`nsmbu test opened-course` runs one case.
+Only `--list` is a valid flag; other options are rejected.
+Each case copies or creates a save under `.tmp/playtest/<name>/save`, so `nsmbu/save` stays unread.
+
+Issue links that the cases cover:
+
+- `startup` — [#6](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/6)
+- `opening-cinematic`, `save-roundtrip`, `course-enter`, `save-state` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14) (Quick Save / story map / high fps)
+- `course-enter-120` — [#15](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/15) at 120 fps
+- `opened-course` — 0.6.1 course-open / leave-to-map regressions
+
+Closed-issue coverage outside playtests:
+
+- [#9](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/9) multiplayer bindings — `ctest -R input_mapping` (`test_issue_9_multiplayer_bindings`).
+- [#11](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/11) Windows common-key paste — `tools/installer/test_setup.py` (`test_issue_11_windows_common_key_paste`).
+- [#7](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/7) choppy gameplay has no deterministic playtest; shader precompile and the Vulkan smoke suite cover the shipped mitigations.
+- 0.6.2 mismatched color-target freeze — Vulkan renderer smoke (`mismatched_color_targets`).
+
+Map reads use the USA v1.3.0 addresses in `docs/nsmbu/course-open.md` and `vendor/decomp/include/course_select/NOTES_map_spawn.md`.
+The run needs `game/` and a debug build.
+It is not part of `ctest`.
+Run it before a release when this machine has a dump.
+
+## Scripted boots
+
 Headless boots use `nsmbu scripted <name>` from the repo root (wraps `tools/run/scripted-run.sh`).
 The script copies `nsmbu/save` into `.tmp/<name>/save`, then starts `build/debug/nsmbu` (or another build dir if present) with that save.
 Frame dumps land in `.tmp/<name>/` as `frame_<n>.png`.
 The repo `nsmbu/save` stays unread by the game.
 
-## Steps
+### Steps
 
 1. Set `NSMBU_EXIT_AT_FRAME`.
    Set `NSMBU_DUMP_FRAMES` to the frames you will look at.
@@ -19,7 +57,7 @@ The repo `nsmbu/save` stays unread by the game.
    Run `python3 tools/frames/flicker.py FIRST LAST .tmp/<name>`.
    The check is done when both scales have a result and you have looked at one frame from each.
 
-## Environment the script sets
+### Environment the script sets
 
 `tools/run/scripted-run.sh` always exports these values:
 
@@ -32,9 +70,9 @@ The repo `nsmbu/save` stays unread by the game.
 | `NSMBU_NO_AUDIO` | `1` | Skips opening an audio output device |
 | `NSMBU_RES_SCALE` | `1` unless already set | Internal resolution scale (1–4) |
 
-The binary also receives `--game <repo>/game` and `--save .tmp/<name>/save`.
+The binary also receives `--game` set to the active dump under `game/<id>/` and `--save .tmp/<name>/save`.
 
-## Environment you set
+### Environment you set
 
 Set these on the command line before the script:
 
@@ -76,7 +114,7 @@ Positive x is right.
 Positive y is up.
 Values are typically `-1` to `1`.
 
-## Example
+### Example
 
 `nsmbu/save` is already past the opening cutscene.
 This recipe starts from that save.
@@ -92,25 +130,7 @@ tools/run/scripted-run.sh w11
 Frame 7000 is the course.
 The picture is the big tree, the bricks, and Mario on the ground.
 
-## Playtests
-
-`nsmbu test` boots the debug game once per case and checks the flows that broke in 0.6.0 and 0.6.1.
-
-`nsmbu test --list` prints the case names.
-`nsmbu test opened-course` runs one case.
-Each case copies or creates a save under `.tmp/playtest/<name>/save`, so `nsmbu/save` stays unread.
-
-The cases are:
-
-- `opened-course` opens `1-5` directly, checks the loading card was not rewritten to level 5, loads `1-2` from inside that course, then quits to the world map on node `W102` with Mario and a checkpoint.
-- `opening-cinematic` starts a new file and checks that the map accepts the stick and still has a course number after the opening cinematic.
-
-Map reads use the USA v1.3.0 addresses in `docs/nsmbu/course-open.md` and `vendor/decomp/include/course_select/NOTES_map_spawn.md`.
-The run needs `game/` and a debug build.
-It is not part of `ctest`.
-Run it before a release when this machine has a dump.
-
-## Mute
+### Mute
 
 The script sets `NSMBU_NO_AUDIO=1` so no output device is opened.
 The mix still runs.

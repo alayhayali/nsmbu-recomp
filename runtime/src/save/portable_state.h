@@ -9,14 +9,31 @@
 namespace pstate {
 
 constexpr int kFormatVersion = 1;
-constexpr size_t kMaxFileSize = 64 * 1024;
-constexpr size_t kMaxLine = 8192;
+constexpr size_t kMaxFileSize = 128 * 1024;
+constexpr size_t kMaxLine = 128 * 1024;
 constexpr const char* kExtension = "nsstate";
 
 constexpr size_t kSaveDataSize = 0xA94;
+constexpr size_t kNsmbuSaveDataSize = 0xB134;
 constexpr size_t kSaveDataUsed = 0x768;
 constexpr size_t kSaveChecksumAt = 0xA8C;
 constexpr size_t kHdPlayerSize = 16, kHdStatusSize = 4, kHdEventSize = 20, kHdMapSize = 220;
+constexpr size_t kNsmbuHeaderCrcAt = 0xC;
+constexpr size_t kNsmbuSlotSize = 0x204;
+constexpr size_t kNsmbuSlotDataSize = 0x200;
+constexpr size_t kNsmbuSlotCount = 6;
+constexpr size_t kNsmbuMainOff = 0x10;
+constexpr size_t kNsmbuQuickOff = 0xC28;
+constexpr size_t kNsmbuChallengeOff = 0x1840;
+constexpr size_t kNsmbuChallengeCrcAt = 0x3608;
+constexpr size_t kNsmbuBoostOff = 0x4E4C;
+constexpr size_t kNsmbuBoostCrcAt = 0xA4;
+constexpr size_t kNsmbuCoinOff = 0x4EF4;
+constexpr size_t kNsmbuCoinCrcAt = 0x5F34;
+constexpr size_t kNsmbuTelemetryOff = 0xAE2C;
+constexpr size_t kNsmbuTelemetryCrcAt = 0x90;
+constexpr size_t kNsmbuMiiOff = 0xAEC0;
+constexpr size_t kNsmbuMiiCrcAt = 0x270;
 
 struct State {
 
@@ -29,6 +46,11 @@ struct State {
     int controller = 0;
     int file_slot = 0;
     std::string player_name;
+    std::string place;
+    int world = 0;
+    int course = 0;
+    int section = 0;
+    int node = -1;
 
     std::string stage;
     int start_point = 0, start_room = 0, layer = -1;
@@ -52,6 +74,9 @@ void save_checksum(const uint8_t* block, uint32_t& sum, uint32_t& complement);
 
 void seal_savedata(std::vector<uint8_t>& block);
 bool savedata_checksum_ok(const std::vector<uint8_t>& block);
+
+void seal_nsmbu_savedata(std::vector<uint8_t>& block);
+bool nsmbu_savedata_ok(const std::vector<uint8_t>& block);
 
 std::string write(const State& s, std::string& why);
 

@@ -10,10 +10,8 @@ usage:
   wudextract.py IMAGE extract OUTDIR [GLOB ...]
 
 Keys (none are included in this repository; dump them from your own console):
-  - the disc key is read from IMAGE with the extension replaced by .key (16 bytes);
-  - the Wii U common key is read from the WIIU_COMMON_KEY environment variable (32 hex digits),
-    or from a file common.key (16 raw bytes or 32 hex digits) next to IMAGE or in the current
-    directory.
+  - the disc key is read from IMAGE.key, game/<id>.key, game/keys.txt (disc=), or game/game.key;
+  - the Wii U common key is read from WIIU_COMMON_KEY, game/common.key, or game/keys.txt (common=).
 """
 import fnmatch
 import hashlib
@@ -23,6 +21,10 @@ import sys
 
 from Crypto.Cipher import AES
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "tools", "lib"))
+import game_keys
+
 SECTOR = 0x8000
 BLOCK_SIZE = 0x10000
 BLOCK_HASH_SIZE = 0x400
@@ -31,27 +33,12 @@ BLOCK_FILE_SIZE = 0xFC00
 def aes_dec(key, iv, data):
     return AES.new(key, AES.MODE_CBC, iv).decrypt(data)
 
-def parse_key(data, what):
-    data = data.strip() if len(data) != 16 else data
-    if len(data) == 32:
-        try:
-            data = bytes.fromhex(data.decode("ascii"))
-        except ValueError:
-            pass
-    if len(data) != 16:
-        sys.exit("%s: expected 16 bytes or 32 hex digits" % what)
-    return data
-
 def common_key(image):
     """The Wii U common key, supplied by the user (it is not part of this repository)."""
-    env = os.environ.get("WIIU_COMMON_KEY")
-    if env:
-        return parse_key(env.encode(), "WIIU_COMMON_KEY")
-    for d in (os.path.dirname(os.path.abspath(image)), os.getcwd()):
-        p = os.path.join(d, "common.key")
-        if os.path.isfile(p):
-            return parse_key(open(p, "rb").read(), p)
-    sys.exit("Wii U common key not found: set WIIU_COMMON_KEY or put common.key next to the image "
+    key, src = game_keys.find_common_key(image)
+    if key:
+        return key
+    sys.exit("Wii U common key not found: set WIIU_COMMON_KEY or put common.key / keys.txt under game/ "
              "(dump it from your own console)")
 
 class Wud:
@@ -167,10 +154,14 @@ class FST:
                 blk += chunk_sectors
 
 def open_disc(path):
-    key_path = os.path.splitext(path)[0] + ".key"
-    if not os.path.isfile(key_path):
-        sys.exit("disc key not found: expected %s (16 raw bytes or 32 hex digits)" % key_path)
-    key = parse_key(open(key_path, "rb").read(), key_path)
+    key, key_src = game_keys.find_disc_key(path)
+    if not key:
+        side = game_keys.sidecar_key_path(path)
+        sys.exit(
+            "disc key not found: expected %s, game/<id>.key, or a disc= line in game/keys.txt "
+            "(16 raw bytes or 32 hex digits)" % side
+        )
+    key_label = key_src or "disc key"
     wud = Wud(path)
     if struct.unpack(">I", wud.read(SECTOR * 2, 4))[0] != 0xCC549EB9:
         raise ValueError("not a Wii U disc image")
@@ -178,7 +169,7 @@ def open_disc(path):
     magic, bsize, = struct.unpack_from(">II", pt, 0)
     if magic != 0xCCA6E67B:
         raise ValueError("partition table decryption failed: %s does not match this image (it must be "
-                         "this disc's key, 16 raw bytes or one line of 32 hex digits)" % key_path)
+                         "this disc's key, 16 raw bytes or one line of 32 hex digits)" % key_label)
     nparts, = struct.unpack_from(">I", pt, 0x1C)
     parts = []
     for i in range(nparts):

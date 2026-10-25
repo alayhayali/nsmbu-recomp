@@ -15,6 +15,13 @@ __attribute__((weak)) uint32_t guest_call(Cpu* c, uint32_t fn,
     return 0;
 }
 
+namespace dispatch {
+__attribute__((weak)) PpcFunc lookup(uint32_t addr) {
+    (void)addr;
+    return nullptr;
+}
+}
+
 namespace mem {
 __attribute__((weak)) uint32_t host_alloc(uint32_t size, uint32_t align) {
     (void)size;
