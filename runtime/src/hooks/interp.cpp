@@ -132,6 +132,7 @@ bool g_exact_step = false;
 
 constexpr uint32_t kRendererBox = 0x10;
 constexpr uint32_t kProjection = 0x20;
+constexpr uint32_t kViewCount = 0x4C4;
 constexpr uint32_t kViewInfo = 0x4C8;
 constexpr uint32_t kViewStride = 0x80;
 constexpr uint32_t kViewProj = 0x34;
@@ -154,6 +155,7 @@ float g_cam_cur[4] = {0, 0, 0, 0};
 bool g_cam_cur_valid = false;
 ViewSlot g_views[8];
 int g_view_n = 0;
+uint32_t g_view_area = 0;
 
 uint32_t renderer_instance() { return ld32(GD(0x101D2D88)); }
 
@@ -181,8 +183,13 @@ void apply_box(Cpu* c, uint32_t r, const float* b) {
 }
 
 uint32_t view_info(uint32_t mgr, uint32_t view) {
-    const uint32_t base = mgr ? ld32(mgr + kViewInfo) : 0;
-    return base ? base + view * kViewStride : 0;
+    if (mgr < 0x02000000u || mgr > 0x70000000u - (kViewInfo + 4u)) return 0;
+    const uint32_t count = ld32(mgr + kViewCount);
+    const uint32_t base = ld32(mgr + kViewInfo);
+    if (base < 0x02000000u || base >= 0x70000000u || view >= count) return 0;
+    const uint32_t vi = base + view * kViewStride;
+    if (vi < base || vi >= 0x70000000u || !wwatch::readable(vi, kViewStride)) return 0;
+    return vi;
 }
 
 void write_view_proj(Cpu* c, uint32_t mgr, uint32_t view, uint32_t proj) {
@@ -207,6 +214,15 @@ void remember_view(uint32_t mgr, uint32_t view, uint32_t proj) {
         g_views[g_view_n].proj = proj;
         g_view_n++;
     }
+}
+
+void remember_area() {
+    const uint32_t area = ld32(GD(0x101D1598));
+    if (area == g_view_area) return;
+    g_view_n = 0;
+    g_cam_cur_valid = false;
+    g_cam.valid = false;
+    g_view_area = area;
 }
 
 }
@@ -250,6 +266,7 @@ void cam_trace(const char* what, const float* prev, const float* cur, const floa
 }
 
 void apply_hold_camera(Cpu* c) {
+    remember_area();
     if (!course_play_active() || !g_cam_cur_valid) return;
     const uint32_t r = renderer_instance();
     if (!r) return;
@@ -565,6 +582,9 @@ void ss_reset() {
     g_step_n = 1;
     g_frame_n = 1;
     g_cam = CamBox{};
+    g_view_n = 0;
+    g_cam_cur_valid = false;
+    g_view_area = 0;
     model_clear();
     g_blend_t = 1.f;
     const int rate = output_fps();
@@ -833,6 +853,7 @@ extern "C" void hook_029C4FE4(Cpu* c) {
 
 extern "C" void hook_024FBF6C(Cpu* c) {
     using namespace interp;
+    remember_area();
     const uint32_t mgr = c->r[3], view = c->r[4], proj = c->r[6];
     f_024FBF6C_orig(c);
     if (!enabled() || !course_play_active()) return;

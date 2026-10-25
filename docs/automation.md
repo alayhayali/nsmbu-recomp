@@ -20,8 +20,9 @@ The cases are:
 - `startup` — [#6](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/6): the process stays up past Boot and the frame counter advances.
 - `opened-course` — 0.6.1 course-open fixes: open `1-5` without rewriting the loading card, load `1-2` from there, leave to map node `W102` with a checkpoint.
 - `opening-cinematic` — 0.6.1 map input / [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): after Story Mode the map takes the stick and still shows a course number.
-- `save-roundtrip` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): the map Quick Save menu stores the current node and a restarted process is still on that node.
+- `save-roundtrip` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): the map Quick Save menu stores the current node, a restarted process is still on that node, the file-select slot log names the quick record, and continuing writes that progress into the story record.
 - `course-enter` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14) at 165 fps: enter a course, leave, enter another without freezing.
+- `save-state` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): a portable save state writes on the world map and inside a course.
 
 Closed-issue coverage outside playtests:
 

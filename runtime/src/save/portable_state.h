@@ -9,11 +9,12 @@
 namespace pstate {
 
 constexpr int kFormatVersion = 1;
-constexpr size_t kMaxFileSize = 64 * 1024;
-constexpr size_t kMaxLine = 8192;
+constexpr size_t kMaxFileSize = 128 * 1024;
+constexpr size_t kMaxLine = 128 * 1024;
 constexpr const char* kExtension = "nsstate";
 
 constexpr size_t kSaveDataSize = 0xA94;
+constexpr size_t kNsmbuSaveDataSize = 0xB134;
 constexpr size_t kSaveDataUsed = 0x768;
 constexpr size_t kSaveChecksumAt = 0xA8C;
 constexpr size_t kHdPlayerSize = 16, kHdStatusSize = 4, kHdEventSize = 20, kHdMapSize = 220;
@@ -29,6 +30,11 @@ struct State {
     int controller = 0;
     int file_slot = 0;
     std::string player_name;
+    std::string place;
+    int world = 0;
+    int course = 0;
+    int section = 0;
+    int node = -1;
 
     std::string stage;
     int start_point = 0, start_room = 0, layer = -1;

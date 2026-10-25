@@ -22,7 +22,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cmath>
 #include <cstdarg>
 #include <cstdlib>
 #include <ctime>
@@ -37,6 +36,7 @@
 #include "core/build_info.h"
 #include "crash/crashrec.h"
 #include "save/portable_state.h"
+#include "mods/sdk/nsmbu.h"
 #include "save/state_memory.h"
 #include "overlay/quit_prompt.h"
 #include "input/rumble.h"
@@ -63,6 +63,7 @@ namespace aspect { void ss_reset(); }
 namespace dispatch { std::vector<std::pair<uint32_t, std::string>> host_functions(); }
 
 namespace interp { uint64_t logic_steps(); }
+extern "C" bool nsmbu_apply_map_pose(int32_t world, int32_t section, int32_t node, int32_t course);
 namespace ss {
 namespace {
 
@@ -584,43 +585,26 @@ bool do_load(const std::shared_ptr<Snapshot>& s) {
     return true;
 }
 
-const uint32_t kSaveInfoPtr = GD(0x101F84DC);
-const uint32_t kPlay = GD(0x1046F0B0);
-const uint32_t kStartStage = kPlay + 0x5134;
-const uint32_t kNextStage = kPlay + 0x5140;
-const uint32_t kStageData = kPlay + 0x5150;
-const uint32_t kPlayerActorPtr = kPlay + 0x5B34;
-const uint32_t kShipPtr = kPlay + 0x5B3C;
-constexpr uint32_t kActorPos = 0x314, kActorRoom = 0x326, kShapeAngleY = 0x32A;
-constexpr uint32_t kActorProc = 0x65F0;
-constexpr uint32_t kInfo = 0x20;
-const uint32_t kDataNum = kInfo + 0x1290;
-constexpr uint32_t kReturnPlace = 0x50;
-const uint32_t kMemoryTable = kInfo + 0x380;
-const uint32_t kTurnRestart = kInfo + 0x1258;
-const uint32_t kRestart = kInfo + 0x1128;
-constexpr uint32_t kHdArea = 0x12C0;
-constexpr uint32_t kCardStatusB = 0x18;
-
-const uint32_t fn_memory_to_card = GC(0x025BA9FC), fn_card_to_memory = GC(0x025BA7B0), fn_putSave = GC(0x025B9D24),
-               fn_getSave = GC(0x025B9C9C), fn_setGameStartStage = GC(0x025217F8), fn_danInit = GC(0x025B9174),
-               fn_eventInit = GC(0x025B8B10), fn_refreshGame = GC(0x02721880), fn_turnRestartSet = GC(0x025B998C);
-
-struct HdSection { uint32_t slot_get, live_get, copy; size_t size; std::vector<uint8_t> pstate::State::*field; };
-const HdSection kHdSections[] = {
-    {GC(0x027200A0), GC(0x027200D0), GC(0x0271FCB4), pstate::kHdPlayerSize, &pstate::State::hd_player},
-    {GC(0x027200D8), GC(0x027200F4), GC(0x0271FAC0), pstate::kHdStatusSize, &pstate::State::hd_status},
-    {GC(0x027200FC), GC(0x02720118), GC(0x0271F914), pstate::kHdEventSize, &pstate::State::hd_event},
-    {GC(0x02720180), GC(0x0272019C), GC(0x027208F4), pstate::kHdMapSize, &pstate::State::hd_map},
-};
-const uint32_t fn_name_obj = GC(0x02720154);
+const uint32_t kCourseTask = GD(0x101D15F0);
+const uint32_t kCourseSelect = GD(0x101CC96C);
+const uint32_t kPlayerMgr = GD(0x101E6994);
+const uint32_t kCourseInfo = GD(0x101D18EC);
+const uint32_t kMainGame = GD(0x101E7D7C);
+const uint32_t kSaveMgr = GD(0x101E7DA4);
+const uint32_t kScene = GD(0x101E7B28);
+const uint32_t kFaderBusy = GC(0x02983B28);
+const uint32_t kCreatorTitle = GC(0x0202B51C);
+const uint32_t kCreatorFileSelect = GC(0x0298AD3C);
+const uint32_t kCreatorSaveSelect = GC(0x024C11F4);
+const uint32_t kCreatorMenu = GC(0x0202B61C);
+constexpr uint32_t kPlayerActor = 0x20;
+constexpr uint32_t kPosX = 0x6C, kPosY = 0x70, kPosZ = 0x74;
+constexpr uint32_t kSaveDataOff = 0x24;
+constexpr uint32_t kSceneCreator = 0x58;
+constexpr uint32_t kSceneNext = 0x5C;
+constexpr uint32_t kSceneFader = 0x68;
 
 bool in_mem2(uint32_t a) { return a >= mem::kMem2Start && a < mem::kMem2End; }
-
-uint32_t scratch() {
-    static const uint32_t s = mem::host_alloc(0x2000, 64);
-    return s;
-}
 
 struct CallScope {
     Cpu* c;
@@ -635,82 +619,138 @@ struct CallScope {
     }
 };
 
-int current_stage_no(Cpu* c) {
-    uint32_t vt = ld32(kStageData);
-    if (!in_mem2(vt)) return -1;
-    uint32_t stag = guest_call(c, ld32(vt + 0x15C), {kStageData});
-    if (!in_mem2(stag)) return -1;
-    return (ld8(stag + 9) >> 1) & 0x7F;
-}
+enum class Where { None, Course, Map };
+struct Live {
+    Where where = Where::None;
+    uint32_t actor = 0;
+    int world = 0, course = 0, section = 0, node = 0;
+};
 
-static void explain_save_info(std::string& why) {
-    uint32_t sv = ld32(kSaveInfoPtr);
-    std::string st = stage_name();
-    char extra[96];
-    snprintf(extra, sizeof extra, ", save info %08X, %s", sv, st.empty() ? "no stage" : st.c_str());
-    why += extra;
-}
-
-bool gameplay_ready(std::string& why, bool& retry) {
-    retry = false;
-    uint32_t sv = ld32(kSaveInfoPtr);
-    if (!in_mem2(sv)) {
-        why = "no game in progress";
-        explain_save_info(why);
-        return false;
-    }
-    std::string st = stage_name();
-    if (st.empty()) {
-        why = "no game in progress (start or continue a save file first)";
-        explain_save_info(why);
-        retry = true;
-        return false;
-    }
-    uint32_t player = ld32(kPlayerActorPtr);
-    if (!in_mem2(player)) {
-        why = "the player is not in the scene";
-        explain_save_info(why);
-        retry = true;
-        return false;
-    }
-    if (ld8(kNextStage + 12)) {
-        why = "a stage change is in progress";
-        explain_save_info(why);
-        retry = true;
-        return false;
-    }
-    if (ld8(sv + kDataNum) > 2) {
-        why = "no save file loaded";
-        explain_save_info(why);
-        retry = true;
-        return false;
-    }
+bool fader_idle(Cpu* c, std::string& why) {
+    uint32_t scene = ld32(kScene);
+    if (!in_mem2(scene)) { why = "the scene is not ready"; return false; }
+    if (ld32(scene + kSceneNext) != 0) { why = "a scene transition is in progress"; return false; }
+    uint32_t fader = ld32(scene + kSceneFader);
+    if (!in_mem2(fader)) { why = "a scene transition is in progress"; return false; }
+    CallScope scope(c);
+    if (guest_call(c, kFaderBusy, {fader}) != 0) { why = "a scene transition is in progress"; return false; }
     return true;
 }
 
-const uint32_t kEventRun = kPlay + 0x5292;
-const uint32_t kMesgStatus = kPlay + 0x5BB2;
-const uint32_t kScopeMesgStatus = kPlay + 0x5BB3;
-const uint32_t kMenuFlag = GD(0x101EA069);
-const uint32_t kPlayerPtr = kPlay + 0x5B2C;
-const uint32_t kPlayerStatus0 = kPlay + 0x5CD8;
-constexpr uint32_t kSttsRope = 0x00800000;
-const uint32_t fn_ovlpDoingReq = GC(0x025DBE38);
-int g_event_wait = 0;
-void track_events() {
-    if (ld8(kEventRun)) g_event_wait = 5;
-    else if (g_event_wait > 0) g_event_wait--;
+bool describe_place(std::string& why, bool& retry, Live& live) {
+    retry = false;
+    live = Live{};
+    uint32_t course_task = ld32(kCourseTask);
+    uint32_t map = ld32(kCourseSelect);
+    if (course_task != 0) {
+        uint32_t mgr = ld32(kPlayerMgr);
+        uint32_t actor = mgr ? ld32(mgr + kPlayerActor) : 0;
+        if (!in_mem2(actor)) {
+            why = "the player is not in the course";
+            retry = true;
+            return false;
+        }
+        uint32_t info = ld32(kCourseInfo);
+        if (!in_mem2(info)) {
+            why = "the course is not ready";
+            retry = true;
+            return false;
+        }
+        int world = ld8(info + 0x10);
+        int course = ld8(info + 0x11);
+        if (world > 8 || course > 255) {
+            why = "the course is not ready";
+            retry = true;
+            return false;
+        }
+        live.where = Where::Course;
+        live.actor = actor;
+        live.world = world;
+        live.course = course;
+        return true;
+    }
+    if (map != 0) {
+        uint32_t game = ld32(kMainGame);
+        if (!in_mem2(game)) {
+            why = "the map place is not ready";
+            retry = true;
+            return false;
+        }
+        int world = (int32_t)ld32(game + 0x19C);
+        int section = (int32_t)ld32(game + 0x1A0);
+        int node = (int32_t)ld32(game + 0x1A4);
+        int course = (int32_t)ld32(game + 0x1A8);
+        if (world < 0 || world > 8 || section < 0 || section > 1 || node < 0 || node > 255 || course < -1 || course > 255) {
+            why = "the map place is not ready";
+            retry = true;
+            return false;
+        }
+        live.where = Where::Map;
+        live.world = world;
+        live.course = course;
+        live.section = section;
+        live.node = node;
+        return true;
+    }
+    uint32_t scene = ld32(kScene);
+    uint32_t creator = in_mem2(scene) ? ld32(scene + kSceneCreator) : 0;
+    if (creator == kCreatorTitle) {
+        why = "the title screen is showing";
+        retry = true;
+        return false;
+    }
+    if (creator == kCreatorFileSelect || creator == kCreatorSaveSelect) {
+        why = "file select is showing";
+        retry = true;
+        return false;
+    }
+    why = "no game in progress (start or continue a save file first)";
+    retry = true;
+    return false;
 }
-bool player_has_control(Cpu* c, std::string& why) {
-    if (ld8(kEventRun) || g_event_wait > 0) { why = "a cutscene or event is running"; return false; }
-    if (ld8(kMesgStatus) || ld8(kScopeMesgStatus)) { why = "a message or dialogue is open"; return false; }
-    if (ld8(kMenuFlag)) { why = "a game menu is open"; return false; }
-    if (ld8(kNextStage + 12)) { why = "a stage change is in progress"; return false; }
-    if (ld32(kPlayerPtr) != ld32(kPlayerActorPtr)) { why = "the player is not the controlled character"; return false; }
 
-    if (ld32(kPlayerStatus0) & kSttsRope) { why = "the player is on a rope"; return false; }
-    CallScope scope(c);
-    if (guest_call(c, fn_ovlpDoingReq) & 0xFF) { why = "a scene transition is in progress"; return false; }
+bool player_has_control(Cpu* c, std::string& why) {
+    if (!fader_idle(c, why)) return false;
+    uint32_t scene = ld32(kScene);
+    if (in_mem2(scene) && ld32(scene + kSceneCreator) == kCreatorMenu) { why = "a game menu is open"; return false; }
+    return true;
+}
+
+bool load_waits(const std::string& why) {
+    return why.find("leaving course") != std::string::npos || why.find("busy") != std::string::npos || why == "no guest cpu" ||
+           why == "the scene is not ready" || why == "a scene transition is in progress" || why == "a game menu is open" ||
+           why == "the map place is not ready";
+}
+
+void ensure_cpu(Cpu* c) {
+    if (mods::lua_sdk::cpu() != c) mods::lua_sdk::set_cpu(c);
+}
+
+bool copy_savedata(std::vector<uint8_t>& out, std::string& why) {
+    uint32_t mgr = ld32(kSaveMgr);
+    if (!in_mem2(mgr)) { why = "save data is not loaded"; return false; }
+    uint32_t buf = ld32(mgr + kSaveDataOff);
+    if (!in_mem2(buf) || (uint64_t)buf + pstate::kNsmbuSaveDataSize > mem::kMem2End) {
+        why = "save data is not loaded";
+        return false;
+    }
+    out.resize(pstate::kNsmbuSaveDataSize);
+    memcpy(out.data(), mem::ptr(buf), out.size());
+    if (out[7] > 2) { why = "save file is not selected"; return false; }
+    return true;
+}
+
+bool restore_savedata(const pstate::State& s, std::string& why) {
+    if (s.savedata.size() != pstate::kNsmbuSaveDataSize) { why = "save data has the wrong size"; return false; }
+    if ((int)s.savedata[7] != s.file_slot) { why = "save file does not match this state"; return false; }
+    uint32_t mgr = ld32(kSaveMgr);
+    if (!in_mem2(mgr)) { why = "save data is not loaded"; return false; }
+    uint32_t buf = ld32(mgr + kSaveDataOff);
+    if (!in_mem2(buf) || (uint64_t)buf + s.savedata.size() > mem::kMem2End) {
+        why = "save data is not loaded";
+        return false;
+    }
+    memcpy(mem::ptr(buf), s.savedata.data(), s.savedata.size());
     return true;
 }
 
@@ -737,18 +777,6 @@ std::string title_id() { std::string t = meta_value("title_id"); return t.empty(
 
 std::string hex64(uint64_t v) { char b[20]; snprintf(b, sizeof b, "%016llx", (unsigned long long)v); return b; }
 
-std::string utf8_from_utf16be(uint32_t p, int max) {
-    std::string s;
-    for (int i = 0; i < max && in_mem2(p); i++, p += 2) {
-        uint16_t ch = ld16(p);
-        if (!ch) break;
-        if (ch < 0x80) s += (char)ch;
-        else if (ch < 0x800) { s += (char)(0xC0 | ch >> 6); s += (char)(0x80 | (ch & 0x3F)); }
-        else { s += (char)(0xE0 | ch >> 12); s += (char)(0x80 | (ch >> 6 & 0x3F)); s += (char)(0x80 | (ch & 0x3F)); }
-    }
-    return s;
-}
-
 std::string now_text() {
     time_t t = time(nullptr);
     struct tm tmv;
@@ -762,121 +790,101 @@ std::string now_text() {
     return buf;
 }
 
-float be_f32(const uint8_t* p) { return u32_as_f32((uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]); }
+struct Arrival {
+    std::string place;
+    float pos[3]{};
+    int world = 0, course = 0, section = 0, node = 0;
+    uint64_t frame = 0;
+} g_arrival;
 
 bool capture_portable(Cpu* c, pstate::State& s, std::string& why) {
-    bool retry;
-    if (!gameplay_ready(why, retry)) return false;
-    CallScope scope(c);
-    const uint32_t sv = ld32(kSaveInfoPtr), info = sv + kInfo, buf = scratch();
-    std::string stage = stage_name();
-    int stage_no = current_stage_no(c);
-
-    uint8_t rp[0xC], entry[0x24];
-    memcpy(rp, mem::ptr(sv + kReturnPlace), sizeof rp);
-    if (stage_no >= 0 && stage_no < 16) {
-        memcpy(entry, mem::ptr(sv + kMemoryTable + stage_no * 0x24), sizeof entry);
-        guest_call(c, fn_putSave, {info, (uint32_t)stage_no});
+    (void)c;
+    bool retry = false;
+    Live live;
+    if (!describe_place(why, retry, live)) return false;
+    (void)retry;
+    if (!copy_savedata(s.savedata, why)) return false;
+    s.file_slot = s.savedata[7];
+    s.place = live.where == Where::Course ? "course" : "map";
+    s.world = live.world;
+    s.course = live.course;
+    s.section = live.section;
+    s.node = live.node;
+    if (live.where == Where::Course) {
+        s.pos[0] = (float)ldf32(live.actor + kPosX);
+        s.pos[1] = (float)ldf32(live.actor + kPosY);
+        s.pos[2] = (float)ldf32(live.actor + kPosZ);
     }
-    guest_call(c, fn_setGameStartStage);
-    memset(mem::ptr(buf), 0, pstate::kSaveDataSize);
-    int32_t r = (int32_t)guest_call(c, fn_memory_to_card, {info, buf, 0});
-    memcpy(mem::ptr(sv + kReturnPlace), rp, sizeof rp);
-    if (stage_no >= 0 && stage_no < 16) memcpy(mem::ptr(sv + kMemoryTable + stage_no * 0x24), entry, sizeof entry);
-    if (r == -1) { why = "the game's save function failed"; return false; }
-    s.savedata.assign(mem::ptr(buf), mem::ptr(buf) + pstate::kSaveDataSize);
-    pstate::seal_savedata(s.savedata);
-
-    const uint32_t hd = sv + kHdArea;
-    const int slot = ld8(sv + kDataNum);
-    for (auto& h : kHdSections) {
-        uint32_t stored = guest_call(c, h.slot_get, {hd, (uint32_t)slot}), live = guest_call(c, h.live_get, {hd});
-        memcpy(mem::ptr(buf), mem::ptr(stored), h.size);
-        guest_call(c, h.copy, {buf, live});
-        (s.*h.field).assign(mem::ptr(buf), mem::ptr(buf) + h.size);
-    }
-    uint32_t name_obj = guest_call(c, fn_name_obj, {hd, (uint32_t)slot});
-    s.player_name = utf8_from_utf16be(ld32(name_obj), 8);
-
+    char label[16];
+    if (s.place == "course") snprintf(label, sizeof label, "%d-%d", s.world + 1, s.course + 1);
+    else snprintf(label, sizeof label, "W%d n%d", s.world + 1, s.node);
+    s.stage = label;
     s.title_id = title_id();
     s.title_version = (uint32_t)strtoul(meta_value("title_version").c_str(), nullptr, 10);
     s.game_hash = hex64(game_id());
     s.runtime = std::string(build::version()) + " (" + build::commit() + ")";
     s.created = now_text();
-    s.file_slot = slot;
     s.controller = input::pro_controller() ? 2 : 1;
-    s.stage = stage;
-    s.start_point = (int16_t)ld16(kStartStage + 8);
-    s.start_room = (int8_t)ld8(kStartStage + 10);
-    s.layer = (int8_t)ld8(kStartStage + 11);
-    const uint32_t player = ld32(kPlayerActorPtr);
-    for (int i = 0; i < 3; i++) s.pos[i] = (float)ldf32(player + kActorPos + 4 * i);
-    s.room = (int8_t)ld8(player + kActorRoom);
-    s.angle_y = (int16_t)ld16(player + kShapeAngleY);
-    s.player_proc = (int)ld32(player + kActorProc);
-    const uint32_t ship = ld32(kShipPtr);
-    s.has_ship = in_mem2(ship);
-    if (s.has_ship) {
-        for (int i = 0; i < 3; i++) s.ship_pos[i] = (float)ldf32(ship + kActorPos + 4 * i);
-        s.ship_angle_y = (int16_t)ld16(ship + kShapeAngleY);
-    }
-
-    s.on_ship = s.has_ship && s.player_proc >= 0x86 && s.player_proc <= 0x91 && s.player_proc != 0x90;
-    s.time_of_day = be_f32(&s.savedata[kCardStatusB + 0xC]);
-    s.date = s.savedata[kCardStatusB + 0x10] << 8 | s.savedata[kCardStatusB + 0x11];
+    s.player_name.clear();
     return true;
 }
 
-void apply_hd_sections(Cpu* c, const pstate::State& s) {
-    const uint32_t hd = ld32(kSaveInfoPtr) + kHdArea, buf = scratch();
-    for (auto& h : kHdSections) {
-        memcpy(mem::ptr(buf), (s.*h.field).data(), h.size);
-        guest_call(c, h.copy, {guest_call(c, h.live_get, {hd}), buf});
-    }
+void arm_arrival(const pstate::State& s) {
+    g_arrival = Arrival{};
+    g_arrival.place = s.place;
+    g_arrival.world = s.world;
+    g_arrival.course = s.course;
+    g_arrival.section = s.section;
+    g_arrival.node = s.node;
+    g_arrival.pos[0] = s.pos[0];
+    g_arrival.pos[1] = s.pos[1];
+    g_arrival.pos[2] = s.pos[2];
+    g_arrival.frame = render::frame_count();
 }
 
 bool apply_portable(Cpu* c, const pstate::State& s, std::string& why, bool& retry) {
-    if (!gameplay_ready(why, retry)) return false;
-    CallScope scope(c);
-    const uint32_t sv = ld32(kSaveInfoPtr), info = sv + kInfo, buf = scratch();
-    memcpy(mem::ptr(buf), s.savedata.data(), pstate::kSaveDataSize);
-    if ((int32_t)guest_call(c, fn_card_to_memory, {info, buf, 0}) == -1) { why = "the game refused the save data"; return false; }
-    int stage_no = current_stage_no(c);
-    if (stage_no >= 0 && stage_no < 16) guest_call(c, fn_getSave, {info, (uint32_t)stage_no});
-    guest_call(c, fn_danInit, {info + 0x79C, 0xFFFFFFFFu});
-    guest_call(c, fn_eventInit, {info + 0x1158});
-    apply_hd_sections(c, s);
-    guest_call(c, fn_refreshGame, {0});
-
-    const uint32_t rs = sv + kRestart;
-    st8(rs + 0, (uint8_t)s.room);
-    st16(rs + 0x16, (uint16_t)s.angle_y);
-    for (int i = 0; i < 3; i++) stf32(rs + 0x18 + 4 * i, s.pos[i]);
-
-    st32(rs + 0x24, (uint32_t)(s.room & 0x3F) | 0xFF000000u);
-    stf32(rs + 0x28, 0.0);
-    st32(rs + 0x2C, 0);
-    char name[8] = {};
-    memcpy(name, s.stage.data(), std::min<size_t>(s.stage.size(), 7));
-    for (int i = 0; i < 8; i++) st8(kNextStage + i, (uint8_t)name[i]);
-    uint16_t point = 0xFFFF;
-    if (s.has_ship) {
-
-        uint32_t param = (uint32_t)(s.room & 0x3F) | (uint32_t)(s.on_ship ? 2 : 0) << 12 | 0xFF000000u | 0x100u;
-        for (int i = 0; i < 3; i++) {
-            stf32(buf + 4 * i, s.pos[i]);
-            stf32(buf + 0x10 + 4 * i, s.ship_pos[i]);
+    retry = false;
+    if (s.place != "course" && s.place != "map") { why = "this state has no course or map place"; return false; }
+    if (s.place == "course" && mods::lua_sdk::story_leave_pending()) {
+        if (!restore_savedata(s, why)) return false;
+        ensure_cpu(c);
+        std::string err;
+        if (!mods::lua_sdk::load_story_course(s.world, s.course, err)) {
+            why = err;
+            retry = load_waits(err);
+            return false;
         }
-        guest_call(c, fn_turnRestartSet, {sv + kTurnRestart, buf, (uint32_t)(uint16_t)s.angle_y, (uint32_t)(uint8_t)s.room, param,
-                                          buf + 0x10, (uint32_t)(uint16_t)s.ship_angle_y, 1});
-        point = 0xFFFD;
+        if (s.controller) input::set_pro_controller(restored_pro_controller(s.controller, input::pro_controller()));
+        arm_arrival(s);
+        return true;
     }
-    st16(kNextStage + 8, point);
-    st8(kNextStage + 10, (uint8_t)s.room);
-    st8(kNextStage + 11, (uint8_t)s.layer);
-    st8(kNextStage + 13, 0);
+    Live live;
+    if (!describe_place(why, retry, live)) return false;
+    if (!player_has_control(c, why)) { retry = true; return false; }
+    if (!restore_savedata(s, why)) return false;
+    ensure_cpu(c);
     if (s.controller) input::set_pro_controller(restored_pro_controller(s.controller, input::pro_controller()));
-    st8(kNextStage + 12, 1);
+    if (s.place == "map") {
+        if (!nsmbu_apply_map_pose(s.world, s.section, s.node, s.course)) {
+            why = "the map place is not ready";
+            retry = true;
+            return false;
+        }
+        std::string err;
+        if (!mods::lua_sdk::open_course_select(err)) {
+            why = err;
+            retry = load_waits(err);
+            return false;
+        }
+    } else {
+        std::string err;
+        if (!mods::lua_sdk::load_story_course(s.world, s.course, err)) {
+            why = err;
+            retry = load_waits(err);
+            return false;
+        }
+    }
+    arm_arrival(s);
     return true;
 }
 
@@ -924,20 +932,15 @@ PendingPortable g_pload;
 bool g_pload_waiting = false;
 std::string g_last_portable;
 
-struct Arrival { std::string stage; float pos[3]; uint64_t frame = 0; uint32_t actor_id = 0; int frames = 0; std::shared_ptr<pstate::State> s; } g_arrival;
 
 void do_portable_save(Cpu* c, int slot) {
     pstate::State s;
     std::string why;
-    bool retry;
-
-    if (gameplay_ready(why, retry) && !player_has_control(c, why)) {
-        LOG("[savestate] slot %d: portable state refused: %s", slot, why.c_str());
-        message("Slot %d: can't save during a cutscene or dialogue - try again when you have control of the player", slot);
-        report_done(slot, false, "Can't save during a cutscene or dialogue (" + why + "): try again when you have control of the player.");
-        return;
-    }
-    if (!capture_portable(c, s, why)) {
+    bool retry = false;
+    Live live;
+    bool ready = describe_place(why, retry, live) && player_has_control(c, why) && capture_portable(c, s, why);
+    (void)retry;
+    if (!ready) {
         message("Slot %d: not saved (%s)", slot, why.c_str());
         report_done(slot, false, why);
         return;
@@ -950,12 +953,12 @@ void do_portable_save(Cpu* c, int slot) {
     }
     struct stat st{};
     stat(path.c_str(), &st);
-    LOG("[savestate] slot %d: portable state written (%lld bytes; %s room %d at %.1f %.1f %.1f, angle %d, save file %d%s)", slot,
-        (long long)st.st_size, s.stage.c_str(), s.room, s.pos[0], s.pos[1], s.pos[2], s.angle_y, s.file_slot + 1,
-        s.on_ship ? ", on the ship" : s.has_ship ? ", ship nearby" : "");
-    if (s.has_ship)
-        LOG("[savestate] slot %d: ship at %.1f %.1f %.1f, angle %d", slot, s.ship_pos[0], s.ship_pos[1], s.ship_pos[2], s.ship_angle_y);
-
+    if (s.place == "course")
+        LOG("[savestate] slot %d: portable state written (%lld bytes; %s at %.1f %.1f %.1f, save file %d)", slot, (long long)st.st_size,
+            s.stage.c_str(), s.pos[0], s.pos[1], s.pos[2], s.file_slot + 1);
+    else
+        LOG("[savestate] slot %d: portable state written (%lld bytes; map world %d section %d node %d, save file %d)", slot,
+            (long long)st.st_size, s.world + 1, s.section, s.node, s.file_slot + 1);
     struct stat full{};
     std::string older;
     if (stat(slot_path(slot).c_str(), &full) == 0) {
@@ -983,8 +986,6 @@ void service_portable_load(Cpu* c) {
     if (!p.s) return;
     std::string why;
     bool retry = false;
-    const uint32_t sv0 = ld32(kSaveInfoPtr);
-    const int current_log = in_mem2(sv0) ? ld8(sv0 + kDataNum) : -1;
     if (!apply_portable(c, *p.s, why, retry)) {
         if (retry) {
             if (!g_pload_waiting) message("%s: waiting to load (%s)", portable_label(p.slot).c_str(), why.c_str());
@@ -993,19 +994,10 @@ void service_portable_load(Cpu* c) {
         }
         message("%s: cannot load (%s)", portable_label(p.slot).c_str(), why.c_str());
     } else {
-        LOG("[savestate] %s: portable state applied: entering %s room %d layer %d at %.1f %.1f %.1f", portable_label(p.slot).c_str(),
-            p.s->stage.c_str(), p.s->room, p.s->layer, p.s->pos[0], p.s->pos[1], p.s->pos[2]);
-        if (current_log >= 0 && current_log <= 2 && current_log != p.s->file_slot) {
-
-            LOG("[savestate] %s: this state is from save file %d; it is loaded into save file %d", portable_label(p.slot).c_str(),
-                p.s->file_slot + 1, current_log + 1);
-            message("This state is from save file %d; it is loaded into save file %d (saving in game will write it there).",
-                    p.s->file_slot + 1, current_log + 1);
-        } else {
-            message("Loaded %s (%s; progress and position)", p.slot ? ("slot " + std::to_string(p.slot)).c_str() : "portable state",
-                    p.s->stage.c_str());
-        }
-        g_arrival = Arrival{p.s->stage, {p.s->pos[0], p.s->pos[1], p.s->pos[2]}, render::frame_count(), ld32(ld32(kPlayerActorPtr) + 4), 0, p.s};
+        const char* where = p.s->place == "map" ? "map" : "course";
+        LOG("[savestate] %s: portable state applied (%s %s, save file %d)", portable_label(p.slot).c_str(), where, p.s->stage.c_str(),
+            p.s->file_slot + 1);
+        message("Loaded %s (%s)", p.slot ? ("slot " + std::to_string(p.slot)).c_str() : "portable state", p.s->stage.c_str());
         std::lock_guard<std::mutex> lk(g_mu);
         g_last_portable = p.path;
     }
@@ -1015,37 +1007,31 @@ void service_portable_load(Cpu* c) {
 }
 
 void watch_arrival(Cpu* c) {
-    if (g_arrival.stage.empty()) return;
-    uint32_t player = ld32(kPlayerActorPtr);
-    if (stage_name() != g_arrival.stage || !in_mem2(player) || ld32(player + 4) == g_arrival.actor_id) {
-        if (render::frame_count() - g_arrival.frame > 30 * 60) {
-            LOG("[savestate] portable load: did not arrive in %s", g_arrival.stage.c_str());
-            g_arrival = Arrival{};
-        }
+    if (g_arrival.place.empty()) return;
+    uint64_t now = render::frame_count();
+    if (now <= g_arrival.frame) return;
+    if (now - g_arrival.frame > 30 * 60) {
+        LOG("[savestate] portable load: did not arrive (%s)", g_arrival.place.c_str());
+        g_arrival = Arrival{};
         return;
     }
-    if (g_arrival.frames++ == 0) {
-        CallScope scope(c);
-        apply_hd_sections(c, *g_arrival.s);
+    if (g_arrival.place == "course") {
+        uint32_t task = ld32(kCourseTask);
+        uint32_t mgr = ld32(kPlayerMgr);
+        uint32_t actor = mgr ? ld32(mgr + kPlayerActor) : 0;
+        if (task == 0 || !in_mem2(actor)) return;
+        stf32(actor + kPosX, g_arrival.pos[0]);
+        stf32(actor + kPosY, g_arrival.pos[1]);
+        stf32(actor + kPosZ, g_arrival.pos[2]);
+        LOG("[savestate] portable load: course %d-%d at %.1f %.1f %.1f", g_arrival.world + 1, g_arrival.course + 1, g_arrival.pos[0],
+            g_arrival.pos[1], g_arrival.pos[2]);
+        g_arrival = Arrival{};
+        return;
     }
-    if (g_arrival.frames < 30) return;
-    float p[3];
-    for (int i = 0; i < 3; i++) p[i] = (float)ldf32(player + kActorPos + 4 * i);
-    float dx = p[0] - g_arrival.pos[0], dy = p[1] - g_arrival.pos[1], dz = p[2] - g_arrival.pos[2];
-    LOG("[savestate] portable load: arrived in %s room %d at %.1f %.1f %.1f (distance %.1f from the saved position)",
-        stage_name().c_str(), (int8_t)ld8(player + kActorRoom), p[0], p[1], p[2], sqrtf(dx * dx + dy * dy + dz * dz));
-    if (g_arrival.s->has_ship) {
-        const uint32_t ship = ld32(kShipPtr);
-        const int proc = (int)ld32(player + kActorProc);
-        if (!in_mem2(ship)) LOG("[savestate] portable load: no ship in the stage");
-        else {
-            float q[3];
-            for (int i = 0; i < 3; i++) q[i] = (float)ldf32(ship + kActorPos + 4 * i) - g_arrival.s->ship_pos[i];
-            LOG("[savestate] portable load: ship at %.1f %.1f %.1f angle %d (distance %.1f), %s the ship (procedure 0x%X)",
-                ldf32(ship + kActorPos), ldf32(ship + kActorPos + 4), ldf32(ship + kActorPos + 8), (int16_t)ld16(ship + kShapeAngleY),
-                sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2]), proc >= 0x86 && proc <= 0x91 && proc != 0x90 ? "on" : "not on", proc);
-        }
-    }
+    std::string why;
+    if (!fader_idle(c, why) || ld32(kCourseSelect) == 0) return;
+    if (!nsmbu_apply_map_pose(g_arrival.world, g_arrival.section, g_arrival.node, g_arrival.course)) return;
+    LOG("[savestate] portable load: map world %d section %d node %d", g_arrival.world + 1, g_arrival.section, g_arrival.node);
     g_arrival = Arrival{};
 }
 
@@ -1349,7 +1335,6 @@ void service(Cpu* c) {
         return true;
     }();
     (void)env_load;
-    track_events();
     if (int slot = g_psave_req.exchange(0)) do_portable_save(c, slot);
     service_portable_load(c);
     watch_arrival(c);

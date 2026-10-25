@@ -41,5 +41,7 @@ struct SceneReport {
 };
 
 void scene_report(SceneReport& out);
+bool load_story_course(int32_t world, int32_t course, std::string& err);
+bool open_course_select(std::string& err);
 
 }

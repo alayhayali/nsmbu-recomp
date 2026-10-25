@@ -211,6 +211,49 @@ static void seed_map_return_pose(uint32_t player, bool pack_create_pos) {
     seed_player_map_fields(player, node, world, section, course_slot, pack_create_pos);
 }
 
+extern "C" bool nsmbu_apply_map_pose(int32_t world, int32_t section, int32_t node, int32_t course) {
+    if (world < 0 || world > 8 || section < 0 || section > 1 || node < 0 || node > 255) return false;
+    uint32_t game = ld32(kMainGame);
+    if (game == 0 || !in_mem2(game)) return false;
+    st32(game + 0x19Cu, (uint32_t)world);
+    st32(game + 0x1A0u, (uint32_t)section);
+    st32(game + 0x1A4u, (uint32_t)node);
+    st32(game + 0x1A8u, (uint32_t)course);
+    st32(game + 0x2Cu, ld32(game + 0x2Cu) | 8u);
+    uint8_t banner[3] = {0xFF, 0xFF, 0xFF};
+    if (course >= 0 && course <= 255) {
+        int display = (int)course + 1;
+        char buf[4];
+        int n = snprintf(buf, sizeof buf, "%d", display);
+        if (n >= 1 && n <= 3) {
+            for (int i = 0; i < n; i++) {
+                int d = buf[i] - '0';
+                banner[i] = (d >= 1 && d <= 5) ? (uint8_t)(d - 1) : 0xFF;
+            }
+        }
+    }
+    uint32_t field_game = ld32(kFieldGame);
+    if (field_game != 0 && in_mem2(field_game)) {
+        uint32_t info = ld32(kCourseInfo);
+        uint8_t file = info != 0 ? ld8(info + 0x12) : 0;
+        uint8_t course_b = course < 0 ? 0 : (uint8_t)course;
+        write_checkpoint(field_game + 0x10, node, (uint8_t)world, course_b, file, banner);
+    }
+    uint32_t save_mgr = ld32(kSaveMgr);
+    uint32_t savedata = save_mgr != 0 ? ld32(save_mgr + 0x24u) : 0;
+    if (in_mem2(savedata) && savedata + 0x10u + 3u * kSaveSlotSize < mem::kMem2End) {
+        uint8_t file = ld8(savedata + 0x07u);
+        if (file < 3u) {
+            uint32_t slot = savedata + 0x10u + (uint32_t)file * kSaveSlotSize;
+            st8(slot + 0x04u, (uint8_t)(world + 1));
+            st8(slot + 0x05u, (uint8_t)section);
+            st8(slot + 0x06u, (uint8_t)node);
+            st8(slot + 0x43u, (uint8_t)node);
+        }
+    }
+    return true;
+}
+
 extern "C" void nsmbu_banner_entry_arm(void) {}
 
 extern "C" void nsmbu_fill_course_banner_digits(void) {}

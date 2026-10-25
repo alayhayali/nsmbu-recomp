@@ -20,6 +20,7 @@ const Blob kBlobs[] = {
 };
 const char* const kTextKeys[] = {
     "format", "title_id", "title_version", "game_hash", "runtime", "created", "file_slot", "player_name",
+    "place", "world", "course", "section", "node",
     "stage", "start_point", "start_room", "layer", "room", "player_pos", "player_angle_y", "player_proc", "on_ship",
     "has_ship", "ship_pos", "ship_angle_y",
     "time_of_day", "date", "controller",
@@ -190,16 +191,32 @@ bool savedata_checksum_ok(const std::vector<uint8_t>& block) {
 }
 
 std::string write(const State& s, std::string& why) {
-    for (auto& b : kBlobs)
-        if ((s.*b.field).size() != b.size) {
-            why = std::string("field ") + b.key + " has " + std::to_string((s.*b.field).size()) + " bytes, expected " +
-                  std::to_string(b.size);
+    const bool nsmbu = s.place == "course" || s.place == "map";
+    if (!nsmbu && !s.place.empty()) { why = "invalid place"; return ""; }
+    if (s.controller < 0 || s.controller > 2) { why = "invalid controller"; return ""; }
+    if (nsmbu) {
+        if (s.savedata.size() != kNsmbuSaveDataSize) {
+            why = "field savedata has " + std::to_string(s.savedata.size()) + " bytes, expected " +
+                  std::to_string(kNsmbuSaveDataSize);
             return "";
         }
-    if (s.controller < 0 || s.controller > 2) { why = "invalid controller"; return ""; }
+        if (s.world < 0 || s.world > 8 || s.course < -1 || s.course > 255) { why = "invalid course"; return ""; }
+        if (s.place == "map" && (s.section < 0 || s.section > 1 || s.node < 0 || s.node > 255)) {
+            why = "invalid map";
+            return "";
+        }
+        if (s.file_slot < 0 || s.file_slot > 2) { why = "invalid file_slot"; return ""; }
+    } else {
+        for (auto& b : kBlobs)
+            if ((s.*b.field).size() != b.size) {
+                why = std::string("field ") + b.key + " has " + std::to_string((s.*b.field).size()) + " bytes, expected " +
+                      std::to_string(b.size);
+                return "";
+            }
+    }
     std::string o;
     auto kv = [&](const char* k, const std::string& v) { o += std::string(k) + " = " + v + "\n"; };
-    o += "# NSMBU portable save state: progress and position only (no game code or game data).\n";
+    o += "# NSMBU portable save state: the save file and the place (no game code).\n";
     o += "# Attach it to a bug report together with your save file (rp_personal_savedata.dat). Load: copy it\n";
     o += "# into the states folder as slotN.nsstate and load slot N, or start with NSMBU_PORTABLE_LOAD=<this file>.\n";
     kv("format", std::to_string(s.format));
@@ -211,21 +228,34 @@ std::string write(const State& s, std::string& why) {
     if (s.controller) kv("controller", std::to_string(s.controller));
     kv("file_slot", std::to_string(s.file_slot));
     kv("player_name", clean(s.player_name));
-    kv("stage", clean(s.stage));
-    kv("start_point", std::to_string(s.start_point));
-    kv("start_room", std::to_string(s.start_room));
-    kv("layer", std::to_string(s.layer));
-    kv("room", std::to_string(s.room));
-    kv("player_pos", fnum(s.pos[0]) + " " + fnum(s.pos[1]) + " " + fnum(s.pos[2]));
-    kv("player_angle_y", std::to_string(s.angle_y));
-    kv("player_proc", std::to_string(s.player_proc));
-    kv("on_ship", s.on_ship ? "1" : "0");
-    kv("has_ship", s.has_ship ? "1" : "0");
-    kv("ship_pos", fnum(s.ship_pos[0]) + " " + fnum(s.ship_pos[1]) + " " + fnum(s.ship_pos[2]));
-    kv("ship_angle_y", std::to_string(s.ship_angle_y));
-    kv("time_of_day", fnum(s.time_of_day));
-    kv("date", std::to_string(s.date));
-    for (auto& b : kBlobs) kv(b.key, hex(s.*b.field));
+    if (nsmbu) {
+        kv("place", s.place);
+        kv("stage", clean(s.stage));
+        kv("world", std::to_string(s.world));
+        kv("course", std::to_string(s.course));
+        if (s.place == "course") kv("player_pos", fnum(s.pos[0]) + " " + fnum(s.pos[1]) + " " + fnum(s.pos[2]));
+        if (s.place == "map") {
+            kv("section", std::to_string(s.section));
+            kv("node", std::to_string(s.node));
+        }
+        kv("savedata", hex(s.savedata));
+    } else {
+        kv("stage", clean(s.stage));
+        kv("start_point", std::to_string(s.start_point));
+        kv("start_room", std::to_string(s.start_room));
+        kv("layer", std::to_string(s.layer));
+        kv("room", std::to_string(s.room));
+        kv("player_pos", fnum(s.pos[0]) + " " + fnum(s.pos[1]) + " " + fnum(s.pos[2]));
+        kv("player_angle_y", std::to_string(s.angle_y));
+        kv("player_proc", std::to_string(s.player_proc));
+        kv("on_ship", s.on_ship ? "1" : "0");
+        kv("has_ship", s.has_ship ? "1" : "0");
+        kv("ship_pos", fnum(s.ship_pos[0]) + " " + fnum(s.ship_pos[1]) + " " + fnum(s.ship_pos[2]));
+        kv("ship_angle_y", std::to_string(s.ship_angle_y));
+        kv("time_of_day", fnum(s.time_of_day));
+        kv("date", std::to_string(s.date));
+        for (auto& b : kBlobs) kv(b.key, hex(s.*b.field));
+    }
     char ck[32];
     snprintf(ck, sizeof ck, "crc32:%08X", crc32(o.data(), o.size()));
     kv("checksum", ck);
@@ -243,7 +273,13 @@ bool blob_check(const std::string& text, std::string& why) {
     if (!lines_of(text, kv, body, ck, why)) return false;
     size_t binary = 0;
     for (auto& [k, v] : kv) {
-        if (const Blob* b = find_blob(k)) {
+        if (k == "savedata") {
+            if (v.size() != 2 * kSaveDataSize && v.size() != 2 * kNsmbuSaveDataSize) {
+                why = "field savedata has the wrong size";
+                return false;
+            }
+            binary += v.size() / 2;
+        } else if (const Blob* b = find_blob(k)) {
             if (v.size() != 2 * b->size) {
                 why = "field " + k + " has the wrong size";
                 return false;
@@ -259,8 +295,9 @@ bool blob_check(const std::string& text, std::string& why) {
             return false;
         }
     }
-    size_t expect = 0;
-    for (auto& b : kBlobs) expect += b.size;
+    size_t expect = kNsmbuSaveDataSize;
+    for (auto& b : kBlobs)
+        if (std::string(b.key) != "savedata") expect += b.size;
     if (binary > expect) {
         why = "too much binary data";
         return false;
@@ -307,6 +344,43 @@ bool read(const std::string& text, State& out, std::string& why) {
         return true;
     };
     if (m.count("controller") && !get_int("controller", 0, 2, s.controller)) return false;
+    if (m.count("place")) {
+        s.place = m["place"];
+        if (s.place != "course" && s.place != "map") { why = "invalid place"; return false; }
+        int tv = 0;
+        if (!get_int("title_version", 0, 0xFFFF, tv) || !get_int("file_slot", 0, 2, s.file_slot) ||
+            !get_int("world", 0, 8, s.world) || !get_int("course", -1, 255, s.course))
+            return false;
+        s.title_version = (uint32_t)tv;
+        if (s.place == "course") {
+            if (!m.count("player_pos") || !parse_floats(m["player_pos"], s.pos, 3)) {
+                why = "missing or invalid player_pos";
+                return false;
+            }
+        } else if (!get_int("section", 0, 1, s.section) || !get_int("node", 0, 255, s.node)) {
+            return false;
+        }
+        s.title_id = m["title_id"];
+        s.game_hash = m["game_hash"];
+        s.runtime = m["runtime"];
+        s.created = m["created"];
+        s.player_name = m.count("player_name") ? m["player_name"] : "";
+        s.stage = m["stage"];
+        if (s.stage.empty() || s.stage.size() > kMaxText) {
+            why = "missing or invalid stage";
+            return false;
+        }
+        if (!m.count("savedata") || !unhex(m["savedata"], s.savedata) || s.savedata.size() != kNsmbuSaveDataSize) {
+            why = "missing or invalid savedata";
+            return false;
+        }
+        if ((int)s.savedata[7] != s.file_slot) {
+            why = "save file does not match this state";
+            return false;
+        }
+        out = std::move(s);
+        return true;
+    }
     int tv = 0, ship = 0, has_ship = 0;
     if (!get_int("title_version", 0, 0xFFFF, tv) || !get_int("file_slot", 0, 2, s.file_slot) ||
         !get_int("start_point", -32768, 32767, s.start_point) || !get_int("start_room", -128, 127, s.start_room) ||

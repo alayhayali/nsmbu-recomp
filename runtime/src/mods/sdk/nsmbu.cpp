@@ -2806,4 +2806,12 @@ Cpu* cpu() {
     return t_guest_cpu;
 }
 
+bool load_story_course(int32_t world, int32_t course, std::string& err) {
+    return scene_load_story_transition(world, course, err);
+}
+
+bool open_course_select(std::string& err) {
+    return scene_transition(kCreatorCourseSelect, 0x000A000Au, err);
+}
+
 }

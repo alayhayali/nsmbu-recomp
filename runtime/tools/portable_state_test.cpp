@@ -189,6 +189,98 @@ int main() {
         CHECK(read(t, y, why) && y.player_name == "Mario");
     }
 
+    auto nsmbu_image = [](int slot) {
+        std::vector<uint8_t> image(kNsmbuSaveDataSize, 0);
+        for (size_t i = 0; i < 32; i++) image[i] = (uint8_t)(i + 1);
+        image[7] = (uint8_t)slot;
+        return image;
+    };
+    auto header = [](State& s) {
+        s.title_id = "0005000010101d00";
+        s.title_version = 0;
+        s.game_hash = "0123456789abcdef";
+        s.runtime = "v0.6.2 (abc1234)";
+        s.created = "2026-10-25 03:00:00";
+        s.controller = 1;
+        s.player_name = "Mario";
+    };
+
+    {
+        State course;
+        header(course);
+        course.place = "course";
+        course.file_slot = 2;
+        course.world = 0;
+        course.course = 1;
+        course.stage = "1-2";
+        course.pos[0] = 1.5f;
+        course.pos[1] = 2.25f;
+        course.pos[2] = -3.5f;
+        course.savedata = nsmbu_image(2);
+        std::string t = write(course, why);
+        CHECK(!t.empty());
+        CHECK(t.find("place = course") != std::string::npos);
+        CHECK(t.find("player_pos = ") != std::string::npos);
+        CHECK(t.find("on_ship") == std::string::npos);
+        CHECK(t.find("time_of_day") == std::string::npos);
+        CHECK(t.find("ship_pos") == std::string::npos);
+        CHECK(t.find("\nroom = ") == std::string::npos);
+        State back;
+        CHECK(read(t, back, why));
+        CHECK(back.place == "course" && back.world == 0 && back.course == 1 && back.file_slot == 2);
+        CHECK(back.stage == "1-2" && back.pos[0] == course.pos[0] && back.pos[1] == course.pos[1] && back.pos[2] == course.pos[2]);
+        CHECK(back.savedata == course.savedata && back.node == -1);
+        CHECK(!read(reseal(replace(t, "player_pos = 1.5 2.25 -3.5\n", "")), back, why));
+    }
+
+    {
+        State map;
+        header(map);
+        map.place = "map";
+        map.file_slot = 0;
+        map.world = 0;
+        map.section = 1;
+        map.node = 1;
+        map.course = 0;
+        map.stage = "W1 n1";
+        map.savedata = nsmbu_image(0);
+        std::string t = write(map, why);
+        CHECK(!t.empty());
+        CHECK(t.find("place = map") != std::string::npos);
+        CHECK(t.find("node = 1") != std::string::npos);
+        CHECK(t.find("player_pos") == std::string::npos);
+        State back;
+        CHECK(read(t, back, why));
+        CHECK(back.place == "map" && back.world == 0 && back.section == 1 && back.node == 1 && back.course == 0);
+        CHECK(back.stage == "W1 n1" && back.savedata == map.savedata && back.file_slot == 0);
+        map.course = -1;
+        map.stage = "W1 n1";
+        t = write(map, why);
+        CHECK(read(t, back, why) && back.course == -1 && back.node == 1);
+        CHECK(!read(reseal(replace(t, "node = 1\n", "")), back, why));
+    }
+
+    {
+        State bad;
+        header(bad);
+        bad.place = "course";
+        bad.file_slot = 0;
+        bad.world = 1;
+        bad.course = 0;
+        bad.stage = "2-1";
+        bad.pos[0] = 1;
+        bad.savedata = nsmbu_image(1);
+        std::string t = write(bad, why);
+        CHECK(!t.empty());
+        State back;
+        CHECK(!read(t, back, why));
+        CHECK(why.find("save file does not match") != std::string::npos);
+        bad.world = 9;
+        bad.savedata = nsmbu_image(0);
+        bad.file_slot = 0;
+        CHECK(write(bad, why).empty());
+    }
+
     CHECK(crc32("123456789", 9) == 0xCBF43926u);
     if (failures) {
         fprintf(stderr, "%d failure(s)\n", failures);

@@ -8,6 +8,13 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
+### Fixed
+
+- Entering another course from the world map at a high frame rate no longer crashes.
+- A Quick Save is still there after you quit and start the game again.
+  The file shows that course progress, and opening the file keeps it.
+- Save states can be taken on the world map and inside a course.
+
 ## [0.6.2] - 2026-10-24
 
 ### Fixed
