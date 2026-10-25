@@ -643,20 +643,48 @@ int current_stage_no(Cpu* c) {
     return (ld8(stag + 9) >> 1) & 0x7F;
 }
 
+static void explain_save_info(std::string& why) {
+    uint32_t sv = ld32(kSaveInfoPtr);
+    std::string st = stage_name();
+    char extra[96];
+    snprintf(extra, sizeof extra, ", save info %08X, %s", sv, st.empty() ? "no stage" : st.c_str());
+    why += extra;
+}
+
 bool gameplay_ready(std::string& why, bool& retry) {
     retry = false;
     uint32_t sv = ld32(kSaveInfoPtr);
-    if (!in_mem2(sv)) { why = "no game in progress"; return false; }
+    if (!in_mem2(sv)) {
+        why = "no game in progress";
+        explain_save_info(why);
+        return false;
+    }
     std::string st = stage_name();
     if (st.empty()) {
         why = "no game in progress (start or continue a save file first)";
+        explain_save_info(why);
         retry = true;
         return false;
     }
     uint32_t player = ld32(kPlayerActorPtr);
-    if (!in_mem2(player)) { why = "the player is not in the scene"; retry = true; return false; }
-    if (ld8(kNextStage + 12)) { why = "a stage change is in progress"; retry = true; return false; }
-    if (ld8(sv + kDataNum) > 2) { why = "no save file loaded"; retry = true; return false; }
+    if (!in_mem2(player)) {
+        why = "the player is not in the scene";
+        explain_save_info(why);
+        retry = true;
+        return false;
+    }
+    if (ld8(kNextStage + 12)) {
+        why = "a stage change is in progress";
+        explain_save_info(why);
+        retry = true;
+        return false;
+    }
+    if (ld8(sv + kDataNum) > 2) {
+        why = "no save file loaded";
+        explain_save_info(why);
+        retry = true;
+        return false;
+    }
     return true;
 }
 
