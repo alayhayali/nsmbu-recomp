@@ -508,12 +508,18 @@ class Recompiler:
                 progress(i + 1, total_fn, "translating functions (%d of %d)" % (i + 1, total_fn))
         if cur:
             files.append(cur)
+        written = set()
         for i, funcs in enumerate(files):
-            with open(os.path.join(outdir, "code_%03d.c" % i), "w") as f:
+            name = "code_%03d.c" % i
+            with open(os.path.join(outdir, name), "w") as f:
                 f.write('#include "funcs.h"\n\n')
                 f.write("\n\n".join(funcs))
                 f.write("\n")
+            written.add(name)
             progress(i + 1, len(files), "writing code_%03d.c (%d of %d)" % (i, i + 1, len(files)))
+        for name in os.listdir(outdir):
+            if re.fullmatch(r"code_\d+\.c", name) and name not in written:
+                os.remove(os.path.join(outdir, name))
         progress(len(files), len(files), "writing headers")
         self.write_headers(outdir)
         self.write_report(outdir, len(files))

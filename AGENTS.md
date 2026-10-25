@@ -3,6 +3,7 @@
 ## Rules
 
 Assume that the Typescript to Lua watcher is already running.
+Never comment on github issues.
 
 ## Verify
 

@@ -572,4 +572,22 @@ export const CASES: PlayCase[] = [
             if (second === first) throw new Error(`second course is still ${second}`);
         },
     },
+    {
+        name: "course-enter-120",
+        summary:
+            "Regression for #15 at 120 fps: enter one course from the map, leave, enter another (ZoomHio / freed camera).",
+        run: async (session) => {
+            await session.start({
+                save: "repo",
+                env: { NSMBU_INTERP: "1", NSMBU_INTERP_FPS: "120" },
+            });
+            await reachWorldMap(session, 180);
+            const first = await enterCourse(session);
+            await leaveCourse(session);
+            const back = await session.status();
+            await walkToOtherNode(session, back.node);
+            const second = await enterCourse(session);
+            if (second === first) throw new Error(`second course is still ${second}`);
+        },
+    },
 ];

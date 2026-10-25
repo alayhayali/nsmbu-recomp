@@ -2051,6 +2051,10 @@ bool apply_save_file(uint32_t file, int32_t world, int32_t course, bool entry, s
     uint32_t gate = 0;
     if (!lua_guest::read_u32(kSaveApplyFlag, gate, err)) return false;
     if (gate != 0 && !lua_guest::write_u8(gate + kSaveApplyFlagOff, 0, err)) return false;
+    if (!dispatch::lookup(kApplySaveFile)) {
+        err = "applySaveFile is not in this build; install the matching 1.3.0 update";
+        return false;
+    }
     guest_call(t_guest_cpu, kApplySaveFile, {mgr, file});
     uint32_t game = 0;
     if (!lua_guest::read_u32(kMainGame, game, err)) return false;
