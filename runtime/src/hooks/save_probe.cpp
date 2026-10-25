@@ -367,7 +367,7 @@ static uint8_t g_file_select_complete[6];
 static uint8_t g_file_select_complete_init[6];
 
 static bool file_select_quick_caller(uint32_t lr) {
-    return lr == 0x02631BD4u || lr == 0x0263ADC8u || lr == 0x02641A3Cu;
+    return lr == GC(0x02631BD4) || lr == GC(0x0263ADC8) || lr == GC(0x02641A3C);
 }
 
 static void log_file_select_slot(uint32_t file, bool use_quick, const RecordView& rec, uint8_t complete) {
