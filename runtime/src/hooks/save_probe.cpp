@@ -3,7 +3,9 @@
 #include "input/input.h"
 
 #include <cstdio>
+#include <cstring>
 #include <string>
+#include <vector>
 #include <sys/stat.h>
 
 extern "C" void f_029D9E30_orig(Cpu* c);
@@ -18,6 +20,9 @@ static const uint32_t kSaveMgr = GD(0x101E7DA4);
 static const uint32_t kSaveSlotSize = 0x204u;
 static const uint32_t kMainRecordBase = 0x10u;
 static const uint32_t kBackupRecordBase = 0xC28u;
+static const uint32_t kSavedataSize = 0xB134u;
+static const uint32_t kLevelFlagCount = 123u;
+static const uint32_t kLevelFlagOff = 0x6Bu;
 
 static const char* read_error_name(int32_t e) {
     if (e == 0) return "ok";
@@ -74,6 +79,100 @@ static void format_exists(char* out, size_t n, uint32_t savedata) {
     }
 }
 
+struct RecordView {
+    bool ok = false;
+    uint8_t exists = 0;
+    uint8_t lives = 0;
+    uint8_t world = 0;
+    uint8_t section = 0;
+    uint8_t node = 0;
+    int flags = 0;
+};
+
+static RecordView view_record(const uint8_t* rec) {
+    RecordView v;
+    v.ok = true;
+    v.exists = rec[0];
+    v.lives = rec[0x0C];
+    v.world = rec[4];
+    v.section = rec[5];
+    v.node = rec[6];
+    for (uint32_t i = 0; i < kLevelFlagCount; i++)
+        if (rec[kLevelFlagOff + i]) v.flags++;
+    return v;
+}
+
+static RecordView view_guest_record(uint32_t savedata, uint32_t base) {
+    RecordView v;
+    uint32_t rec = savedata + base;
+    if (!in_mem2(savedata) || rec + kSaveSlotSize >= mem::kMem2End) return v;
+    uint8_t raw[kSaveSlotSize];
+    for (uint32_t i = 0; i < kSaveSlotSize; i++) raw[i] = ld8(rec + i);
+    return view_record(raw);
+}
+
+static bool read_host_savedata(std::vector<uint8_t>& out) {
+    std::string path = config::save_dir + "/common/rp_savedata.dat";
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return false;
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return false;
+    }
+    long n = ftell(f);
+    if (n < (long)kSavedataSize || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return false;
+    }
+    out.resize(kSavedataSize);
+    size_t got = fread(out.data(), 1, out.size(), f);
+    fclose(f);
+    return got == out.size();
+}
+
+static void append_record(char* out, size_t n, const char* name, const RecordView& v) {
+    size_t len = strlen(out);
+    if (len >= n) return;
+    if (!v.ok)
+        snprintf(out + len, n - len, " %s=?", name);
+    else
+        snprintf(out + len, n - len, " %s exists=%u lives=%u map=%u.%u.%u flags=%d", name, v.exists, v.lives, v.world,
+                 v.section, v.node, v.flags);
+}
+
+static void log_slot_records(const char* where, uint8_t file, const RecordView& main_rec, const RecordView& quick) {
+    char buf[320];
+    snprintf(buf, sizeof buf, "[save] %s file %u", where, (unsigned)file);
+    append_record(buf, sizeof buf, "main", main_rec);
+    append_record(buf, sizeof buf, "quick", quick);
+    LOG("%s", buf);
+}
+
+static void log_guest_and_host_records(const char* guest_where) {
+    uint32_t buf = savedata_buf(save_mgr());
+    uint8_t file = 0xFF;
+    if (in_mem2(buf) && buf + 8u < mem::kMem2End) file = ld8(buf + 7);
+    if (file < 6u) {
+        log_slot_records(guest_where, file, view_guest_record(buf, kMainRecordBase + (uint32_t)file * kSaveSlotSize),
+                         view_guest_record(buf, kBackupRecordBase + (uint32_t)file * kSaveSlotSize));
+    } else {
+        LOG("[save] %s file %u out of range", guest_where, (unsigned)file);
+    }
+    std::vector<uint8_t> host;
+    if (!read_host_savedata(host)) {
+        LOG("[save] host rp_savedata.dat unreadable");
+        return;
+    }
+    uint8_t host_file = host[7];
+    if (host_file >= 6u) {
+        LOG("[save] host file %u out of range", (unsigned)host_file);
+        return;
+    }
+    uint32_t main_off = kMainRecordBase + (uint32_t)host_file * kSaveSlotSize;
+    uint32_t quick_off = kBackupRecordBase + (uint32_t)host_file * kSaveSlotSize;
+    log_slot_records("host", host_file, view_record(host.data() + main_off), view_record(host.data() + quick_off));
+}
+
 static long host_save_size(const char* rel) {
     std::string path = config::save_dir + rel;
     struct stat st;
@@ -111,11 +210,13 @@ extern "C" void hook_029D9E30(Cpu* c) {
 extern "C" void site_029D94C0(Cpu*) {
     log_savedata_summary("load rp_savedata.dat", false);
     LOG("[save] host common/rp_savedata.dat %ld bytes", host_save_size("/common/rp_savedata.dat"));
+    log_guest_and_host_records("guest after load");
 }
 
 extern "C" void site_029D97B8(Cpu*) {
     log_savedata_summary("write rp_savedata.dat", true);
     LOG("[save] host common/rp_savedata.dat %ld bytes after write", host_save_size("/common/rp_savedata.dat"));
+    log_guest_and_host_records("guest after write");
 }
 
 extern "C" void site_029D9CB8(Cpu*) {
@@ -181,6 +282,11 @@ extern "C" void hook_029D7648(Cpu* c) {
         main = ld8(buf + kMainRecordBase + (uint32_t)file * kSaveSlotSize);
         backup = ld8(buf + kBackupRecordBase + (uint32_t)file * kSaveSlotSize);
     }
-    LOG("[save] apply file %u (main %s, backup %s)", (unsigned)file, main ? "set" : "empty", backup ? "set" : "empty");
+    RecordView main_rec = view_guest_record(buf, kMainRecordBase + (uint32_t)file * kSaveSlotSize);
+    RecordView quick = view_guest_record(buf, kBackupRecordBase + (uint32_t)file * kSaveSlotSize);
+    const char* used = quick.ok && quick.exists ? "quick" : "main";
+    LOG("[save] apply file %u uses %s (main %s, quick %s)", (unsigned)file, used, main ? "set" : "empty",
+        backup ? "set" : "empty");
+    if (file < 6u) log_slot_records("apply", file, main_rec, quick);
     f_029D7648_orig(c);
 }
