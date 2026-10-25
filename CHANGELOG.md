@@ -8,6 +8,8 @@ Use the `changelog` skill when editing.
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-10-25
+
 ### Fixed
 
 - Entering another course from the world map at a high frame rate no longer crashes.
@@ -200,7 +202,8 @@ Use the `changelog` skill when editing.
 
 - The TV and GamePad present together on one vsync.
 
-[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.5.0...v0.6.0
