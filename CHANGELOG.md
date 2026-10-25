@@ -17,10 +17,15 @@ Use the `changelog` skill when editing.
   The file shows that course progress, and opening the file keeps it.
 - Save states can be taken on the world map and inside a course.
 
-### Security
+### Changed
 
-- Portable save states check the save image's block checksums before they load.
-- Release builds ignore the developer control socket.
+- A portable save state that does not match your game save is refused instead of loading.
+  Use a state file from the same save slot on this machine.
+
+### Removed
+
+- The published game no longer accepts the live control link that `nsmbu` uses to press buttons and read status while you play.
+  Builds you compile yourself still support it.
 
 ## [0.6.2] - 2026-10-24
 
