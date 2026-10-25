@@ -5,11 +5,10 @@
 Ship a native TypeScript CLI under `tools/cli/` run with Node 24 type stripping (`node …/*.ts`, erasable TypeScript only; `tsc --noEmit` for checks).
 Expose it globally as `nsmbu` via `npm link` from `tools/cli/`.
 Agents and automation always invoke `nsmbu …` on `PATH`.
-Add an agent-browser-like control loop for a running game: wait/status, press/stick pulses, screenshot, quit.
-Regression checks belong in `nsmbu test` playtest cases (see [automation.md](automation.md)), not in a live control chat.
+Game regressions belong in `nsmbu test` playtest cases (see [automation.md](automation.md)).
+Short live control (`status`, `press`, `stick`, `screenshot`, `wait`, `quit`) is for a look while writing a case.
 
 Keep `NSMBU_RECORD_INPUT` / `NSMBU_REPLAY_INPUT` and `replays/<name>.replay` for complex timelines (see [automation.md](automation.md)).
-The live CLI is for short interactive pulses and observation, not a replacement for long pad logs or playtests.
 
 Only one game instance is supported.
 The process is too heavy to run more than one, so there is no `--session` flag and no multi-instance control.
@@ -107,9 +106,10 @@ The JSON keeps every unknown and padding byte, so a JSON to `.dat` to JSON round
 No CRC32 fields appear in the JSON; the structural checksums are recomputed when writing the `.dat` file so the game still accepts it.
 Non-finite `f32` values (star coin coordinates) are written as `0x`-prefixed 32-bit hex.
 
-## Agent control
+## Live look
 
 Commands talk to the single running game over the fixed control socket.
+Use them for a short look while writing a playtest case; lasting coverage stays in `tools/cli/src/playtest/cases.ts` and `nsmbu test`.
 
 - `nsmbu open [slot|course|course-file] […]` — ensure binary, spawn the game with agent control enabled, wait until the socket accepts.
   A course file is a `course_res_pack` archive, such as `game/content/Common/course_res_pack/1-27.szs`, and starts that course the same way as `1-27`.
@@ -125,12 +125,8 @@ Commands talk to the single running game over the fixed control socket.
 - `nsmbu quit` / `close` — graceful quit and tear down control files under `.tmp/agent/`.
 
 These commands block until their work is done: `open` waits for the socket, `press` / `stick` hold for their frames, `screenshot` waits for the PNG, `status` waits for the guest thread to read the scene, and `wait` polls until the frame, step, or scene bound.
-Do not add shell sleeps between control commands.
 Use `wait --step N` or `wait --scene NAME` when the next action needs guest progress.
-
-Headless boots that use `tools/run/scripted-run.sh` stay available as `nsmbu scripted <name>` so agents can still do exit-at-frame dumps without a second path.
-Live `open` / `press` / `screenshot` is for short looks while writing a playtest.
-Add lasting coverage in `tools/cli/src/playtest/cases.ts` and run `nsmbu test`.
+`nsmbu scripted <name>` remains for exit-at-frame dumps (see [automation.md](automation.md)).
 
 ## Runtime work
 
@@ -142,7 +138,7 @@ New small module (for example `runtime/src/agent/agent_ctl.cpp` and header):
 - Service screenshot and quit on the render/host thread safely (queue commands, apply on known threads — same discipline as overlay / `hostui::post`).
 - Service `status` on the guest thread next to `mods::packages::frame()`, so reads see game state at the same point as mods.
   `status` also runs on a held frame so a stuck logic step still answers.
-  Playtests may still send an internal `eval` job on that same guest path through `mods::lua_eval`; there is no `nsmbu eval` CLI.
+  Playtest `Session` helpers that change scenes use that same guest-thread path.
 - Wire quit to the existing SDL quit path.
 
 No change to the replay file format or `NSMBU_PRESS` start-only tables except coexistence (agent overlay OR’ed with scripted/replay as documented).
@@ -150,7 +146,7 @@ No change to the replay file format or `NSMBU_PRESS` start-only tables except co
 ## Docs and agent skills
 
 `CONTRIBUTING.md`, `docs/nsmbu/port.md`, `docs/automation.md`, `AGENTS.md`, and `.agents/skills/build/SKILL.md` use `nsmbu …` for CLI invocations.
-`.agents/skills/nsmbu/SKILL.md` documents the single-instance control loop and prefers playtest cases over live control chats.
+`.agents/skills/nsmbu/SKILL.md` steers agents to playtest cases first, with live look commands for short checks.
 Complex input stays on `record` / `replay`.
 
 ## Implementation notes

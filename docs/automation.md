@@ -1,11 +1,48 @@
 # Automation runs
 
+Issue and release game regressions belong in playtests.
+Use `nsmbu scripted` when you need exit-at-frame dumps or a fixed `NSMBU_PRESS` timeline without a playtest case.
+Long pad timelines stay on `record` / `replay`.
+
+## Playtests
+
+`nsmbu test` boots the debug game once per case and checks issue and release regressions.
+Add or extend a case in `tools/cli/src/playtest/cases.ts`.
+Reuse the helpers already in that file (`reachMap`, `loadPack`, `leaveCourse`, `quickSaveHere`, and the other locals) before inventing a new flow.
+Scene moves that need guest Lua stay inside the case through `Session` helpers.
+
+`nsmbu test --list` prints the case names.
+`nsmbu test opened-course` runs one case.
+Each case copies or creates a save under `.tmp/playtest/<name>/save`, so `nsmbu/save` stays unread.
+
+The cases are:
+
+- `startup` — [#6](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/6): the process stays up past Boot and the frame counter advances.
+- `opened-course` — 0.6.1 course-open fixes: open `1-5` without rewriting the loading card, load `1-2` from there, leave to map node `W102` with a checkpoint.
+- `opening-cinematic` — 0.6.1 map input / [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): after Story Mode the map takes the stick and still shows a course number.
+- `save-roundtrip` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): the map Quick Save menu stores the current node and a restarted process is still on that node.
+- `course-enter` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14) at 165 fps: enter a course, leave, enter another without freezing.
+
+Closed-issue coverage outside playtests:
+
+- [#9](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/9) multiplayer bindings — `ctest -R input_mapping` (`test_issue_9_multiplayer_bindings`).
+- [#11](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/11) Windows common-key paste — `tools/installer/test_setup.py` (`test_issue_11_windows_common_key_paste`).
+- [#7](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/7) choppy gameplay has no deterministic playtest; shader precompile and the Vulkan smoke suite cover the shipped mitigations.
+- 0.6.2 mismatched color-target freeze — Vulkan renderer smoke (`mismatched_color_targets`).
+
+Map reads use the USA v1.3.0 addresses in `docs/nsmbu/course-open.md` and `vendor/decomp/include/course_select/NOTES_map_spawn.md`.
+The run needs `game/` and a debug build.
+It is not part of `ctest`.
+Run it before a release when this machine has a dump.
+
+## Scripted boots
+
 Headless boots use `nsmbu scripted <name>` from the repo root (wraps `tools/run/scripted-run.sh`).
 The script copies `nsmbu/save` into `.tmp/<name>/save`, then starts `build/debug/nsmbu` (or another build dir if present) with that save.
 Frame dumps land in `.tmp/<name>/` as `frame_<n>.png`.
 The repo `nsmbu/save` stays unread by the game.
 
-## Steps
+### Steps
 
 1. Set `NSMBU_EXIT_AT_FRAME`.
    Set `NSMBU_DUMP_FRAMES` to the frames you will look at.
@@ -19,7 +56,7 @@ The repo `nsmbu/save` stays unread by the game.
    Run `python3 tools/frames/flicker.py FIRST LAST .tmp/<name>`.
    The check is done when both scales have a result and you have looked at one frame from each.
 
-## Environment the script sets
+### Environment the script sets
 
 `tools/run/scripted-run.sh` always exports these values:
 
@@ -34,7 +71,7 @@ The repo `nsmbu/save` stays unread by the game.
 
 The binary also receives `--game <repo>/game` and `--save .tmp/<name>/save`.
 
-## Environment you set
+### Environment you set
 
 Set these on the command line before the script:
 
@@ -76,7 +113,7 @@ Positive x is right.
 Positive y is up.
 Values are typically `-1` to `1`.
 
-## Example
+### Example
 
 `nsmbu/save` is already past the opening cutscene.
 This recipe starts from that save.
@@ -92,37 +129,7 @@ tools/run/scripted-run.sh w11
 Frame 7000 is the course.
 The picture is the big tree, the bricks, and Mario on the ground.
 
-## Playtests
-
-`nsmbu test` boots the debug game once per case and checks issue and release regressions.
-Prefer a new case here over driving the game with live agent commands.
-
-`nsmbu test --list` prints the case names.
-`nsmbu test opened-course` runs one case.
-Add cases in `tools/cli/src/playtest/cases.ts`.
-Each case copies or creates a save under `.tmp/playtest/<name>/save`, so `nsmbu/save` stays unread.
-
-The cases are:
-
-- `startup` — [#6](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/6): the process stays up past Boot and the frame counter advances.
-- `opened-course` — 0.6.1 course-open fixes: open `1-5` without rewriting the loading card, load `1-2` from there, leave to map node `W102` with a checkpoint.
-- `opening-cinematic` — 0.6.1 map input / [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): after Story Mode the map takes the stick and still shows a course number.
-- `save-roundtrip` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14): the map Quick Save menu stores the current node and a restarted process is still on that node.
-- `course-enter` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14) at 165 fps: enter a course, leave, enter another without freezing.
-
-Closed-issue coverage outside playtests:
-
-- [#9](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/9) multiplayer bindings — `ctest -R input_mapping` (`test_issue_9_multiplayer_bindings`).
-- [#11](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/11) Windows common-key paste — `tools/installer/test_setup.py` (`test_issue_11_windows_common_key_paste`).
-- [#7](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/7) choppy gameplay has no deterministic playtest; shader precompile and the Vulkan smoke suite cover the shipped mitigations.
-- 0.6.2 mismatched color-target freeze — Vulkan renderer smoke (`mismatched_color_targets`).
-
-Map reads use the USA v1.3.0 addresses in `docs/nsmbu/course-open.md` and `vendor/decomp/include/course_select/NOTES_map_spawn.md`.
-The run needs `game/` and a debug build.
-It is not part of `ctest`.
-Run it before a release when this machine has a dump.
-
-## Mute
+### Mute
 
 The script sets `NSMBU_NO_AUDIO=1` so no output device is opened.
 The mix still runs.
