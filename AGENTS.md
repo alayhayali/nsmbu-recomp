@@ -8,7 +8,7 @@ Never comment on github issues.
 ## Verify
 
 The `nsmbu` cli is on `PATH`.
-Game regressions go in `tools/cli/src/playtest/cases.ts` and run with `nsmbu test`.
+Game regressions go in `tools/cli/src/playtest/cases/` (shared helpers in `helpers.ts`) and run with `nsmbu test`.
 
 ## Changelog
 
@@ -24,4 +24,4 @@ The `nsmbu` target compiles with `-Wall`.
 
 ## Decomp
 
-Any discoveries you find about the source code document and decompile it into the `decomp/` repo.
+Any discoveries you find about the source code document it in the `vendor/decomp/docs` repo.

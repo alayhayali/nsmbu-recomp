@@ -1,9 +1,9 @@
-import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { AgentClient } from "../agent/client.ts";
 import { parseButtonBits } from "../agent/buttons.ts";
-import { agentDir, agentPidPath, agentSocketPath } from "../agent/paths.ts";
-import { isPidAlive, readAgentPid, removeAgentArtifacts } from "../agent/process.ts";
+import { agentSocketPath } from "../agent/paths.ts";
+import { isPidAlive, readAgentPid } from "../agent/process.ts";
 import { canConnectSocket, waitForSocket } from "../agent/socket.ts";
 import { spawnPython } from "../run.ts";
 
@@ -54,22 +54,23 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
     });
 }
 
-async function ensureIdle(repo: string): Promise<void> {
+export async function ensureLiveAgentIdle(repo: string): Promise<void> {
     const sock = agentSocketPath(repo);
     if (await canConnectSocket(sock)) {
-        throw new Error("agent game already running (control socket is active)");
+        throw new Error("agent game already running (control socket is active); nsmbu close first");
     }
     const pid = readAgentPid(repo);
     if (pid !== null && isPidAlive(pid)) {
-        throw new Error(`agent game already running (pid ${pid})`);
+        throw new Error(`agent game already running (pid ${pid}); nsmbu close first`);
     }
-    removeAgentArtifacts(repo);
 }
 
 export class Session {
     readonly repo: string;
     readonly name: string;
+    readonly workDir: string;
     readonly saveDir: string;
+    readonly logPath: string;
     private client: AgentClient | null = null;
     private pid: number | null = null;
     private openPack: string | undefined;
@@ -79,13 +80,86 @@ export class Session {
     constructor(repo: string, name: string) {
         this.repo = repo;
         this.name = name;
-        this.saveDir = join(repo, ".tmp", "playtest", name, "save");
+        this.workDir = join(repo, ".tmp", "playtest", name);
+        this.saveDir = join(this.workDir, "save");
+        this.logPath = join(this.workDir, "nsmbu.log");
+    }
+
+    private sockPath(): string {
+        if (process.platform === "win32") {
+            return `\\\\.\\pipe\\nsmbu-playtest-${this.name}`;
+        }
+        return join(this.workDir, "ctl.sock");
+    }
+
+    private pidPath(): string {
+        return join(this.workDir, "pid");
+    }
+
+    private readPid(): number | null {
+        try {
+            const raw = readFileSync(this.pidPath(), "utf8").trim();
+            const pid = Number.parseInt(raw, 10);
+            return Number.isInteger(pid) ? pid : null;
+        } catch {
+            return null;
+        }
+    }
+
+    private clearAgentFiles(): void {
+        for (const p of [this.sockPath(), this.pidPath()]) {
+            if (process.platform === "win32" && p.startsWith("\\\\.\\pipe\\")) continue;
+            try {
+                unlinkSync(p);
+            } catch {
+                /* absent */
+            }
+        }
+    }
+
+    private killPid(pid: number): void {
+        try {
+            process.kill(pid, "SIGTERM");
+        } catch {
+            /* already exited */
+        }
+    }
+
+    private async reapPid(pid: number, ms: number): Promise<void> {
+        const deadline = Date.now() + ms;
+        while (isPidAlive(pid) && Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 100));
+        }
+        if (isPidAlive(pid)) {
+            try {
+                process.kill(pid, "SIGKILL");
+            } catch {
+                /* already exited */
+            }
+        }
+    }
+
+    private async ensureOwnIdle(): Promise<void> {
+        const sock = this.sockPath();
+        const pid = this.readPid();
+        if (await canConnectSocket(sock) || (pid !== null && isPidAlive(pid))) {
+            if (pid !== null && isPidAlive(pid)) {
+                this.killPid(pid);
+                await this.reapPid(pid, 5000);
+            }
+            this.clearAgentFiles();
+            if (await canConnectSocket(sock)) {
+                throw new Error(`playtest ${this.name} already running (control socket is active)`);
+            }
+        } else {
+            this.clearAgentFiles();
+        }
     }
 
     async start(opts: { save: "fresh" | "repo" | "keep"; open?: string; env?: Record<string, string> }): Promise<void> {
-        await ensureIdle(this.repo);
+        await this.ensureOwnIdle();
         if (opts.save !== "keep") {
-            rmSync(join(this.repo, ".tmp", "playtest", this.name), { recursive: true, force: true });
+            rmSync(this.workDir, { recursive: true, force: true });
             mkdirSync(this.saveDir, { recursive: true });
             if (opts.save === "repo") {
                 cpSync(join(this.repo, "nsmbu", "save"), this.saveDir, { recursive: true });
@@ -104,15 +178,17 @@ export class Session {
     }
 
     private async launch(): Promise<void> {
-        await ensureIdle(this.repo);
-        mkdirSync(agentDir(this.repo), { recursive: true });
-        const sock = agentSocketPath(this.repo);
+        await this.ensureOwnIdle();
+        mkdirSync(this.workDir, { recursive: true });
+        mkdirSync(dirname(this.logPath), { recursive: true });
+        const sock = this.sockPath();
         const args = ["--save", this.saveDir];
         if (this.openPack) args.push(this.openPack);
         const child = spawnPython(this.repo, "tools/run/launch.py", args, {
             detached: true,
             stdio: "ignore",
             extraEnv: {
+                NSMBU_LOG_FILE: this.logPath,
                 NSMBU_AGENT_SOCK: sock,
                 NSMBU_HIDDEN_WINDOWS: "1",
                 NSMBU_NO_HOST_INPUT: "1",
@@ -125,9 +201,9 @@ export class Session {
         child.unref();
         if (child.pid === undefined) throw new Error("failed to spawn game");
         this.pid = child.pid;
-        writeFileSync(agentPidPath(this.repo), String(child.pid));
+        writeFileSync(this.pidPath(), String(child.pid));
         await waitForSocket(sock, 90_000);
-        this.client = new AgentClient(this.repo);
+        this.client = new AgentClient(this.repo, sock);
     }
 
     private live(): AgentClient {
@@ -208,19 +284,13 @@ export class Session {
             }
             client.close();
         }
-        const pid = this.pid ?? readAgentPid(this.repo);
-        const deadline = Date.now() + 5000;
-        while (pid !== null && isPidAlive(pid) && Date.now() < deadline) {
-            await new Promise((r) => setTimeout(r, 100));
+        const pid = this.pid ?? this.readPid();
+        if (pid !== null) {
+            await this.reapPid(pid, 5000);
+            if (isPidAlive(pid)) this.killPid(pid);
+            await this.reapPid(pid, 2000);
         }
-        if (pid !== null && isPidAlive(pid)) {
-            try {
-                process.kill(pid, "SIGTERM");
-            } catch {
-                /* already exited */
-            }
-        }
-        removeAgentArtifacts(this.repo);
+        this.clearAgentFiles();
         this.pid = null;
     }
 }

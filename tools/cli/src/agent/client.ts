@@ -29,13 +29,15 @@ export class AgentClient {
     private nextId = 1;
     private pending = new Map<number, { resolve: (v: AgentResponse) => void; reject: (e: Error) => void }>();
     private readonly repo: string;
+    private readonly overrideSocket: string | undefined;
 
-    constructor(repo: string) {
+    constructor(repo: string, socketPath?: string) {
         this.repo = repo;
+        this.overrideSocket = socketPath;
     }
 
     socketPath(): string {
-        return agentSocketPath(this.repo);
+        return this.overrideSocket ?? agentSocketPath(this.repo);
     }
 
     async connect(): Promise<void> {
@@ -49,6 +51,7 @@ export class AgentClient {
                 this.socket = socket;
                 this.rl = readline.createInterface({ input: socket });
                 this.rl.on("line", (line) => this.onLine(line));
+                this.rl.on("error", (err) => this.failAll(err instanceof Error ? err : new Error(String(err))));
                 socket.on("error", (err) => this.failAll(err));
                 socket.on("close", () => this.failAll(new Error("agent connection closed")));
                 resolve();

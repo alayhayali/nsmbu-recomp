@@ -6,16 +6,18 @@ Long pad timelines stay on `record` / `replay`.
 
 ## Playtests
 
-`nsmbu test` boots the debug game once per case and checks issue and release regressions.
-Add or extend a case in `tools/cli/src/playtest/cases.ts`.
-Reuse the helpers already in that file (`reachMap`, `loadPack`, `leaveCourse`, `enterCourse`, `quickSaveHere`, and the other locals) before inventing a new flow.
+`nsmbu test` boots a debug game per case and checks issue and release regressions.
+Selected cases run in parallel (default 2 at a time; set `NSMBU_TEST_JOBS` to change).
+Add or extend a case under `tools/cli/src/playtest/cases/` and register it in `cases/index.ts`.
+Reuse helpers in `tools/cli/src/playtest/helpers.ts` (`reachMap`, `loadPack`, `leaveCourse`, `enterCourse`, `quickSaveHere`, and the other exports) before inventing a new flow.
 Map round-trips use `leaveCourse` / `enterCourse`, not `Scene.leave_course` alone.
 Scene moves that need guest Lua stay inside the case through `Session` helpers.
 
 `nsmbu test --list` prints the case names and summaries (the live list).
 `nsmbu test opened-course` runs one case.
 Only `--list` is a valid flag; other options are rejected.
-Each case copies or creates a save under `.tmp/playtest/<name>/save`, so `nsmbu/save` stays unread.
+Each case uses `.tmp/playtest/<name>/` for its save, control socket, and log file, so `nsmbu/save` and the live agent socket stay unread.
+Shader cache and settings stay in the shared `nsmbu/` userdata.
 
 Issue links that the cases cover:
 
