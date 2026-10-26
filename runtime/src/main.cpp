@@ -558,10 +558,8 @@ int main(int argc, char** argv) {
                 render::api_name(render::active()));
         return 1;
     }
-    static LoadedModule mod = m;
-    static uint32_t args = argv_arr;
-    std::thread([] {
-        threads::run_main(mod, 1, args);
+    std::thread([m, argv_arr] {
+        threads::run_main(m, 1, argv_arr);
         LOG("[boot] game main thread returned");
         std::exit(0);
     }).detach();

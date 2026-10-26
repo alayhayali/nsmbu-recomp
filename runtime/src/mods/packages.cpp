@@ -303,6 +303,31 @@ std::string unsupported_reason(){
 }
 void set_open_pack(std::string pack){std::lock_guard guard(mutex);open_pack=std::move(pack);}
 std::string open_pack_value(){std::lock_guard guard(mutex);return open_pack;}
+void reinitialize(){
+    {
+        std::lock_guard guard(mutex);
+        for(auto& [id,item]:live){
+            (void)id;
+            if(item.lua)mods::lua_mod::unload(*item.lua);
+        }
+        live.clear();
+        live_order.clear();
+        running=false;
+        for(auto& [id,r]:records){
+            (void)id;
+            r.active=false;
+            r.loading=false;
+            r.status.clear();
+            r.error.clear();
+        }
+        content::deactivate();
+        cemu::deactivate();
+        ready=false;
+        last_problem.clear();
+        dirty=true;
+    }
+    initialize();
+}
 void initialize(){
     std::lock_guard guard(mutex);if(ready)return;const char* override=env::MOD_MANAGER_DIR();if(env::NO_HOST_INPUT()&&!override)return;
     root=override?fs::path(override):fs::path(host::config_dir());

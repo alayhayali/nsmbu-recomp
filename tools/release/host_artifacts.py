@@ -30,6 +30,10 @@ def die(msg):
     sys.exit(1)
 
 
+def log(msg):
+    print("[installer] " + msg, flush=True)
+
+
 def host_arch():
     machine = platform.machine().lower()
     return {"amd64": "x86_64", "x86_64": "x86_64", "arm64": "aarch64", "aarch64": "aarch64"}.get(machine)
@@ -111,6 +115,7 @@ def file_sha256(path):
 
 def curl_download(url, dest):
     os.makedirs(os.path.dirname(dest), exist_ok=True)
+    log("downloading " + url)
     r = subprocess.run(["curl", "-fsSL", "-o", dest, url], cwd=ROOT)
     if r.returncode != 0:
         die("curl failed for " + url)
@@ -136,7 +141,9 @@ def ensure_zig(toolchain_id):
     zig_bin = os.path.join(zig_root, "zig")
     stamp = os.path.join(STAMPS, "zig-" + toolchain_id)
     if stamp_ok(stamp, t["sha256"]) and os.path.isfile(zig_bin):
+        log("zig toolchain ready (%s)" % toolchain_id)
         return zig_root, t["target"]
+    log("getting zig toolchain (%s)" % toolchain_id)
     os.makedirs(os.path.join(CACHE, "zig"), exist_ok=True)
     archive = os.path.join(CACHE, "zig-" + toolchain_id + ".tar.xz")
     if not (os.path.isfile(archive) and file_sha256(archive) == t["sha256"]):
@@ -145,6 +152,7 @@ def ensure_zig(toolchain_id):
             die("SHA-256 mismatch for zig toolchain download")
     if os.path.isdir(zig_root):
         shutil.rmtree(zig_root)
+    log("extracting zig toolchain")
     with tarfile.open(archive, "r:xz") as tf:
         tf.extractall(path=os.path.join(CACHE, "zig"))
     if not os.path.isfile(zig_bin):
@@ -193,7 +201,9 @@ def ensure_sdl3(env, target):
     license_txt = os.path.join(src_root, "LICENSE.txt")
     lib = find_sdl3_shared_lib(prefix)
     if stamp_ok(stamp, want) and lib and os.path.isfile(license_txt):
+        log("SDL3 ready (cached)")
         return prefix, src_root, lib
+    log("building SDL3 for the installer package")
     os.makedirs(SRC_CACHE, exist_ok=True)
     archive = os.path.join(SRC_CACHE, "sdl3.tar.gz")
     if not (os.path.isfile(archive) and file_sha256(archive) == sha):
@@ -203,6 +213,7 @@ def ensure_sdl3(env, target):
     src_name = sdl_source_dir(url)
     src_root = os.path.join(SRC_CACHE, src_name)
     if not os.path.isdir(src_root):
+        log("extracting SDL3 sources")
         subprocess.run(["tar", "-xzf", archive, "-C", SRC_CACHE], cwd=ROOT, check=True)
     build = os.path.join(CACHE, "sdl3-build")
     if os.path.isdir(build):
@@ -212,6 +223,7 @@ def ensure_sdl3(env, target):
     sdl_env = os.environ.copy()
     sdl_env["ZIG_GLOBAL_CACHE_DIR"] = ZIG_CACHE
     os.makedirs(ZIG_CACHE, exist_ok=True)
+    log("configuring SDL3")
     subprocess.run(
         [
             "cmake",
@@ -238,6 +250,7 @@ def ensure_sdl3(env, target):
         env=sdl_env,
         check=True,
     )
+    log("compiling SDL3")
     subprocess.run(["cmake", "--build", build], cwd=ROOT, env=sdl_env, check=True)
     subprocess.run(["cmake", "--install", build], cwd=ROOT, env=sdl_env, check=True)
     lib = find_sdl3_shared_lib(prefix)
@@ -246,6 +259,7 @@ def ensure_sdl3(env, target):
     if not os.path.isfile(license_txt):
         die("SDL3 source missing LICENSE.txt: " + license_txt)
     write_stamp(stamp, want)
+    log("SDL3 built")
     return prefix, src_root, lib
 
 
@@ -256,7 +270,9 @@ def ensure_vulkan_headers(env):
     license_md = os.path.join(root, "LICENSE.md")
     stamp = os.path.join(STAMPS, "vulkan")
     if stamp_ok(stamp, want) and os.path.isfile(license_md):
+        log("Vulkan-Headers ready (cached)")
         return root
+    log("getting Vulkan-Headers")
     os.makedirs(SRC_CACHE, exist_ok=True)
     archive = os.path.join(SRC_CACHE, "vulkan-headers.tar.gz")
     if not (os.path.isfile(archive) and file_sha256(archive) == want):
@@ -291,6 +307,7 @@ def drop_linker_depfile_detection():
 
 def run_build(version, sdl_prefix, vulkan_root, vulkan_lib):
     os.makedirs(GEN_STUB, exist_ok=True)
+    log("generating stub game code")
     subprocess.run([sys.executable, os.path.join(ROOT, "tools", "recomp", "stubgen.py"), GEN_STUB], cwd=ROOT, check=True)
     drop_linker_depfile_detection()
     env = os.environ.copy()
@@ -319,8 +336,11 @@ def run_build(version, sdl_prefix, vulkan_root, vulkan_lib):
         "-DCMAKE_C_LINKER_DEPFILE_SUPPORTED=FALSE",
         "-DCMAKE_CXX_LINKER_DEPFILE_SUPPORTED=FALSE",
     ]
+    log("configuring Release build in %s" % BUILD_DIR)
     subprocess.run(cmake_args, cwd=ROOT, env=env, check=True)
+    log("compiling the game and setup GUI (this is the long step)")
     subprocess.run(["cmake", "--build", BUILD_DIR], cwd=ROOT, env=env, check=True)
+    log("Release build finished")
 
 
 def package_release(
@@ -359,6 +379,7 @@ def package_release(
     for lic in licenses:
         args.extend(["--license", lic])
     args.append("--no-zip")
+    log("packaging %s" % pkg_name)
     subprocess.run([sys.executable] + args, cwd=ROOT, check=True)
     pkg_dir = os.path.join(out_dir, pkg_name)
     launcher = os.path.join(pkg_dir, "nsmbu-launcher")
@@ -382,6 +403,7 @@ def main():
     a = ap.parse_args()
 
     version = a.version if a.version else default_version()
+    log("building Linux %s installer package (%s)" % (arch, version))
 
     require_tools()
     check_luajit()
@@ -405,6 +427,7 @@ def main():
         version, arch, toolchain_id, STAGE_OUT, sdl_runtime_lib, vulkan_root, vulkan_lib, zig_dir, sdl_src
     )
 
+    log("writing %s" % INSTALLER_DIR)
     if os.path.isdir(INSTALLER_DIR):
         shutil.rmtree(INSTALLER_DIR)
     os.makedirs(os.path.dirname(INSTALLER_DIR), exist_ok=True)
@@ -412,6 +435,7 @@ def main():
     if os.path.isdir(STAGE_OUT):
         shutil.rmtree(STAGE_OUT)
 
+    log("checking package contents")
     subprocess.run(
         [sys.executable, os.path.join(ROOT, "tools", "release", "guard.py"), INSTALLER_DIR],
         cwd=ROOT,
@@ -419,9 +443,11 @@ def main():
     )
 
     installer_abs = os.path.abspath(INSTALLER_DIR)
+    log("package ready: " + installer_abs)
     print(installer_abs)
 
     launcher = os.path.join(INSTALLER_DIR, "nsmbu-launcher")
+    log("opening setup")
     subprocess.run([launcher, "--setup"], cwd=INSTALLER_DIR, check=True)
 
 

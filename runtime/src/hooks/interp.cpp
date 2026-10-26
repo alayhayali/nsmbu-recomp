@@ -16,6 +16,7 @@
 #include "hooks/interp_pacing.h"
 #include "guest_addr.h"
 #include "gfx/render_prof.h"
+#include "perf_metrics.h"
 #include "core/runtime.h"
 #include "core/write_watch.h"
 #include "agent/agent_ctl.h"
@@ -587,8 +588,9 @@ void ss_reset() {
     g_view_area = 0;
     model_clear();
     g_blend_t = 1.f;
-    const int rate = output_fps();
-    g_present_i = rate > 0 ? g_logic_steps * uint64_t(rate) / 60u : 0;
+    g_logic_steps = 0;
+    g_executed_steps.store(0, std::memory_order_relaxed);
+    g_present_i = 0;
 }
 
 static const char* const g_env_paced = env::INTERP_PACED();
@@ -665,18 +667,23 @@ static void work_end() {
 }
 
 static int g_step_holds = 0;
+static int g_full_frames = 1;
 static uint64_t g_plan_steps = 0;
 static int plan_step() {
     g_step_holds = 0;
     const int frames = interp_on() ? pacing::frames_for_step(output_fps(), g_plan_steps++) : 1;
     if (frames <= 0) return -1;
+    g_full_frames = frames;
     int n = frames - 1;
-    if (n > 0 && paced() && interp_on()) {
-        const int64_t logic = std::chrono::duration_cast<std::chrono::nanoseconds>(g_logic_avg).count();
-        const int64_t hold = std::chrono::duration_cast<std::chrono::nanoseconds>(g_hold_avg).count();
+    if (n > 0 && paced() && interp_on() && !pacing::fixed_output_slot(output_fps())) {
+        const int64_t slot = pacing::output_slot_ns(output_fps());
+        const int64_t logic = pacing::pass_budget_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(g_logic_avg).count(), slot);
+        const int64_t hold = pacing::pass_budget_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(g_hold_avg).count(), slot);
         const int64_t budget = kPacedBudget.count();
         n = pacing::plan_in_between(n, budget, logic, hold);
         if (pacing::next_pass(0, n, logic, hold, budget) != pacing::Next::kHold) n = 0;
+        g_paced_planned += n;
+    } else if (n > 0 && paced() && interp_on()) {
         g_paced_planned += n;
     }
     return n;
@@ -713,16 +720,24 @@ static void after_pass(int phase) {
         g_hold_next = false;
         if (pacing) {
             paced_step_done(g_step_holds);
-            if (in_between() > 1) g_wait_step = true;
+            if (pacing::pad_logic_step(output_fps(), g_step_n, g_step_holds + 1, g_full_frames)) g_wait_step = true;
         }
         return;
     }
     if (!pacing) { g_hold_next = true; g_wait_step = false; return; }
+    if (pacing::fixed_output_slot(output_fps())) {
+        g_hold_next = true;
+        g_last_hold = pace_clock::now();
+        return;
+    }
     if (phase > 0) g_last_hold = pace_clock::now();
     const auto now = pace_clock::now();
     const bool probe = phase == 0 && now - g_last_hold >= kProbeAfter;
-    const auto pass = std::chrono::duration_cast<std::chrono::nanoseconds>(probe ? vsync_tick() : g_hold_avg).count();
-    switch (pacing::next_pass(phase, g_step_n, g_step_work, pass, kPacedBudget.count())) {
+    const int64_t slot = pacing::output_slot_ns(output_fps());
+    const int64_t pass = pacing::pass_budget_ns(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(probe ? vsync_tick() : g_hold_avg).count(), slot);
+    const int64_t elapsed = slot > 0 && phase == 0 ? std::max(g_step_work, slot) : g_step_work;
+    switch (pacing::next_pass(phase, g_step_n, elapsed, pass, kPacedBudget.count())) {
     case pacing::Next::kHold:
         g_hold_next = true;
         g_last_hold = now;
@@ -778,6 +793,7 @@ std::string pass_cpu_report() {
 
 extern "C" void hook_029C52CC(Cpu* c) {
     using namespace interp;
+    perf::game_frame();
     if (!enabled()) {
         static const uint64_t at = env::INTERP_AT_STEP.u64_or(0);
         static uint64_t passes = 0;
@@ -845,6 +861,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
 extern "C" void hook_029C4FE4(Cpu* c) {
     using namespace interp;
     if (enabled() && !g_hold && g_frame_n <= 0) return;
+    if (enabled() && g_hold && !course_play_active()) return;
     f_029C4FE4_orig(c);
     if (!g_models_on || !enabled() || !course_play_active() || g_exact_step || !model_subst_pending()) return;
     imp_gx2_GX2DrawDone(c);

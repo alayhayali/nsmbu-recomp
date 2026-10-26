@@ -87,7 +87,7 @@ The CLI exports `NSMBU_CLI=1` and `NSMBU_USER_DIR=<repo>/nsmbu` on every dev com
 | `nsmbu installer [--version VERSION]` | builds this Linux host's GitHub Release folder (the zip contents) at `build/installer` with the release workflow's pinned zig toolchain, then opens that folder's setup window; does not publish |
 | `nsmbu lint` / `recomp` | TypeScript mod build, recomp only |
 | `nsmbu scripted <name>` | wraps `tools/run/scripted-run.sh` |
-| `nsmbu test [--list] [name…]` | boots the game and runs the playtests in [automation.md](automation.md); only `--list` is a valid flag |
+| `nsmbu test [--list] [name…]` | boots a game per playtest and runs selected cases in parallel ([automation.md](automation.md)); only `--list` is a valid flag |
 
 Run `nsmbu` with no arguments (or `--help`) for the full list.
 
@@ -109,7 +109,7 @@ Non-finite `f32` values (star coin coordinates) are written as `0x`-prefixed 32-
 ## Live look
 
 Commands talk to the single running game over the fixed control socket.
-Use them for a short look while writing a playtest case; lasting coverage stays in `tools/cli/src/playtest/cases.ts` and `nsmbu test`.
+Use them for a short look while writing a playtest case; lasting coverage stays in `tools/cli/src/playtest/cases/` and `nsmbu test`.
 
 - `nsmbu open [slot|course|course-file] […]` — ensure a debug binary, spawn the game with agent control enabled, wait until the socket accepts.
   Release builds ignore `NSMBU_AGENT_SOCK`.

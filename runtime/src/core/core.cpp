@@ -153,6 +153,13 @@ __attribute__((noinline)) uint32_t runtime_alloc(uint32_t size, uint32_t align) 
 static std::atomic<uint32_t> g_host_top{kHostStart};
 uint32_t host_alloc(uint32_t size, uint32_t align) { return bump(g_host_top, size, align, kFixedStart); }
 
+void reset_allocators() {
+    g_runtime_top.store(kRuntimeStart);
+    g_host_top.store(kHostStart);
+    std::lock_guard<std::mutex> lk(g_alloc_log_m);
+    g_alloc_log.clear();
+}
+
 uint32_t runtime_top() { return g_runtime_top.load(); }
 void raise_runtime_top(uint32_t top) {
     uint32_t cur = g_runtime_top.load();
@@ -191,33 +198,55 @@ bool load_rpx(const std::string& path, LoadedModule& out) {
     uint16_t shentsize = be16(&d[0x2E]), shnum = be16(&d[0x30]);
     out.entry = be32(&d[0x18]);
     out.data_end = 0;
+
+    struct Sec {
+        uint32_t type = 0, flags = 0, addr = 0, size = 0;
+        std::vector<uint8_t> data;
+    };
+    std::vector<Sec> secs;
+    secs.reserve(shnum);
+    uint32_t mem2_lo = ~0u, mem2_hi = 0;
     for (int i = 0; i < shnum; i++) {
         const uint8_t* sh = &d[shoff + i * shentsize];
-        uint32_t type = be32(sh + 4), flags = be32(sh + 8), addr = be32(sh + 12), off = be32(sh + 16), size = be32(sh + 20);
-        std::vector<uint8_t> data;
-        if (type != 8 && size) {
-            if (flags & 0x08000000) {
+        Sec sec;
+        sec.type = be32(sh + 4);
+        sec.flags = be32(sh + 8);
+        sec.addr = be32(sh + 12);
+        uint32_t off = be32(sh + 16);
+        sec.size = be32(sh + 20);
+        if (sec.type != 8 && sec.size) {
+            if (sec.flags & 0x08000000) {
                 uLongf dlen = be32(&d[off]);
-                data.resize(dlen);
-                if (uncompress(data.data(), &dlen, &d[off + 4], size - 4) != Z_OK) fatal("zlib error in section %d", i);
+                sec.data.resize(dlen);
+                if (uncompress(sec.data.data(), &dlen, &d[off + 4], sec.size - 4) != Z_OK) fatal("zlib error in section %d", i);
             } else {
-                data.assign(d.begin() + off, d.begin() + off + size);
+                sec.data.assign(d.begin() + off, d.begin() + off + sec.size);
             }
         }
-        if (type == 0x80000004 && data.size() >= 0x30) {
-            out.sda_base = be32(&data[0x24]);
-            out.sda2_base = be32(&data[0x28]);
-            out.stack_size = be32(&data[0x2C]);
+        if (sec.type == 0x80000004 && sec.data.size() >= 0x30) {
+            out.sda_base = be32(&sec.data[0x24]);
+            out.sda2_base = be32(&sec.data[0x28]);
+            out.stack_size = be32(&sec.data[0x2C]);
         }
+        if ((sec.flags & 2) && sec.addr >= 0x02000000 && sec.addr < 0xC0000000) {
+            uint32_t end = sec.addr + (sec.type == 8 ? sec.size : (uint32_t)sec.data.size());
+            if (sec.addr >= mem::kMem2Start && sec.addr < mem::kMem2End) {
+                mem2_lo = std::min(mem2_lo, sec.addr);
+                mem2_hi = std::max(mem2_hi, end);
+            }
+            secs.push_back(std::move(sec));
+        }
+    }
 
-        if ((flags & 2) && addr >= 0x02000000 && addr < 0xC0000000) {
-            if (type == 8) {
-                memset(mem::ptr(addr), 0, size);
-                out.data_end = std::max(out.data_end, addr + size);
-            } else {
-                memcpy(mem::ptr(addr), data.data(), data.size());
-                if (addr >= mem::kMem2Start) out.data_end = std::max(out.data_end, addr + (uint32_t)data.size());
-            }
+    if (mem2_lo < mem2_hi) memset(mem::ptr(mem2_lo), 0, mem2_hi - mem2_lo);
+
+    for (Sec& sec : secs) {
+        if (sec.type == 8) {
+            memset(mem::ptr(sec.addr), 0, sec.size);
+            out.data_end = std::max(out.data_end, sec.addr + sec.size);
+        } else {
+            memcpy(mem::ptr(sec.addr), sec.data.data(), sec.data.size());
+            if (sec.addr >= mem::kMem2Start) out.data_end = std::max(out.data_end, sec.addr + (uint32_t)sec.data.size());
         }
     }
     return true;

@@ -3,10 +3,66 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-Player-facing notes only; within each section, order by importance to someone playing the game.
-Use the `changelog` skill when editing.
+Append each change under Unreleased as it lands; at release the `changelog` skill cleans that block into player-facing version notes.
 
 ## [Unreleased]
+
+### Added
+
+- Decomp notes for the sead / ApplicationFramework frame loop, and a plan to drive present rate from wall-clock time while keeping 60 logic steps/s.
+- Settings → Saves shows a short preview of the real game save (files, world, lives, play time) and opens that saves folder (not save states) from the top of the tab.
+- The performance overlay shows average fps and logic steps/s, GPU/device, Game/Render CPU, and GPU interval.
+  Reset also clears those averages; Copy performance report includes them.
+  The overlay no longer shows the renderer, scale, and frame-mode footer under the graph.
+
+### Changed
+
+- The window title never shows a live frame rate, including in development builds.
+  Use the performance overlay for fps.
+- Settings language and content-mod Restart now relaunches the app (same path as switching Metal and Vulkan) instead of soft-rebooting the guest in the same window.
+- Setup precompiles shaders as part of install, repair, and update (after the game is built).
+  Menu and Ready to play keep a Recompile shaders button to run that pass again.
+- `nsmbu installer` prints each build step (toolchain, SDL, compile, package, setup) instead of staying quiet until the end.
+
+### Fixed
+
+- 144 and 165 fps keep 60 logic steps/s.
+  Pass timing treated each present slot as work, so the pacer skipped in-between frames; with one wait per present that left about two presents per step (~80 steps/s at 165 fps).
+  Those rates now keep every planned present, and pad only when a step shows fewer frames than planned.
+- High frame rates keep 60 logic steps/s when the pacer drops every in-between frame.
+  A full drop left no wait, so vsync at 120 Hz ran the game about twice as fast.
+- The mod package test builds with the Scene restart Lua call.
+- 144 and 165 fps keep the rate you select when a frame runs past its time slot.
+  A late frame was starting the schedule over, so each following frame waited a full slot and the picture settled well below the selection (about 105 fps with 165 fps selected).
+  The display refresh rate is taken from the monitor's mode list when the desktop does not report one.
+- World-map shadows no longer flicker at 120/144 fps frame interpolation (#20).
+  In-between passes skip redrawing outside a course, so light maps and shadow maps keep the last logic frame.
+- The Settings restart confirmation stays centered on screen.
+- The performance overlay shows the frame rate once, above the frame-time graph.
+- A 144 or 165 fps target keeps each new frame on its own time slot.
+  In-between frames were sharing one vsync wait, then the next frame waited out the rest of a 60 fps slice.
+- On the world map, a picture that finishes early is shown on the next time slot while the next one keeps drawing.
+  It was dropped, so the overlay sat near half the selected rate while the window title still counted every swap.
+- Sampler setup keeps the last few sampler states.
+  Each texture was building a text key and searching the full sampler map.
+- Recompiling Europe 1.3.0 accepts the error-viewer hook quietly.
+  Europe chooses that viewer's layout from a language table.
+  The hook still skips the viewer, so closing it cannot pause the game.
+- Recompiling a base disc no longer warns about hooks that wrap a differently compiled function, or about hooks the base disc does not have.
+  The draw-queue, course-setup, and continue-first-save wraps still apply on those bodies.
+  Hooks with no matching function on the base disc are skipped without a message; mods stay unsupported there.
+
+### Changed
+
+- Wider and taller aspect ratios show more of the scene instead of stretching the picture.
+  The HUD stays in its original frame.
+- Settings tabs: Controls is first; Saves sits between Audio and Mods; Language drops the About blurb; Debug is capitalized.
+- Settings → Language lists only the text languages on the installed disc.
+  A USA dump shows English, French, and Spanish; a European dump adds the other European languages.
+- Rename `runtime/tools` to `runtime/test`.
+- Run playtests in parallel and split each case into its own file.
+- Drop `downloads/` from the game dump layout notes.
+- Bump `vendor/decomp` with more course, camera, boot, and system decomp.
 
 ## [0.6.3] - 2026-10-25
 

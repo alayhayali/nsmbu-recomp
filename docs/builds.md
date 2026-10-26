@@ -52,4 +52,6 @@ When the running build is Europe or a Europe combo pack, its own text files are 
 - **The runtime** uses `GC(…)` / `GD(…)` ([runtime/include/guest_addr.h](../runtime/include/guest_addr.h)).
   For the USA build the map is the identity.
 - **A hooks file** may say which builds it is for (`# builds: USA`).
-  An entry wrap on a function whose body differs between builds is allowed; the recompiler warns so you can check it.
+  An entry wrap on a function whose body differs between builds is allowed.
+  The recompiler warns so you can check it.
+  Write `same` after that address once the replacement applies to every body.

@@ -37,8 +37,48 @@
 #include "hooks/collision_wireframe.h"
 #include "hooks/course_hot_reload.h"
 #include "hooks/interp.h"
+#include "hooks/interp_pacing.h"
 
 using namespace Latte;
+
+namespace render {
+static std::atomic<int64_t> g_host_present_ns{0};
+static std::atomic<int64_t> g_repeat_hold_ns{0};
+static std::atomic<uint64_t> g_host_presents{0};
+
+static int64_t steady_ns() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+void note_host_present() {
+    g_host_present_ns.store(steady_ns(), std::memory_order_relaxed);
+    g_host_presents.fetch_add(1, std::memory_order_relaxed);
+}
+int64_t last_host_present_ns() { return g_host_present_ns.load(std::memory_order_relaxed); }
+int64_t since_host_present_ns() {
+    const int64_t last = last_host_present_ns();
+    if (last <= 0) return -1;
+    return steady_ns() - last;
+}
+int64_t repeat_hold_ns() { return g_repeat_hold_ns.load(std::memory_order_relaxed); }
+void hold_repeat() { g_repeat_hold_ns.store(steady_ns() + 2000000, std::memory_order_relaxed); }
+uint64_t host_presents() { return g_host_presents.load(std::memory_order_relaxed); }
+
+static std::atomic<int64_t> g_deferred_present_ns{0};
+void arm_deferred_present_in(int64_t delay_ns) {
+    if (delay_ns <= 0) {
+        g_deferred_present_ns.store(0, std::memory_order_relaxed);
+        return;
+    }
+    g_deferred_present_ns.store(steady_ns() + delay_ns, std::memory_order_relaxed);
+}
+void clear_deferred_present() { g_deferred_present_ns.store(0, std::memory_order_relaxed); }
+bool deferred_present_due() {
+    const int64_t due = g_deferred_present_ns.load(std::memory_order_relaxed);
+    if (due <= 0 || steady_ns() < due) return false;
+    int64_t expected = due;
+    return g_deferred_present_ns.compare_exchange_strong(expected, 0, std::memory_order_relaxed);
+}
+}
 
 namespace gx2 {
 
@@ -263,8 +303,32 @@ static void render_thread_main() {
             g_q_waiting = true;
             if (g_q_pending.empty()) {
                 const uint64_t idle = rprof::enabled() ? rprof::now_ns() : 0;
-                g_q_cv.wait(lk, [] { return !g_q_pending.empty(); });
+                const int64_t period = render::g_backend && render::g_backend->repeat_present && !uncapped()
+                    ? interp::pacing::repeat_period_ns(interp::course_play_active(), interp::output_fps())
+                    : 0;
+                const int64_t last = render::last_host_present_ns();
+                bool repeated = false;
+                if (period > 0 && last > 0) {
+                    int64_t due = last + period;
+                    const int64_t hold = render::repeat_hold_ns();
+                    if (hold > due) due = hold;
+                    const auto deadline = std::chrono::steady_clock::time_point(std::chrono::nanoseconds(due));
+                    if (!g_q_cv.wait_until(lk, deadline, [] { return !g_q_pending.empty(); }) && g_q_pending.empty()) {
+                        g_q_waiting = false;
+                        lk.unlock();
+                        render::g_backend->repeat_present();
+                        repeated = true;
+                        lk.lock();
+                        g_q_waiting = true;
+                    }
+                } else {
+                    g_q_cv.wait(lk, [] { return !g_q_pending.empty(); });
+                }
                 if (idle) rprof::add_idle(rprof::now_ns() - idle);
+                if (repeated && g_q_pending.empty()) {
+                    g_q_waiting = false;
+                    continue;
+                }
             }
             g_q_waiting = false;
             g_q_work.swap(g_q_pending);
@@ -356,7 +420,14 @@ static void render_sync(int site = kSyncShutdown) {
     uint32 w = (uint32)id;
     enqueue(OP_FENCE, &w, 1);
     std::unique_lock<std::mutex> lk(g_q_mutex);
-    g_q_done_cv.wait(lk, [&] { return g_fence_done >= id; });
+    while (g_fence_done < id) {
+        if (threads::reboot_killing()) {
+            lk.unlock();
+            threads::abort_for_reboot();
+        }
+        g_q_done_cv.wait_for(lk, std::chrono::milliseconds(2),
+                             [&] { return g_fence_done >= id || threads::reboot_killing(); });
+    }
 }
 
 void emit(Op op, const uint32* payload, uint32 n) {
@@ -434,6 +505,8 @@ void execute(const uint32* words, uint32 count) {
             }
             return;
         }
+        if (render::deferred_present_due() && render::g_backend && render::g_backend->repeat_present)
+            render::g_backend->repeat_present();
         execute_one(op, &words[i + 1], n);
         i += 1 + n;
     }
@@ -717,6 +790,7 @@ static std::chrono::steady_clock::time_point g_capped_vsync_last_wake;
 static bool g_capped_vsync_last_wake_valid = false;
 static uint64_t g_paced_vsync = 0;
 static bool g_paced_vsync_valid = false;
+static bool g_presented_since_wake = false;
 static std::chrono::nanoseconds capped_vsync_wait_period(uint64_t granule) {
     if (interp::mode() == 1) {
         const int fps = interp::output_fps();
@@ -727,10 +801,13 @@ static std::chrono::nanoseconds capped_vsync_wait_period(uint64_t granule) {
 }
 static bool capped_vsync_same_frame(uint64_t granule, std::chrono::steady_clock::time_point now) {
     (void)granule;
-    if (!g_capped_vsync_last_wake_valid) return false;
-    return now < g_capped_vsync_last_wake + std::chrono::milliseconds(2);
+    const int64_t since = g_capped_vsync_last_wake_valid
+        ? std::chrono::duration_cast<std::chrono::nanoseconds>(now - g_capped_vsync_last_wake).count()
+        : 0;
+    return interp::pacing::collapse_duplicate_vsync(g_presented_since_wake, g_capped_vsync_last_wake_valid, since);
 }
 static void capped_vsync_note_wake(uint64_t granule) {
+    g_presented_since_wake = false;
     if (!g_paced_vsync_valid) {
         g_paced_vsync = vsync_index() / granule * granule;
         g_paced_vsync_valid = true;
@@ -740,6 +817,7 @@ static void capped_vsync_note_wake(uint64_t granule) {
 static void capped_vsync_reset_pace() {
     g_capped_vsync_last_wake_valid = false;
     g_paced_vsync_valid = false;
+    g_presented_since_wake = false;
 }
 static uint64_t flip_clock() { return g_paced_vsync_valid ? g_paced_vsync : vsync_index(); }
 static void capped_vsync_ready_flip_last_wake(uint64_t granule) {
@@ -761,7 +839,14 @@ static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void
     }
     const auto target = g_capped_vsync_last_wake + period;
     if (now >= target) {
-        g_capped_vsync_last_wake = now;
+        if (interp::pacing::output_slot_ns(interp::output_fps()) > 0 && period.count() > 0) {
+            const int64_t last = std::chrono::duration_cast<std::chrono::nanoseconds>(g_capped_vsync_last_wake.time_since_epoch()).count();
+            const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+            const int64_t absorbed = interp::pacing::absorb_late_wake(last, now_ns, period.count());
+            g_capped_vsync_last_wake = std::chrono::steady_clock::time_point(std::chrono::nanoseconds(absorbed));
+        } else {
+            g_capped_vsync_last_wake = now;
+        }
         capped_vsync_note_wake(granule);
         return;
     }
@@ -969,6 +1054,7 @@ HLE(gx2, GX2DrawDone) {
     ret(c, 1);
 }
 HLE(gx2, GX2SwapScanBuffers) {
+    g_presented_since_wake = true;
     align_swap_after_wake();
 
     static int trace = env::TRACE_SWAP.integer_or(0);
@@ -1060,6 +1146,7 @@ HLE(gx2, GX2SetSwapInterval) { g_swap_interval = std::max<uint32>(arg(c, 0), 1);
 HLE(gx2, GX2WaitForVsync) {
     if (!hostui::run_in_background()) {
         while (!hostui::app_focused()) {
+            if (threads::reboot_killing()) threads::abort_for_reboot();
             threads::park_sleep_until(std::chrono::steady_clock::now() + std::chrono::milliseconds(50));
         }
     }
@@ -1179,6 +1266,26 @@ void gx2_ss_drain() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     LOG("[savestate] flips still pending after 300 ms");
+}
+
+void gx2_reset_for_reboot() {
+    std::lock_guard<std::recursive_mutex> lk(g_exec_mutex);
+    memset(g_regs, 0, sizeof g_regs);
+    g_register_blocks = {};
+    g_contexts.clear();
+    g_shadow = nullptr;
+    g_shader_state_gen++;
+    {
+        std::lock_guard<std::mutex> fl(g_flip_mutex);
+        g_pending_flips.clear();
+        g_count_offset = -(int64_t)g_swap_count;
+        g_flip_count = g_swap_count;
+        g_last_flip_vsync = 0;
+        g_last_flip_time = timebase::now();
+    }
+    reset_uncapped_guest_pace();
+    capped_vsync_reset_pace();
+    render::ss_reset();
 }
 
 void gx2_ss_save(ss::Writer& w) {

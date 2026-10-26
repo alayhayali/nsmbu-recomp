@@ -1,6 +1,6 @@
 ---
 name: nsmbu
-description: "Playtests (`nsmbu test`), cases.ts helpers, status, scripted boots, NSMBU_* env vars, and swapping the active game dump (usa/eu). Use when adding or running a playtest, reproducing a game bug as a case, switching region or version under game/, reading nsmbu status, measuring a Release replay, running nsmbu scripted, or adding, renaming, or reading an NSMBU_* variable."
+description: "Playtests (`nsmbu test`), case helpers, status, scripted boots, NSMBU_* env vars, and swapping the active game dump (usa/eu). Use when adding or running a playtest, reproducing a game bug as a case, switching region or version under game/, reading nsmbu status, measuring a Release replay, running nsmbu scripted, or adding, renaming, or reading an NSMBU_* variable."
 ---
 
 # nsmbu
@@ -11,6 +11,8 @@ Run `nsmbu --help` for the command list.
 ## Docs
 
 Read `docs/automation.md` for playtests, `nsmbu scripted`, and replay inputs.
+World-map boots and other reused `NSMBU_PRESS` timelines are in the `shortcuts` skill.
+Add a new shortcut there when a command is worth running again.
 Read `docs/cli.md` for install, build/launch, and the short live control commands.
 Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable.
 Read `game/README.md` for dump folder layout.
@@ -29,11 +31,13 @@ nsmbu build
 `--list` prints JSON (`active`, `versions`, `loose_images`).
 `nsmbu game <id>` writes `game/active` and skips prompts.
 Add `--extract` to extract (or re-extract) the disc.
-Add `--recomp` to refresh `build/gen` from that dump’s RPX (needed when switching USA ↔ Europe).
+Add `--recomp` to refresh `build/gen` from that dump's RPX.
+`--recomp` is slow; reuse `build/gen` unless `tools/recomp/recomp.py` changed, you switch game version (e.g. USA ↔ Europe), or `hooks.txt` / `hooks_*.txt` changed.
+Runtime-only edits need `nsmbu build` only.
 Then `nsmbu build` (and playtests / `nsmbu open`) use that dump.
 
 Issue playtests that use `Scene` open / apply-save need a `*-1.3.0` (or combo) dump.
-Use `*-base` only to check boot and title-version messaging; mods and those Scene paths are unsupported there.
+Use `*-base` only to check boot and title-version messaging, mods and those Scene paths are unsupported there.
 
 Other non-interactive forms:
 
@@ -46,14 +50,15 @@ nsmbu game --create eu-base
 
 Repro and regression work is a case, not a live control chat.
 
-1. Reuse or extend helpers in `tools/cli/src/playtest/cases.ts` (`reachMap`, `loadPack`, `leaveCourse`, `enterCourse`, `quickSaveHere`, and the other locals in that file).
+1. Reuse or extend helpers in `tools/cli/src/playtest/helpers.ts` (`reachMap`, `loadPack`, `leaveCourse`, `enterCourse`, `quickSaveHere`, and the other exports).
 2. Map round-trips use `leaveCourse` / `enterCourse`; do not build a case on `Scene.leave_course` alone.
-3. Add or extend a `PlayCase` in the same file.
+3. Add a `PlayCase` under `tools/cli/src/playtest/cases/` and register it in `cases/index.ts`.
 4. Run `nsmbu test [name]`.
    `nsmbu test --list` prints the names (only `--list` is a valid flag).
 5. Done when that case exits 0 (or fails with an assertion you can fix).
 
-Each case uses its own save under `.tmp/playtest/<name>/save`.
+Each case uses `.tmp/playtest/<name>/` (save, control socket, userdata).
+Selected cases run in parallel (default 2; override with `NSMBU_TEST_JOBS`).
 Scene moves and map reads that need guest Lua stay inside the case through `Session` helpers.
 
 ## Status
@@ -71,10 +76,11 @@ frame=120 step=80 pid=1 scene=CourseSelect map=1 course=0 pack=1-1 entering=1-5 
 Fields that are not ready are left off the line.
 `nsmbu screenshot [path]` when the question is what is on screen.
 
-## One game
+## One live game
 
-Only one game process is supported.
+`nsmbu open` / live look commands share one control socket.
 If `nsmbu open` refuses because a game is already running, run `nsmbu status` or `nsmbu close`.
+`nsmbu test` refuses to start while that live agent is up, playtest cases use their own sockets and may run several games at once.
 
 Do not run `nsmbu game … --recomp` or change `game/active` while a playtest or `nsmbu open` is in flight.
 Serialize dump switches: finish the test or close the game, then switch and rebuild.

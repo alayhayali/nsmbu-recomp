@@ -23,6 +23,7 @@ constexpr uint32_t kMem1Size = 0x02000000;
 constexpr uint32_t kHleFuncBase = 0xC2000000;
 
 void init();
+void reset_allocators();
 
 uint32_t runtime_alloc(uint32_t size, uint32_t align = 16);
 uint32_t host_alloc(uint32_t size, uint32_t align = 16);
@@ -79,6 +80,7 @@ Cpu* current();
 uint32_t current_thread();
 
 Cpu* make_service_cpu(const char* name, uint32_t stack_size = 0x10000);
+void retire_service_cpu();
 
 void service_begin();
 void service_end();
@@ -89,6 +91,10 @@ void park_sleep_until(std::chrono::steady_clock::time_point t,
 bool quiesce(int timeout_ms, std::string& busy, int entry_mode = 0, int entry_after_ms = 0);
 void thaw();
 void wait_prefix_parked(const char* prefix, int timeout_ms);
+[[noreturn]] void kill_all_for_reboot();
+[[noreturn]] void abort_for_reboot();
+void reset_for_reboot();
+bool reboot_killing();
 }
 
 namespace timebase {

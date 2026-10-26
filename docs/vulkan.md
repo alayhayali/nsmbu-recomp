@@ -210,7 +210,7 @@ pipelines before gameplay.
 
 Set `NSMBU_VK_STATS=1` to report frame rate, frame-interval percentiles, upload
 traffic, shader compilation, and GPU/presentation waits every 120 frames.
-The SDL window title displays live presented FPS and the selected 60 FPS mode.
+Use the performance overlay for live presented FPS; the window title stays as the app name.
 Stats also report descriptor allocation/reuse, SPIR-V compilation and disk hits,
 decompiler time, and Vulkan pipeline-creation time. Cache snapshot-copy time is
 reported separately from background serialization and disk-write time.
@@ -258,7 +258,7 @@ wait timers disabled. CPU time excludes sleeping and GPU waits.
 | `NSMBU_VK_SPECIALIZE_INDICES` | Selects a typed endian/restart reader once per draw and directly fills expanded primitive indices. Native index eligibility and the final immutable index extent scan remain unchanged; wrapped big-endian guest ranges use the original reader. |
 | `NSMBU_VK_SHADER_STATE_MEMO` | Retains four exact gathered linkage-key entries per shader stage. Every lookup freshly gathers all linkage words and compares every active byte, count, and program hash seed. Misses use the identical hash mixer; save-state and sentinel calls clear the memo. |
 | `NSMBU_VK_SKIP_VERTEX_BINDS` | Omits only identical host vertex buffer/offset bindings after fresh snapshot preparation. Sixteen binding slots are guarded by command buffer, submission generation, and pass resets. Index bindings remain fresh. Combine with exact vertex snapshot reuse to make unchanged slice identities available. |
-| `NSMBU_VK_SAMPLER_MEMO` | Reuses immutable sampler handles after exact device, fresh sampler-word, compare/integer, and effective anisotropy matching. Texture preparation still runs before lookup. |
+| `NSMBU_VK_SAMPLER_MEMO` | On unless set to `0`. Reuses the last eight immutable sampler handles after exact device, fresh sampler-word, compare/integer, and effective anisotropy matching. Texture preparation still runs before lookup. |
 | `NSMBU_VK_SPARSE_HASH_MEMO` | Only used where page write tracking is unavailable (texture changes are detected by `runtime/src/core/write_watch.h`; the sparse check is its fallback). Compares all freshly read, ordered sparse texture samples before reusing their hash. Full texture checks, invalidation, and uploads remain unchanged. Retains 64 entries by default; `NSMBU_VK_SPARSE_HASH_ENTRIES=256` selects a bounded 16 MiB sample store. Oversized sample sets stream through the original mixer. |
 | `NSMBU_VK_SHADER_KEY_DIRTY` | Avoids shader-generation bumps only for explicitly classified register bits absent from the current Vulkan shader key. Program headers, fetch strides, unknown registers, and context/save-state invalidation remain conservative. |
 | `NSMBU_VK_VERTEX_HISTORY_REUSE` | Adds a second distinct vertex snapshot key per binding, requiring `NSMBU_VK_REUSE_VERTEX_SNAPSHOTS=1`. Every candidate receives a fresh full payload comparison within the same device/submission generation; changed bytes allocate a fresh slice. |
@@ -425,7 +425,7 @@ bytes even when the game writes the range meanwhile):
 - native index extents: the buffer cache entry's shadow, or a CPU copy the arena slice is written from;
 - converted indices are built in a CPU vector and scanned there.
 
-`runtime/tools/snapshot_cache_test.cpp` (CTest `snapshot_caches`) poisons every mapped byte right after
+`runtime/test/snapshot_cache_test.cpp` (CTest `snapshot_caches`) poisons every mapped byte right after
 it is written and checks that the caches still find exactly the expected reuse hits. The only read of
 mapped GPU-input memory left is the buffer cache's opt-in diagnostic `NSMBU_VK_BUFFER_CACHE_VERIFY=1`.
 Buffers the CPU is meant to read (captures, the GamePad overlay signatures) come from

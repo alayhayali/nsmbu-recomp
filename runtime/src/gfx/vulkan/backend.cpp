@@ -34,6 +34,7 @@
 #include "platform/display_rate.h"
 #include "platform/host.h"
 #include "platform/perf_hint.h"
+#include "perf_metrics.h"
 #include "core/runtime.h"
 #include "gfx/screenshot.h"
 #include "shaders.h"
@@ -63,9 +64,11 @@
 #endif
 #include <vulkan/vulkan_beta.h>
 
-namespace gx2 { uint64_t flips_presented(); void checkpoint_vulkan_caches(); }
+namespace gx2 { void checkpoint_vulkan_caches(); }
 namespace render { bool shader_warm_tick(uint64_t activity); }
 #include "hooks/interp.h"
+#include "hooks/interp_pacing.h"
+#include "gfx/renderer.h"
 
 namespace gfxvk {
 Renderer R;
@@ -472,8 +475,66 @@ static uint64_t timestamp_elapsed_ticks(uint64_t start, uint64_t end, uint32_t b
   const uint64_t mask = bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
   return (end - start) & mask;
 }
+struct OverlayGpuQuery {
+  VkQueryPool pool = VK_NULL_HANDLE;
+  uint64_t frame = 0, token = 0;
+  bool pending = false;
+};
+static std::array<OverlayGpuQuery, 256> overlayGpuQueries{};
+static void destroy_overlay_gpu_queries() {
+  for (auto& q : overlayGpuQueries) {
+    if (q.pool) vkDestroyQueryPool(R.device, q.pool, nullptr);
+    q = {};
+  }
+}
+static bool overlay_timestamp_capable() {
+  return timestamp_capable(R.gpuTimestampValidBits, R.properties.limits.timestampPeriod);
+}
+static void begin_overlay_gpu_queries(VkCommandBuffer cmd, Renderer::Submission& submission) {
+  submission.perfQuery = UINT32_MAX;
+  if (!perf::enabled() || !overlay_timestamp_capable()) return;
+  static uint64_t lastPoll = UINT64_MAX;
+  if (lastPoll != R.frame) {
+    lastPoll = R.frame;
+    for (auto& q : overlayGpuQueries) {
+      if (!q.pending || q.frame >= R.frame) continue;
+      struct Result { uint64_t ticks, available; } values[2]{};
+      perf::timestamp_read(R.frame - q.frame);
+      VkResult result = vkGetQueryPoolResults(R.device, q.pool, 0, 2, sizeof(values), values,
+          sizeof(Result), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+      if (result == VK_NOT_READY || (result == VK_SUCCESS &&
+          (!values[0].available || !values[1].available))) continue;
+      double ns = result == VK_SUCCESS
+          ? double(timestamp_elapsed_ticks(values[0].ticks, values[1].ticks, R.gpuTimestampValidBits)) *
+                double(R.properties.limits.timestampPeriod) : -1;
+      perf::gpu_complete(q.frame, q.token, ns);
+      q.pending = false;
+    }
+  }
+  perf::gpu_advance(R.frame);
+  uint64_t token = perf::gpu_begin(R.frame);
+  if (!token) return;
+  for (uint32_t i = 0; i < overlayGpuQueries.size(); ++i) {
+    auto& q = overlayGpuQueries[i];
+    if (q.pending) continue;
+    if (!q.pool) {
+      VkQueryPoolCreateInfo info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+      info.queryType = VK_QUERY_TYPE_TIMESTAMP; info.queryCount = 2;
+      if (vkCreateQueryPool(R.device, &info, nullptr, &q.pool) != VK_SUCCESS) {
+        perf::gpu_complete(R.frame, token, -1); return;
+      }
+    }
+    q.frame = R.frame; q.token = token; q.pending = true;
+    submission.perfQuery = i;
+    vkCmdResetQueryPool(cmd, q.pool, 0, 2);
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, q.pool, 0);
+    perf::timestamp_write();
+    return;
+  }
+  perf::gpu_complete(R.frame, token, -1);
+}
 static void destroy_gpu_timestamp_queries() {
-
+  destroy_overlay_gpu_queries();
   R.gpuTimestampsEnabled = false;
   R.gpuPassTimestampsEnabled = false;
   for (auto& slot : R.submissions) {
@@ -610,6 +671,7 @@ VkCommandBuffer command_buffer() {
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vk_check(vkBeginCommandBuffer(R.cmd, &bi), "begin command buffer");
     R.recording = true;
+    begin_overlay_gpu_queries(R.cmd, R.submissions[R.activeSubmission]);
     if (R.gpuTimestampsEnabled) {
       auto& slot = R.submissions[R.activeSubmission];
       vkCmdResetQueryPool(R.cmd, slot.timestampQueries, 0,
@@ -815,6 +877,12 @@ static void submit(VkSemaphore wait = VK_NULL_HANDLE,
     return;
   end_encoder();
   auto& recordingSlot = R.submissions[R.activeSubmission];
+  if (recordingSlot.perfQuery != UINT32_MAX) {
+    auto& q = overlayGpuQueries[recordingSlot.perfQuery];
+    vkCmdWriteTimestamp(R.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, q.pool, 1);
+    perf::timestamp_write();
+    recordingSlot.perfQuery = UINT32_MAX;
+  }
   if (recordingSlot.timestampRecorded)
     vkCmdWriteTimestamp(R.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                         recordingSlot.timestampQueries, 1);
@@ -1102,6 +1170,8 @@ static VkSemaphore new_semaphore() {
   vk_check(vkCreateSemaphore(R.device, &si, nullptr, &sem), "create presentation semaphore");
   return sem;
 }
+static uint64_t g_acquire_timeout_ns = UINT64_MAX;
+static bool g_presented = false;
 static void present(Screen &s) {
 #ifdef __ANDROID__
   if (&s == &R.tv && s.window) {
@@ -1178,9 +1248,10 @@ static void present(Screen &s) {
     acquireSemaphore = ap.acquire[acquireIndex];
   }
   VkResult ar = timed_call(timing.acquire, [&] {
-    return vkAcquireNextImageKHR(R.device, s.swapchain, UINT64_MAX,
+    return vkAcquireNextImageKHR(R.device, s.swapchain, g_acquire_timeout_ns,
                                 acquireSemaphore, VK_NULL_HANDLE, &index);
   }, rprof::kWaitAcquire);
+  if (ar == VK_TIMEOUT || ar == VK_NOT_READY) return;
   if (ar == VK_ERROR_OUT_OF_DATE_KHR) {
     s.resize = true;
     return;
@@ -1273,6 +1344,7 @@ static void present(Screen &s) {
   VkResult pr = timed_call(timing.present, [&] {
     return vkQueuePresentKHR(R.queue, &pi);
   }, rprof::kWaitPresent);
+  if (pr == VK_SUCCESS || pr == VK_SUBOPTIMAL_KHR) g_presented = true;
 #ifdef __ANDROID__
 
   if (pr == VK_ERROR_OUT_OF_DATE_KHR)
@@ -1468,7 +1540,46 @@ static void service_screenshots() {
     it = pendingShots.erase(it);
   }
 }
+void repeat_present() {
+  render::clear_deferred_present();
+  Surface *tvScan = R.tv.scan && R.tv.scan->image ? R.tv.scan.get() : nullptr;
+  if (!tvScan) {
+    render::hold_repeat();
+    return;
+  }
+  Surface *drcScan = R.drc.scan && R.drc.scan->image ? R.drc.scan.get() : nullptr;
+#ifdef NSMBU_SDL_HOST
+  gfx::g_filter = scale_filter();
+  const float layerW = float(R.tv.width.load()), layerH = float(R.tv.height.load());
+#else
+  const float layerW = float(R.tv.swapExtent.width), layerH = float(R.tv.swapExtent.height);
+#endif
+  gfx::PresentPlan plan = gfx::display_plan(
+      tvScan, float(tvScan->extent.width), float(tvScan->extent.height),
+      drcScan, drcScan ? float(drcScan->extent.width) : 0, drcScan ? float(drcScan->extent.height) : 0,
+      layerW, layerH, R.frame);
+  set_present_plan(&plan);
+  set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
+  g_acquire_timeout_ns = 0;
+  g_presented = false;
+  present(R.tv);
+  if (plan.drc_window) present(R.drc);
+  g_acquire_timeout_ns = UINT64_MAX;
+  if (async_present()) flush_async();
+  else flush();
+  set_present_plan(nullptr);
+  if (g_presented) render::note_host_present();
+  else {
+    overlay::undo_frame_sample();
+    render::hold_repeat();
+  }
+}
 void swap() {
+  const int64_t delay = interp::pacing::bunched_present_delay_ns(
+      interp::course_play_active(), interp::output_fps(), render::since_host_present_ns());
+  if (delay > 0) render::arm_deferred_present_in(delay);
+  else render::clear_deferred_present();
+  g_presented = false;
   service_screenshots();
   service_captures();
   frame_dumps(R.frame + 1);
@@ -1492,16 +1603,19 @@ void swap() {
 #endif
   set_present_plan(&plan);
 
-  set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
+  if (delay > 0) set_overlay_draw(nullptr);
+  else set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
   take_screenshots(plan);
   bool sampled[2] = {};
   if (plan.sample_auto && drcScan) {
     sampled[0] = record_signature(0, *drcScan, R.drc.srgb.load());
     sampled[1] = sampled[0] && tvScan && record_signature(1, *tvScan, R.tv.srgb.load());
   }
-  present(R.tv);
-  if (plan.drc_window)
-    present(R.drc);
+  if (delay <= 0) {
+    present(R.tv);
+    if (plan.drc_window)
+      present(R.drc);
+  }
 
   if (async_present() && !sampled[0])
     flush_async();
@@ -1535,6 +1649,7 @@ void swap() {
     }
   }
   set_present_plan(nullptr);
+  if (g_presented) render::note_host_present();
   service_screenshots();
   std::atomic_ref<uint64_t>(R.frame).fetch_add(1);
   R.completed = R.frame;
@@ -2563,7 +2678,6 @@ static bool close_request(const SDL_Event& event) {
 
 void run_main_loop() {
   auto titleTime = std::chrono::steady_clock::now();
-  uint64_t titleFrames = gx2::flips_presented();
 
   const char* exitAt=env::EXIT_AT_FRAME();
   const uint64_t exitFrame=exitAt ? std::strtoull(exitAt,nullptr,10) : 0;
@@ -2628,23 +2742,18 @@ void run_main_loop() {
       display_rate::poll(R.tv.window);
     }
     if (elapsed >= 0.5 && !input::text_prompt_active()) {
-      uint64_t frames = gx2::flips_presented();
       if (exitFrame && frame_count() >= exitFrame) {
         SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);
       }
       char title[160];
-      if (build::dev()) {
-        std::snprintf(title, sizeof title, "%s - %.0f fps", app_title::kName, double(frames - titleFrames) / elapsed);
-        if (gx2::uncapped()) std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
-      } else {
-        std::snprintf(title, sizeof title, "%s", app_title::kName);
-      }
+      std::snprintf(title, sizeof title, "%s", app_title::kName);
+      if (build::dev() && gx2::uncapped())
+        std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
       static char lastTitle[160];
       if (strcmp(title, lastTitle)) {
         memcpy(lastTitle, title, sizeof lastTitle);
         SDL_SetWindowTitle(R.tv.window, title);
       }
-      titleFrames = frames;
       titleTime = now;
     }
     if (render::shader_warm_tick(vk::shader_stats().spirvCompiles + R.pipelineCreates)) {

@@ -1,5 +1,6 @@
 
 
+#include <algorithm>
 #include <atomic>
 #include <mutex>
 #include <chrono>
@@ -137,7 +138,12 @@ void text_changed(Cpu* c) {
 
 void sleep_ms(int ms) {
     BlockingScope b;
-    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    while (std::chrono::steady_clock::now() < until) {
+        if (threads::reboot_killing()) threads::abort_for_reboot();
+        auto slice = std::min(until, std::chrono::steady_clock::now() + std::chrono::milliseconds(2));
+        std::this_thread::sleep_until(slice);
+    }
 }
 
 }

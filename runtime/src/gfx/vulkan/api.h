@@ -15,6 +15,7 @@ void clear_depth_stencil(const uint32_t* regs, uint32_t depthBuffer, float depth
 void copy_surface(uint32_t src, uint32_t srcMip, uint32_t srcSlice, uint32_t dst, uint32_t dstMip, uint32_t dstSlice);
 void copy_to_scan(uint32_t colorBuffer, uint32_t target);
 void swap();
+void repeat_present();
 void set_frame_aspect(float a);
 bool target_aspect_factors(uint32_t w, uint32_t h, float& kx, float& ky);
 uint64_t frames_completed();

@@ -82,8 +82,6 @@ static void latch_aspect() {
 
 static bool screen_shaped(const Surface* s) {
     if (s->fmt.compressed || s->mips > 1 || s->slices > 1 || s->width < 32) return false;
-    for (uint32_t w = 854, h = 480; w >= 32; w >>= 1, h >>= 1)
-        if ((s->width == w || s->width == w + 1) && s->height == h) return false;
     float r = (float)s->width * 9.0f / ((float)s->height * 16.0f);
     return r > 0.97f && r < 1.03f;
 }

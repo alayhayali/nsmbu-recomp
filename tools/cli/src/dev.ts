@@ -102,8 +102,9 @@ type GameVersion = {
 type LooseImage = {
     path: string;
     name: string;
-    has_sidecar_key: boolean;
+    has_key: boolean;
     has_common: boolean;
+    title_id: string | null;
 };
 
 type GameListState = {
@@ -194,15 +195,14 @@ async function pickVersionId(existing: string[]): Promise<string> {
 
 function keysHint(state: GameListState): string[] {
     const lines = [
-        "Keys stay under game/ (not inside the version folder):",
-        "  common.key or keys.txt   — Wii U common key (Cemu keys.txt works)",
-        "  <name>.key next to .wux  — disc key (moved to game/<id>.key on import)",
-        "  or WIIU_COMMON_KEY       — common key as 32 hex digits",
+        "Keys: game/keys.txt (Cemu format — common= and title-id lines).",
+        "Disc images stay under game/: New Super Mario Bros. U (USA).wux / (Europe).wux.",
+        "Optional: WIIU_COMMON_KEY for the common key only.",
     ];
     if (state.has_common_key) {
         lines.push(`Common key found (${state.common_key_src}).`);
     } else {
-        lines.push("No common key in game/ yet.");
+        lines.push("No common key in game/keys.txt yet.");
     }
     return lines;
 }
@@ -220,8 +220,8 @@ async function importLooseImage(repo: string, state: GameListState): Promise<str
                 value: img.name,
                 label: img.name,
                 hint: [
-                    img.has_sidecar_key ? "disc key" : "no sidecar .key",
-                    img.has_common ? "common ok" : "need common key",
+                    img.has_key ? "keys ok" : "need keys.txt",
+                    img.has_common ? "common ok" : "need common=",
                 ].join(" · "),
             })),
             images[0]!.name,
@@ -232,22 +232,19 @@ async function importLooseImage(repo: string, state: GameListState): Promise<str
     clack.note(
         [
             `Importing game/${image.name}`,
-            "It will be moved to game/<id>/game.wux (renamed).",
-            "A sidecar .key becomes game/<id>.key.",
+            "It stays under game/ and is renamed to the standard USA or Europe name.",
+            "Version folders only hold the extract (code/, content/, meta/).",
             "",
             ...keysHint(state),
         ].join("\n"),
         "Disc image",
     );
 
-    if (!image.has_sidecar_key) {
-        clack.log.warn(
-            `No ${image.name.replace(/\.(wux|wud)$/i, ".key")} next to the image. ` +
-                "Add that disc key, or a disc= line in game/keys.txt, before extract.",
-        );
+    if (!image.has_key) {
+        clack.log.warn("Add the disc title key and common= to game/keys.txt before extract.");
     }
     if (!state.has_common_key) {
-        clack.log.warn("Add game/common.key or game/keys.txt (Cemu style) before extract.");
+        clack.log.warn("Add common= to game/keys.txt (Cemu style) before extract.");
     }
 
     const id = await pickVersionId(state.versions.map((v) => v.id));
@@ -268,8 +265,8 @@ async function createEmptyDump(repo: string, state: GameListState): Promise<stri
         [
             `Created game/${id}/`,
             "",
-            "Drop a .wux into game/ (any name) and run nsmbu game again to import it,",
-            "or place game.wux in this folder.",
+            "Drop a .wux into game/ and run nsmbu game again to rename it and extract,",
+            "or place New Super Mario Bros. U (USA).wux / (Europe).wux there yourself.",
             "",
             ...keysHint(state),
         ].join("\n"),
@@ -289,14 +286,13 @@ async function maybeExtract(repo: string, v: GameVersion): Promise<GameVersion> 
     }
     if (!v.has_wux) {
         clack.log.warn(
-            `game/${v.id}/ has no disc image — drop a .wux into game/ and run nsmbu game to import it.`,
+            `No disc image for game/${v.id}/ — put New Super Mario Bros. U (USA).wux or (Europe).wux under game/.`,
         );
         return v;
     }
     if (!v.has_key) {
         clack.log.warn(
-            `Keys missing for game/${v.id}/ — add game/common.key (or keys.txt) and game/${v.id}.key ` +
-                `(or a sidecar .key / disc= in keys.txt), then run nsmbu game again.`,
+            `Keys missing for game/${v.id}/ — add common= and the title key in game/keys.txt, then run nsmbu game again.`,
         );
         return v;
     }
@@ -333,12 +329,12 @@ function activateNonInteractive(
     const needExtract = opts.extract || (!v.extracted && v.has_wux && v.has_key);
     if (needExtract) {
         if (!v.has_wux) {
-            throw new Error(`game/${id}/ has no disc image to extract`);
+            throw new Error(
+                `no disc image for game/${id}/; put New Super Mario Bros. U (USA).wux or (Europe).wux under game/`,
+            );
         }
         if (!v.has_key) {
-            throw new Error(
-                `keys missing for game/${id}/; add game/common.key (or keys.txt) and game/${id}.key`,
-            );
+            throw new Error(`keys missing for game/${id}/; add common= and the title key in game/keys.txt`);
         }
         extractActive(repo);
         state = gameList(repo);

@@ -65,7 +65,7 @@ right-to-left letters (a name, a number) is printed by the unchanged code.
 automatic line breaks are moved to spaces by instruction hooks in PrintImpl (0x02870FC8) and in
 `TextWriterBase::CalcLineRectImpl` (0x0286FFCC, the measuring of one line; 0x02870028,
 0x028704CC).
-`runtime/tools/rtl_text_test.cpp` (CTest `rtl_text`) tests the shaping, bidi order and line
+`runtime/test/rtl_text_test.cpp` (CTest `rtl_text`) tests the shaping, bidi order and line
 layout on their own.
 
 ## Limits

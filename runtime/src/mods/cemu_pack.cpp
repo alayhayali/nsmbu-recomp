@@ -192,6 +192,7 @@ void import_legacy(const fs::path& stage,const std::string& source_name){
 }
 void validate(const std::vector<Selection>& selections){prepare(selections);}
 void activate(const std::vector<Selection>& selections){require(!present.load(),"Cemu graphics packs already activated");active=prepare(selections);shader_present.store(!active.shaders.empty(),std::memory_order_release);present.store(!active.rules.empty()||!active.shaders.empty(),std::memory_order_release);}
+void deactivate(){active={};shader_present.store(false,std::memory_order_release);present.store(false,std::memory_order_release);std::lock_guard lock(diagnostics_mutex);diagnostics.clear();}
 void set_vulkan(bool yes){is_vulkan.store(yes,std::memory_order_release);}
 bool vulkan(){return is_vulkan.load(std::memory_order_acquire);}
 bool legacy_pixel_uniforms(uint64_t base){if(!has_shaders())return false;for(const auto& [key,shader]:active.shaders)if(std::get<0>(key)==base&&!std::get<2>(key)&&shader.source.find("uf_fragCoordScale")!=std::string::npos)return true;return false;}

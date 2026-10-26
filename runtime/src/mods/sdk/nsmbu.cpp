@@ -7,6 +7,7 @@
 #include "guest_addr.h"
 #include "input/input.h"
 #include "core/runtime.h"
+#include "gfx/renderer.h"
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -2130,6 +2131,13 @@ int l_scene_leave_course(lua_State* L) {
     return 1;
 }
 
+int l_scene_restart(lua_State* L) {
+    (void)luaL_optstring(L, 1, "playtest");
+    if (!render::restart()) return fail(L, "restart failed");
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
 int l_scene_confirm_file(lua_State* L) {
     std::string err;
     if (!scene_change_open(err)) return fail(L, err.c_str());
@@ -2489,6 +2497,7 @@ void install_game(lua_State* L) {
     bind_guest(L, "open_file_select", l_scene_open_file_select);
     bind_guest(L, "open_course_select", l_scene_open_course_select);
     bind_guest(L, "leave_course", l_scene_leave_course);
+    bind_guest(L, "restart", l_scene_restart);
     bind_guest(L, "confirm_file", l_scene_confirm_file);
     bind_guest(L, "load_story", l_scene_load_story);
     bind_guest(L, "load_pack", l_scene_load_pack);

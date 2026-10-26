@@ -158,6 +158,21 @@ uint32_t frm_alloc(uint32_t heap, uint32_t size, int32_t align) {
 
 }
 
+void mem_reset_heaps() {
+    std::lock_guard<std::mutex> lk(g_mem_mutex);
+    for (auto& [k, h] : g_exp) {
+        (void)k;
+        delete h;
+    }
+    g_exp.clear();
+    for (auto& [k, h] : g_frm) {
+        (void)k;
+        delete h;
+    }
+    g_frm.clear();
+    g_default_heap = g_mem1_heap = g_fg_heap = 0;
+}
+
 void mem_setup_heaps(uint32_t data_end) {
     uint32_t start = (data_end + 0xFFF) & ~0xFFFu;
     g_default_heap = create_exp(start, mem::kMem2End - start);

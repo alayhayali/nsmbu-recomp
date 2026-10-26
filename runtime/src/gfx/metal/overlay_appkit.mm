@@ -43,6 +43,7 @@ void post(std::function<void()> fn) {
 }
 bool get(const char* key, std::string& value) { return gfx::host_setting(key, value); }
 void set(const char* key, const std::string& value) { gfx::set_host_setting(key, value); }
+void reload_settings() {}
 float res_scale() { return gfx::menu_res_scale(); }
 void set_res_scale(float s) { gfx::menu_set_res_scale(s); }
 void graphics_changed() { gfx::menu_options_changed(); }

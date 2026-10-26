@@ -42,14 +42,13 @@ static void cycle_res() {
     set_res(kResScales[i % n]);
 }
 
-namespace gx2 { uint64_t flips_presented(); bool uncapped(); }
+namespace gx2 { bool uncapped(); }
 #include "../../mods/mods.h"
 #include "../../overlay/overlay.h"
 namespace ax { void start_sound_trace(const char* path, double seconds); }
 namespace gfx { bool menu_hotkey(uint16_t code); NSMenuItem* controls_menu_item();  void install_overlay_input(); }
 
 static NSWindow* g_tv;
-static double g_fps = 0;
 static NSString* const kTitle = @"New Super Mario Bros. U (recompiled)";
 
 static const bool g_prefs = env::NO_HOST_INPUT() == nullptr;
@@ -116,17 +115,14 @@ static void save_prefs() {
 static void update_title() {
     save_prefs();
     NSString* t = kTitle;
-    if (build::dev()) {
-        t = [NSString stringWithFormat:@"%@ \u2014 %.0f fps", kTitle, g_fps];
-        if (gx2::uncapped()) t = [t stringByAppendingString:@" \u00b7 UNCAPPED (debug)"];
-    }
+    if (build::dev() && gx2::uncapped())
+        t = [t stringByAppendingString:@" \u00b7 UNCAPPED (debug)"];
     std::string msg = ss::last_message();
     if (!msg.empty()) t = [NSString stringWithFormat:@"%@ \u2014 %s", kTitle, msg.c_str()];
     if (env::LOG_TITLE() && ![t isEqualToString:g_tv.title]) {
-        NSString* noFps = [t stringByReplacingOccurrencesOfString:[NSString stringWithFormat:@"%.0f fps", g_fps] withString:@"N fps"];
         static NSString* last;
-        if (![noFps isEqualToString:last]) LOG("[display] title: %s", noFps.UTF8String);
-        last = noFps;
+        if (![t isEqualToString:last]) LOG("[display] title: %s", t.UTF8String);
+        last = t;
     }
     [g_tv setTitle:t];
 }
@@ -411,13 +407,6 @@ void install_menu(NSWindow* tv) {
     });
 
     [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer*) {
-        static uint64_t last = gx2::flips_presented();
-        static CFAbsoluteTime t0 = CFAbsoluteTimeGetCurrent();
-        uint64_t n = gx2::flips_presented();
-        CFAbsoluteTime t = CFAbsoluteTimeGetCurrent();
-        if (t > t0) g_fps = (double)(n - last) / (t - t0);
-        last = n;
-        t0 = t;
         update_title();
     }];
 }

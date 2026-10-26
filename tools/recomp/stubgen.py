@@ -20,16 +20,15 @@ import names
 root = os.path.normpath(os.path.join(here, "..", ".."))
 
 def hook_lists():
+    from builds import _parse_hook, hook_files
     hooks, sites = set(), set()
-    for hp in [os.path.join(here, "hooks.txt")] + sorted(glob.glob(os.path.join(here, "hooks_*.txt"))):
-        if not os.path.exists(hp):
-            continue
-        for line in open(hp):
-            line = line.split("#")[0].strip()
-            if line.startswith("@"):
-                sites.add(int(line[1:], 16))
-            elif line:
-                hooks.add(int(line, 16))
+    for path in hook_files():
+        for lineno, raw in enumerate(open(path), 1):
+            line = raw.split("#")[0].strip()
+            if not line:
+                continue
+            site, canon, _same = _parse_hook(line, "%s:%d" % (os.path.basename(path), lineno))
+            (sites if site else hooks).add(canon)
     return hooks, sites
 
 def runtime_refs():

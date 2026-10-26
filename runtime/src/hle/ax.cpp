@@ -18,7 +18,6 @@
 
 #include "core/env.h"
 namespace interp { const char* phase_name(); }
-
 namespace {
 
 constexpr int kMaxVoices = 96;

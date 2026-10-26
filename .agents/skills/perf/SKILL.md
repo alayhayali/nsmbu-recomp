@@ -15,6 +15,8 @@ Canonical addresses are USA v1.3.0 `red-pro2.rpx` (see `docs/names.md`).
 | Get | per-PC histogram + per-thread table, in the game log | full stacks over every thread |
 | Ends up in | `nsmbu/logs/*.log` or `.tmp/repro/nsmbu.log` | `.tmp/perf/` |
 
+- World-map profiles use the debug boot in the `shortcuts` skill.
+  `nsmbu scripted` changes present mode and resolution, so it is the wrong boot for a settings-matched map profile.
 - `nsmbu replay --release 1-1` runs the Release course from `replays/1-1.replay`.
   It sets the profile variables when unset and prints `[replay] log`.
   Add `--uncapped`, `--exit-at N`, or `--log PATH` for a bounded run.

@@ -1,5 +1,4 @@
 
-
 #pragma once
 #include <string>
 
@@ -8,6 +7,7 @@ namespace game_lang {
 constexpr int kLanguages = 12;
 const char* name(int language);
 
+bool carried(int language);
 int usable(int language);
 
 struct Start {

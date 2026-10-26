@@ -81,8 +81,9 @@ class Hooks(unittest.TestCase):
         entries, skipped = builds.read_hooks(builds.hook_files(), builds.canonical_build())
         self.assertEqual(skipped, [])
         self.assertEqual(
-            [(site, addr) for site, _, addr, _ in entries],
+            [(site, addr) for site, _, addr, *_ in entries],
             [(False, 0x02ACD218), (False, 0x024D752C), (True, 0x022A79C4),
+             (False, 0x022A7760), (False, 0x02A06818), (False, 0x02A061AC), (False, 0x02A062EC),
              (False, 0x02994164), (False, 0x029CBBB4), (False, 0x024BD86C),
              (True, 0x024B8324), (False, 0x0226FBC4), (True, 0x0226FD14),
              (True, 0x0226FECC), (True, 0x02270310), (True, 0x022703A4),
@@ -97,8 +98,10 @@ class Hooks(unittest.TestCase):
              (False, 0x029D8C10), (True, 0x029D8C48), (True, 0x029D71A4),
              (True, 0x02631BE4), (True, 0x0263ADD8), (True, 0x02641A4C)],
         )
-        for site, canon, addr, where in entries:
+        same_addrs = {0x024D752C, 0x029CBBB4, 0x024BD86C, 0x029872BC}
+        for site, canon, addr, where, same in entries:
             self.assertEqual(canon, addr, where)
+            self.assertEqual(same, canon in same_addrs, where)
 
     def test_build_directive_skips_a_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -121,18 +124,43 @@ class Hooks(unittest.TestCase):
         self.assertIsNotNone(eu)
         entries, skipped = builds.read_hooks(builds.hook_files(), eu)
         self.assertEqual(skipped, [])
-        by_canon = {canon: addr for _, canon, addr, _ in entries}
+        by_canon = {canon: addr for _, canon, addr, *_ in entries}
         self.assertEqual(by_canon[0x024D752C], 0x024D752C)
         self.assertEqual(by_canon[0x02ACD218], 0x02ACD618)
         self.assertEqual(by_canon[0x029CBBB4], 0x029CBC58)
         self.assertTrue(eu.body_differs(0x029CBBB4))
+        same = [canon for _, canon, _, _, checked in entries if checked]
+        self.assertEqual(same, [0x024D752C, 0x029CBBB4, 0x024BD86C, 0x029872BC])
+
+    def test_same_is_a_checked_wrap(self):
+        self.assertEqual(builds.differing_hook(False, True, True, True), "keep")
+        self.assertEqual(builds.differing_hook(False, False, True, True), "warn")
+        self.assertEqual(builds.differing_hook(True, False, True, True), "refuse")
+        self.assertEqual(builds.differing_hook(True, False, False, False), "skip")
+        self.assertEqual(builds.differing_hook(False, True, False, True), "refuse")
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "hooks.txt")
+            with open(path, "w", encoding="utf-8") as source:
+                source.write("029CBBB4 same\n@022A79C4 same\n")
+            with self.assertRaises(ValueError):
+                builds.read_hooks([path], builds.by_name("EU"))
+
+    def test_differing_functions_are_sorted_for_body_differs(self):
+        for name in ("USA_V0", "EU_V0", "NSMBU_NSLU_USA", "NSMBU_NSLU_EU"):
+            build = builds.by_name(name)
+            starts = [a for a, _, _, _ in build.differing]
+            self.assertEqual(starts, sorted(starts), name)
+        usa_v0 = builds.by_name("USA_V0")
+        self.assertTrue(usa_v0.body_differs(0x0252F900))
+        self.assertTrue(usa_v0.body_differs(0x029D7648))
+        self.assertTrue(usa_v0.body_differs(0x029CBBB4))
 
     def test_combo_hooks_map(self):
         combo = builds.by_name("NSMBU_NSLU_USA")
         self.assertIsNotNone(combo)
         entries, skipped = builds.read_hooks(builds.hook_files(), combo)
         self.assertEqual(skipped, [])
-        by_canon = {canon: addr for _, canon, addr, _ in entries}
+        by_canon = {canon: addr for _, canon, addr, *_ in entries}
         self.assertNotEqual(by_canon[0x02ACD218], 0x02ACD218)
         self.assertEqual(by_canon[0x029CBBB4], combo.code(0x029CBBB4))
         self.assertTrue(combo.body_differs(0x029CBBB4))
@@ -142,7 +170,7 @@ class Hooks(unittest.TestCase):
         self.assertIsNotNone(combo)
         entries, skipped = builds.read_hooks(builds.hook_files(), combo)
         self.assertEqual(skipped, [])
-        by_canon = {canon: addr for _, canon, addr, _ in entries}
+        by_canon = {canon: addr for _, canon, addr, *_ in entries}
         self.assertNotEqual(by_canon[0x02ACD218], 0x02ACD218)
         self.assertEqual(by_canon[0x029CBBB4], combo.code(0x029CBBB4))
         self.assertTrue(combo.body_differs(0x029CBBB4))

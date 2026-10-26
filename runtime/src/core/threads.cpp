@@ -2,6 +2,7 @@
 
 #include "core/env.h"
 #ifndef _WIN32
+#include <csignal>
 #include <dlfcn.h>
 #endif
 #ifdef __APPLE__
@@ -220,8 +221,14 @@ static std::atomic<int> g_entry_parks{0};
 static void try_entry_park(HostThread* t, Cpu* c);
 namespace threads { static std::string thread_name(HostThread* t); }
 
+static std::atomic<bool> g_reboot_kill{false};
+struct GuestExit {
+    uint32_t value;
+};
+
 extern "C" void ppc_preempt(Cpu* c) {
     HostThread* t = (HostThread*)c->thread;
+    if (g_reboot_kill.load(std::memory_order_relaxed) && t && !t->service) throw GuestExit{0};
     if (__builtin_expect(g_entry_parks.load(std::memory_order_relaxed) != 0, 0) && t) try_entry_park(t, c);
     if (!t || !t->holds_core || t->irq_off) return;
     {
@@ -371,10 +378,6 @@ static HostThread* host_thread(uint32_t t) {
     return it == g_threads.end() ? nullptr : it->second;
 }
 
-struct GuestExit {
-    uint32_t value;
-};
-
 static std::mutex g_frz_m;
 static std::condition_variable g_frz_cv;
 static bool g_frozen = false;
@@ -382,7 +385,16 @@ static HostThread* g_frz_owner = nullptr;
 
 static void park_gate(HostThread* t) {
     std::unique_lock<std::mutex> l(g_frz_m);
-    while (g_frozen && t != g_frz_owner) g_frz_cv.wait(l);
+    while (g_frozen && t != g_frz_owner) {
+        if (g_reboot_kill.load()) break;
+        g_frz_cv.wait(l);
+    }
+    if (g_reboot_kill.load()) {
+        l.unlock();
+        t->wst.store(kRunning);
+        if (t->service) return;
+        throw GuestExit{0};
+    }
     t->wst.store(kRunning);
 }
 
@@ -391,6 +403,10 @@ static bool park_wait(std::unique_lock<std::mutex>& lk, std::condition_variable&
                       const std::chrono::steady_clock::time_point* deadline = nullptr) {
     HostThread* t = t_self;
     while (!pred()) {
+        if (g_reboot_kill.load(std::memory_order_relaxed)) {
+            if (t) park_gate(t);
+            return false;
+        }
         if (deadline && std::chrono::steady_clock::now() >= *deadline) return false;
         if (t) {
             t->wait_kind = kind;
@@ -401,10 +417,11 @@ static bool park_wait(std::unique_lock<std::mutex>& lk, std::condition_variable&
         lk.unlock();
         threads::block_begin();
         lk.lock();
+        auto stop = [&] { return pred() || g_reboot_kill.load(std::memory_order_relaxed); };
         if (deadline) {
             threads::SchedulerTick::TimedWait timed(g_tick);
-            cv.wait_until(lk, *deadline, pred);
-        } else cv.wait(lk, pred);
+            cv.wait_until(lk, *deadline, stop);
+        } else cv.wait(lk, stop);
         lk.unlock();
         if (t) park_gate(t);
         if (t) t->host_fp = nullptr;
@@ -509,6 +526,13 @@ void park_sleep_until(std::chrono::steady_clock::time_point tp, bool precise,
     block_begin();
     {
         SchedulerTick::TimedWait timed(g_tick);
+        auto sleep_chunk = [&](std::chrono::steady_clock::time_point until) {
+            while (std::chrono::steady_clock::now() < until) {
+                if (g_reboot_kill.load(std::memory_order_relaxed)) return;
+                auto slice = std::min(until, std::chrono::steady_clock::now() + std::chrono::milliseconds(2));
+                host::sleep_until(slice);
+            }
+        };
         if (precise) {
 
             using us = std::chrono::microseconds;
@@ -517,18 +541,21 @@ void park_sleep_until(std::chrono::steady_clock::time_point tp, bool precise,
             static thread_local int wakes = 0;
             const auto sleepDeadline = tp - window;
             if (std::chrono::steady_clock::now() < sleepDeadline) {
-                host::sleep_until(sleepDeadline);
+                auto start = std::chrono::steady_clock::now();
+                sleep_chunk(sleepDeadline);
                 const auto woke = std::chrono::steady_clock::now();
-                peak = std::max(peak, std::chrono::duration_cast<us>(woke - sleepDeadline));
+                peak = std::max(peak, std::chrono::duration_cast<us>(woke - start));
                 if (fixedUs < 0 && (woke >= tp || ++wakes == 120)) {
                     window = woke >= tp ? us{2000} : std::clamp(peak + us{250}, us{500}, us{2000});
                     peak = us{0};
                     wakes = 0;
                 }
             }
-            while (std::chrono::steady_clock::now() < tp) {}
+            while (std::chrono::steady_clock::now() < tp) {
+                if (g_reboot_kill.load(std::memory_order_relaxed)) break;
+            }
         } else {
-            host::sleep_until(tp);
+            sleep_chunk(tp);
         }
     }
     if (t) park_gate(t);
@@ -647,9 +674,23 @@ static HostThread* create_thread(uint32_t t, uint32_t entry, uint32_t argc, uint
 
 static void thread_dump_loop(int secs);
 namespace threads {
+#ifndef _WIN32
+static void reboot_stop_thread(int) { pthread_exit(nullptr); }
+#endif
+
 void init(const LoadedModule& m) {
     g_sda_base = m.sda_base;
     g_sda2_base = m.sda2_base;
+#ifndef _WIN32
+    static std::once_flag reboot_sig;
+    std::call_once(reboot_sig, [] {
+        struct sigaction sa {};
+        sa.sa_handler = reboot_stop_thread;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sigaction(SIGUSR1, &sa, nullptr);
+    });
+#endif
 
     if (const char* e = env::THREAD_DUMP()) {
         int s = atoi(e);
@@ -670,6 +711,7 @@ void run_main(const LoadedModule& m, int argc, uint32_t argv) {
     WaitForSingleObject(ht->pt,INFINITE); CloseHandle(ht->pt); ht->pt=nullptr;
 #else
     pthread_join(ht->pt, nullptr);
+    ht->pt = {};
 #endif
 }
 
@@ -690,6 +732,20 @@ Cpu* make_service_cpu(const char* name, uint32_t stack_size) {
     ht->wst.store(kParked);
     host::boost_thread_priority();
     return &ht->cpu;
+}
+
+void retire_service_cpu() {
+    HostThread* ht = t_self;
+    if (!ht || !ht->service) return;
+    {
+        std::lock_guard<std::mutex> lk(g_threads_mutex);
+        auto it = g_threads.find(ht->guest);
+        if (it != g_threads.end() && it->second == ht) g_threads.erase(it);
+    }
+    t_self = nullptr;
+    t_cpu = nullptr;
+    ht->exited = true;
+    delete ht;
 }
 }
 
@@ -788,6 +844,14 @@ struct ObjTable {
         T*& p = map[addr];
         delete p;
         p = new T();
+    }
+    void clear() {
+        std::lock_guard<std::mutex> lk(m);
+        for (auto& [a, p] : map) {
+            (void)a;
+            delete p;
+        }
+        map.clear();
     }
 };
 
@@ -1243,6 +1307,176 @@ void thaw() {
     HostThread* me = t_self;
     block_end();
     if (me) me->wst.store(kRunning);
+}
+
+bool reboot_killing() { return g_reboot_kill.load(); }
+
+[[noreturn]] void abort_for_reboot() { throw GuestExit{0}; }
+
+static void clear_sync_objects() {
+    g_mutexes.clear();
+    g_events.clear();
+    g_queues.clear();
+    g_sleepq.clear();
+    g_rdv.clear();
+    {
+        std::lock_guard<std::mutex> lk(g_alarm_mutex);
+        g_alarm_queue.clear();
+        g_alarm_serial.clear();
+    }
+    g_alarm_cv.notify_all();
+    g_tick.notify();
+}
+
+static void wake_all_guest_waiters(const std::vector<HostThread*>* threads = nullptr) {
+    g_frz_cv.notify_all();
+    g_alarm_cv.notify_all();
+    g_tick.notify();
+    for (int i = 0; i < 3; i++) {
+        std::lock_guard<std::mutex> lk(g_sched[i].m);
+        g_sched[i].owner = nullptr;
+        g_sched[i].cv.notify_all();
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_mutexes.m);
+        for (auto& [a, o] : g_mutexes.map) {
+            (void)a;
+            if (!o) continue;
+            std::lock_guard<std::mutex> l(o->m);
+            o->owner = nullptr;
+            o->count = 0;
+            o->cv.notify_all();
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_events.m);
+        for (auto& [a, o] : g_events.map) {
+            (void)a;
+            if (!o) continue;
+            std::lock_guard<std::mutex> l(o->m);
+            o->signaled = true;
+            o->cv.notify_all();
+        }
+    }
+    auto wake = [](auto& table) {
+        std::lock_guard<std::mutex> lk(table.m);
+        for (auto& [a, o] : table.map) {
+            (void)a;
+            if (!o) continue;
+            { std::lock_guard<std::mutex> l(o->m); }
+            o->cv.notify_all();
+        }
+    };
+    wake(g_queues);
+    wake(g_sleepq);
+    wake(g_rdv);
+    auto wake_one = [](HostThread* t) {
+        if (!t) return;
+        t->woken = true;
+        { std::lock_guard<std::mutex> l(t->m); }
+        t->cv.notify_all();
+    };
+    if (threads) {
+        for (HostThread* t : *threads) wake_one(t);
+    } else {
+        std::lock_guard<std::mutex> lk(g_threads_mutex);
+        for (auto& [g, t] : g_threads) {
+            (void)g;
+            wake_one(t);
+        }
+    }
+}
+
+[[noreturn]] void kill_all_for_reboot() {
+    g_reboot_kill.store(true);
+    for (int i = 0; i < 3; i++) g_core_preempt[i] = 1;
+    {
+        std::lock_guard<std::mutex> l(g_frz_m);
+        g_frozen = false;
+        g_frz_owner = nullptr;
+    }
+    wake_all_guest_waiters();
+    block_end();
+    throw GuestExit{0};
+}
+
+void reset_for_reboot() {
+    {
+        std::lock_guard<std::mutex> lk(g_alarm_mutex);
+        g_alarm_queue.clear();
+        g_alarm_serial.clear();
+    }
+    g_alarm_cv.notify_all();
+    g_tick.notify();
+
+    std::vector<HostThread*> leftover;
+    std::vector<HostThread*> keep_service;
+    {
+        std::lock_guard<std::mutex> lk(g_threads_mutex);
+        for (auto& [g, t] : g_threads) {
+            (void)g;
+            if (!t) continue;
+            if (t->service) keep_service.push_back(t);
+            else leftover.push_back(t);
+        }
+        g_threads.clear();
+        for (HostThread* t : keep_service) g_threads[t->guest] = t;
+    }
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    for (;;) {
+        wake_all_guest_waiters(&leftover);
+        bool busy = false;
+        for (HostThread* t : leftover) {
+            if (t && !t->exited) busy = true;
+        }
+        if (!busy || std::chrono::steady_clock::now() >= deadline) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    for (HostThread* t : leftover) {
+        if (!t) continue;
+        if (!t->exited) {
+            LOG("[thread] leftover guest thread still running guest=%08X; forcing host stop", t->guest);
+#ifdef _WIN32
+            if (t->pt) {
+                TerminateThread(t->pt, 0);
+                CloseHandle(t->pt);
+                t->pt = nullptr;
+            }
+#else
+            if (t->pt) {
+                pthread_kill(t->pt, SIGUSR1);
+                pthread_join(t->pt, nullptr);
+                t->pt = {};
+            }
+#endif
+            t->exited = true;
+        } else {
+#ifdef _WIN32
+            if (t->pt) {
+                WaitForSingleObject(t->pt, 0);
+                CloseHandle(t->pt);
+                t->pt = nullptr;
+            }
+#else
+            if (t->pt) {
+                pthread_join(t->pt, nullptr);
+                t->pt = {};
+            }
+#endif
+        }
+        delete t;
+    }
+    clear_sync_objects();
+    g_reboot_kill.store(false);
+    for (int i = 0; i < 3; i++) g_core_preempt[i] = 0;
+    {
+        std::lock_guard<std::mutex> l(g_frz_m);
+        g_frozen = false;
+        g_frz_owner = nullptr;
+    }
+    g_entry_parks = 0;
+    t_self = nullptr;
+    t_cpu = nullptr;
 }
 }
 

@@ -313,7 +313,11 @@ class ArchiveTitles(unittest.TestCase):
         self.assertEqual(setup.format_title_id(""), "")
 
     def test_plan(self):
-        self.assertEqual(setup.plan_steps("archive"), ["archive", "compiler", "extract", "translate", "compile", "app"])
+        self.assertEqual(setup.plan_steps("archive"),
+                         ["archive", "compiler", "extract", "translate", "compile", "app", "shaders"])
+        self.assertEqual(setup.plan_steps("installed"),
+                         ["compiler", "translate", "compile", "app", "shaders"])
+        self.assertEqual(setup.plan_steps("gen"), ["compiler", "compile", "app"])
         self.assertEqual(setup.EXTRACT_ERRORS[10], "wrong_title")
 
 class GameVersion(unittest.TestCase):
@@ -613,9 +617,43 @@ class ShaderWarm(unittest.TestCase):
         self.assertIn("exit code 1", text)
         self.assertIn("FATAL: no device", text)
         self.assertNotIn("[warm] progress", text)
-        self.assertIn("play anyway", text)
+        self.assertIn("Repair", text)
         none = setup.shader_warm_failure(0, 0, [])
         self.assertIn("did not compile any shaders", none)
+        self.assertIn("Repair", none)
+
+    def test_precompile_requires_exe(self):
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaisesRegex(setup.SetupError, "game program is missing"):
+                setup.precompile_shaders(os.path.join(d, "missing"), d, d)
+
+    def test_precompile_runs_warm(self):
+        with tempfile.TemporaryDirectory() as d:
+            exe = os.path.join(d, "nsmbu")
+            with open(exe, "w") as f:
+                f.write("x")
+            game = os.path.join(d, "game")
+            os.makedirs(os.path.join(game, "code"))
+            os.makedirs(os.path.join(game, "content"))
+            os.makedirs(os.path.join(game, "meta"))
+            with open(os.path.join(game, "code", "red-pro2.rpx"), "wb") as f:
+                f.write(b"rpx")
+            with mock.patch.object(setup, "valid_game_folder", return_value=True), \
+                 mock.patch.object(setup, "run_shader_warm", return_value=(0, 12, False, [])) as warm:
+                setup.precompile_shaders(exe, game, d)
+            warm.assert_called_once()
+            self.assertEqual(warm.call_args[0][0], exe)
+            self.assertEqual(warm.call_args[0][1], game)
+
+    def test_precompile_fails_when_warm_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            exe = os.path.join(d, "nsmbu")
+            with open(exe, "w") as f:
+                f.write("x")
+            with mock.patch.object(setup, "valid_game_folder", return_value=True), \
+                 mock.patch.object(setup, "run_shader_warm", return_value=(1, 0, False, ["FATAL"])):
+                with self.assertRaisesRegex(setup.SetupError, "shader precompile"):
+                    setup.precompile_shaders(exe, d, d)
 
 class NonInteractive(unittest.TestCase):
     def test_ui_refuses_to_prompt(self):

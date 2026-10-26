@@ -68,7 +68,7 @@ Also shell, not Python: `nsmbu scripted` → `tools/run/scripted-run.sh`, `nsmbu
 | `tools/rpx/rpx.py`, `tools/rpx/rpxinfo.py`, `tools/rpx/ppcdis.py` | RPX inspect / disasm |
 | `tools/frames/flicker.py` | Frame-dump flicker check ([automation.md](automation.md)) |
 | `.git-hooks/pre_push.py` | Git hook helper (not under `tools/`) |
-| `runtime/tools/driver_store_test.py` | CMake test wrapper |
+| `runtime/test/driver_store_test.py` | CMake test wrapper |
 
 Native C++ already covers part of extract: `nsmbu-extract` (`tools/wudextract/`).
 Prefer driving that binary from TypeScript over re-porting the Python WUD reader unless behaviour still differs.
@@ -181,11 +181,11 @@ Port `installer/setup.py` and `dev_pkg.py` (and `test_setup.py`).
 
 - `bench/run_bench.py` → `nsmbu bench` (see [performance.md](performance.md)).
 - `.git-hooks/pre_push.py` → hook calling `nsmbu` or a small TS script.
-- `runtime/tools/driver_store_test.py` → native or TS test driver.
+- `runtime/test/driver_store_test.py` → native or TS test driver.
 - Port `tools/run/scripted-run.sh` into `nsmbu scripted` if you want zero bash in the agent path (optional).
 - Delete `tools/**/*.py`, drop Python from README/CI images where unused, remove `Python3` from CMake when nothing remains.
 
-**Done when:** `git ls-files '*.py'` under `tools/` and `runtime/tools/` is empty (or only agreed exceptions), and AGENTS/skills/docs say `nsmbu` only.
+**Done when:** `git ls-files '*.py'` under `tools/` and `runtime/test/` is empty (or only agreed exceptions), and AGENTS/skills/docs say `nsmbu` only.
 
 ## Suggested command map (new / renamed)
 

@@ -29,6 +29,7 @@ namespace ss { void notice(const std::string& t) { g_notices.push_back(t); } }
 namespace hostui {
 bool get(const char*, std::string&) { return false; }
 void set(const char*, const std::string&) {}
+void reload_settings() {}
 }
 void log_msg(const char* fmt, ...) {
     va_list ap;

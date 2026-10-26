@@ -30,7 +30,7 @@ They are not a second list of variable names.
 What a variable does stays in the feature doc that already describes it (`docs/automation.md`, `docs/vulkan.md`, and the other feature pages).
 This file is how a variable is defined in code, not a catalog of gameplay effects.
 
-The host test `env` in `runtime/tools/env_test.cpp` covers `.name()`, a read after `setenv`, and `env::unset`.
+The host test `env` in `runtime/test/env_test.cpp` covers `.name()`, a read after `setenv`, and `env::unset`.
 
 ## Frame interpolation
 

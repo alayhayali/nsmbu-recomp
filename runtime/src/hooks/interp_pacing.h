@@ -71,6 +71,58 @@ inline int display_fps(int hz) {
     return shown;
 }
 
+inline bool logic_wait_matches_presents(int fps) {
+    return valid_fps(fps) % 60 == 0;
+}
+
+inline bool fixed_output_slot(int fps) {
+    fps = valid_fps(fps);
+    return fps > 60 && fps % 60 != 0;
+}
+
+inline int64_t output_slot_ns(int fps) {
+    if (!fixed_output_slot(fps)) return 0;
+    return 1000000000LL / valid_fps(fps);
+}
+
+inline bool pad_logic_step(int fps, int step_n, int shown_frames, int full_frames) {
+    if (step_n <= 0) return true;
+    if (logic_wait_matches_presents(fps)) return step_n > 1;
+    return full_frames > 1 && shown_frames < full_frames;
+}
+
+inline int64_t pass_budget_ns(int64_t work_ns, int64_t slot_ns) {
+    if (slot_ns <= 0) return work_ns;
+    return std::max(work_ns, slot_ns);
+}
+
+inline int64_t absorb_late_wake(int64_t last_ns, int64_t now_ns, int64_t period_ns) {
+    if (period_ns <= 0 || now_ns <= last_ns) return last_ns;
+    const int64_t slots = (now_ns - last_ns) / period_ns;
+    return last_ns + slots * period_ns;
+}
+
+inline int64_t repeat_period_ns(bool course_play, int output_fps) {
+    if (course_play) return 0;
+    const int fps = valid_fps(output_fps);
+    if (fps <= 60) return 0;
+    return 1000000000LL / fps;
+}
+
+inline int64_t bunched_present_delay_ns(bool course_play, int output_fps, int64_t since_ns) {
+    const int64_t period = repeat_period_ns(course_play, output_fps);
+    if (period <= 0 || since_ns < 0 || since_ns * 2 >= period) return 0;
+    return period - since_ns;
+}
+inline bool skip_bunched_present(bool course_play, int output_fps, int64_t since_ns) {
+    return bunched_present_delay_ns(course_play, output_fps, since_ns) > 0;
+}
+
+inline bool collapse_duplicate_vsync(bool presented_since_wake, bool wake_valid, int64_t since_wake_ns) {
+    if (presented_since_wake || !wake_valid) return false;
+    return since_wake_ns < 2'000'000;
+}
+
 inline int cap_fps(int fps, int hz, bool vsync) {
     fps = valid_fps(fps);
     if (!vsync || hz <= 0) return fps;

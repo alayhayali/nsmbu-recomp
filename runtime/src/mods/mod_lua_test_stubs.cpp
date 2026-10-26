@@ -1,6 +1,10 @@
 #include "core/runtime.h"
 #include "input/input.h"
 
+namespace render {
+__attribute__((weak)) bool restart() { return false; }
+}
+
 void log_msg(const char*, ...) {}
 
 extern "C" __attribute__((weak)) void nsmbu_fill_course_banner_digits(void) {}
@@ -34,3 +38,4 @@ namespace input {
 __attribute__((weak)) bool pro_controller() { return false; }
 __attribute__((weak)) PadState read() { return PadState{}; }
 }
+

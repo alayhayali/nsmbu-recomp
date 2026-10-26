@@ -1054,36 +1054,54 @@ Pipeline &pipeline(const uint32_t *r, vk::Shader *vs, vk::Shader *ps,
   return remember(pipelines.emplace(key, p).first->second);
 }
 struct SamplerMemo {
-  VkDevice device = VK_NULL_HANDLE;
-  std::array<uint32_t, 3> words{};
-  bool compare = false, integer = false, forceAniso = false;
-  VkSampler value = VK_NULL_HANDLE;
-  bool matches(VkDevice nextDevice, const uint32_t* nextWords,
-               bool nextCompare, bool nextInteger, bool nextForceAniso) const {
-    return value && device == nextDevice && compare == nextCompare &&
-        integer == nextInteger && forceAniso == nextForceAniso &&
-        words[0] == nextWords[0] && words[1] == nextWords[1] && words[2] == nextWords[2];
+  static constexpr int kSlots = 8;
+  struct Slot {
+    VkDevice device = VK_NULL_HANDLE;
+    std::array<uint32_t, 3> words{};
+    bool compare = false, integer = false, forceAniso = false;
+    VkSampler value = VK_NULL_HANDLE;
+    bool matches(VkDevice nextDevice, const uint32_t* nextWords,
+                 bool nextCompare, bool nextInteger, bool nextForceAniso) const {
+      return value && device == nextDevice && compare == nextCompare &&
+          integer == nextInteger && forceAniso == nextForceAniso &&
+          words[0] == nextWords[0] && words[1] == nextWords[1] && words[2] == nextWords[2];
+    }
+  };
+  Slot slots[kSlots]{};
+  int next = 0;
+  VkSampler find(VkDevice nextDevice, const uint32_t* nextWords,
+                 bool nextCompare, bool nextInteger, bool nextForceAniso) const {
+    for (const Slot& slot : slots)
+      if (slot.matches(nextDevice, nextWords, nextCompare, nextInteger, nextForceAniso))
+        return slot.value;
+    return VK_NULL_HANDLE;
   }
   void remember(VkDevice nextDevice, const uint32_t* nextWords,
                 bool nextCompare, bool nextInteger, bool nextForceAniso, VkSampler nextValue) {
-    device = nextDevice;
-    std::memcpy(words.data(), nextWords, sizeof(words));
-    compare = nextCompare; integer = nextInteger; forceAniso = nextForceAniso;
-    value = nextValue;
+    Slot& slot = slots[next];
+    next = (next + 1) % kSlots;
+    slot.device = nextDevice;
+    std::memcpy(slot.words.data(), nextWords, sizeof(slot.words));
+    slot.compare = nextCompare;
+    slot.integer = nextInteger;
+    slot.forceAniso = nextForceAniso;
+    slot.value = nextValue;
   }
 };
 SamplerMemo samplerMemo;
 VkSampler sampler(const uint32_t *words, bool compare, bool integer, bool allowAniso) {
   static const bool memo = [] {
     const char* e = env::VK_SAMPLER_MEMO();
-    return e && !std::strcmp(e, "1");
+    return !e || std::strcmp(e, "0") != 0;
   }();
   const bool forceAniso = allowAniso && aniso_enabled();
   const bool stats = preparation_stats_enabled();
   if (stats) ++R.cpuPreparation.samplerRequests;
-  if (memo && samplerMemo.matches(R.device, words, compare, integer, forceAniso)) {
-    if (stats) ++R.cpuPreparation.samplerMemoHits;
-    return samplerMemo.value;
+  if (memo) {
+    if (VkSampler hit = samplerMemo.find(R.device, words, compare, integer, forceAniso)) {
+      if (stats) ++R.cpuPreparation.samplerMemoHits;
+      return hit;
+    }
   }
   if (stats) ++R.cpuPreparation.samplerMapLookups;
   auto remember = [&](VkSampler value) {
