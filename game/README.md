@@ -26,7 +26,6 @@ game/
   keys.txt               # optional Cemu-style keys (common= / disc=)
   usa-base.key           # disc key for usa-base (from the sidecar on import)
   eu-base.key
-  downloads/             # optional staging for update archives
   My Disc.wux            # drop zone — any name; imported by nsmbu game
   My Disc.key            # optional sidecar disc key for that image
   usa-base/

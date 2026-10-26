@@ -13,6 +13,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
   A USA dump shows English, French, and Spanish; a European dump adds the other European languages.
 - Rename `runtime/tools` to `runtime/test`.
 - Run playtests in parallel and split each case into its own file.
+- Drop `downloads/` from the game dump layout notes.
+- Bump `vendor/decomp` with more course, camera, boot, and system decomp.
 
 ## [0.6.3] - 2026-10-25
 
