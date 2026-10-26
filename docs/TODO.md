@@ -1,9 +1,5 @@
 # TODO
 
-## Recomp.py
-
-The recomp tool doesnt seem to be multithreaded.
-
-## Hide crash popup in debug mode
-
-debug builld crash shouldnt pop up a popup just exit none zero and logs paths to crash and logs
+- Default gamepad window to hidden by default.
+- The recomp tool doesnt seem to be multithreaded.
+- Add nsmbu command to query and modify settings from the agent.
