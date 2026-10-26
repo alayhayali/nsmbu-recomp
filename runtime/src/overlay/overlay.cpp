@@ -1319,16 +1319,17 @@ void choose_language(int language) {
 void ask_soft_restart(const char* why) {
     U.restart_why = why && *why ? why : "settings";
     U.restart_confirm = true;
-    ImGui::OpenPopup("Restart the game?###soft_restart");
 }
 
 void soft_restart_confirm() {
     if (!U.restart_confirm) return;
     ImGui::OpenPopup("Restart the game?###soft_restart");
-    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     if (!ImGui::BeginPopupModal("Restart the game?###soft_restart", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
     ImGui::TextWrapped("%s Progress since your last save is lost.", U.restart_why.c_str());
+    ImGui::PopTextWrapPos();
     if (ImGui::Button("Restart now", ImVec2(140, 0))) {
         soft_restart::request(U.restart_why.c_str());
         U.restart_confirm = false;

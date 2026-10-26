@@ -17,6 +17,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - World-map shadows no longer flicker at 120/144 fps frame interpolation (#20).
   In-between passes skip redrawing outside a course, so light maps and shadow maps keep the last logic frame.
+- The Settings restart confirmation stays centered on screen.
 - A 144 or 165 fps target keeps each new frame on its own time slot.
   In-between frames were sharing one vsync wait, then the next frame waited out the rest of a 60 fps slice.
 - Recompiling Europe 1.3.0 accepts the error-viewer hook quietly.
