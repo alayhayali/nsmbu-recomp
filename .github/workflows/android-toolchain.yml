@@ -1,0 +1,46 @@
+name: Android-hosted compiler
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - tools/android/build_toolchain.py
+      - tools/android/package_toolchain.py
+      - tools/android/test_build_toolchain.py
+      - tools/android/test_package_toolchain.py
+      - .github/workflows/android-toolchain.yml
+      - .github/actions/android-compiler/**
+  push:
+    branches: [main]
+    paths:
+      - tools/android/build_toolchain.py
+      - tools/android/package_toolchain.py
+      - tools/android/test_build_toolchain.py
+      - tools/android/test_package_toolchain.py
+      - .github/workflows/android-toolchain.yml
+      - .github/actions/android-compiler/**
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Toolchain packaging unit tests
+        working-directory: tools/android
+        run: python3 -m unittest test_build_toolchain test_package_toolchain -v
+
+  compiler-cache:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, x86_64]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/android-compiler
+        with:
+          abi: ${{ matrix.abi }}
+          lookup-only: "true"

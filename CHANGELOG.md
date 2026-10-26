@@ -7,6 +7,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+- Android-hosted LLVM toolchain packaging scripts, unit tests, and CI compiler cache action.
+
 ## [0.7.0] - 2026-10-26
 
 ### Added
