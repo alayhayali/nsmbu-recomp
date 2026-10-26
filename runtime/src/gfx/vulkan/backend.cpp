@@ -67,6 +67,8 @@
 namespace gx2 { uint64_t flips_presented(); void checkpoint_vulkan_caches(); }
 namespace render { bool shader_warm_tick(uint64_t activity); }
 #include "hooks/interp.h"
+#include "hooks/interp_pacing.h"
+#include "gfx/renderer.h"
 
 namespace gfxvk {
 Renderer R;
@@ -1103,6 +1105,8 @@ static VkSemaphore new_semaphore() {
   vk_check(vkCreateSemaphore(R.device, &si, nullptr, &sem), "create presentation semaphore");
   return sem;
 }
+static uint64_t g_acquire_timeout_ns = UINT64_MAX;
+static bool g_presented = false;
 static void present(Screen &s) {
 #ifdef __ANDROID__
   if (&s == &R.tv && s.window) {
@@ -1179,9 +1183,10 @@ static void present(Screen &s) {
     acquireSemaphore = ap.acquire[acquireIndex];
   }
   VkResult ar = timed_call(timing.acquire, [&] {
-    return vkAcquireNextImageKHR(R.device, s.swapchain, UINT64_MAX,
+    return vkAcquireNextImageKHR(R.device, s.swapchain, g_acquire_timeout_ns,
                                 acquireSemaphore, VK_NULL_HANDLE, &index);
   }, rprof::kWaitAcquire);
+  if (ar == VK_TIMEOUT || ar == VK_NOT_READY) return;
   if (ar == VK_ERROR_OUT_OF_DATE_KHR) {
     s.resize = true;
     return;
@@ -1274,6 +1279,7 @@ static void present(Screen &s) {
   VkResult pr = timed_call(timing.present, [&] {
     return vkQueuePresentKHR(R.queue, &pi);
   }, rprof::kWaitPresent);
+  if (pr == VK_SUCCESS || pr == VK_SUBOPTIMAL_KHR) g_presented = true;
 #ifdef __ANDROID__
 
   if (pr == VK_ERROR_OUT_OF_DATE_KHR)
@@ -1469,7 +1475,43 @@ static void service_screenshots() {
     it = pendingShots.erase(it);
   }
 }
+void repeat_present() {
+  Surface *tvScan = R.tv.scan && R.tv.scan->image ? R.tv.scan.get() : nullptr;
+  if (!tvScan) {
+    render::hold_repeat();
+    return;
+  }
+  Surface *drcScan = R.drc.scan && R.drc.scan->image ? R.drc.scan.get() : nullptr;
+#ifdef NSMBU_SDL_HOST
+  gfx::g_filter = scale_filter();
+  const float layerW = float(R.tv.width.load()), layerH = float(R.tv.height.load());
+#else
+  const float layerW = float(R.tv.swapExtent.width), layerH = float(R.tv.swapExtent.height);
+#endif
+  gfx::PresentPlan plan = gfx::display_plan(
+      tvScan, float(tvScan->extent.width), float(tvScan->extent.height),
+      drcScan, drcScan ? float(drcScan->extent.width) : 0, drcScan ? float(drcScan->extent.height) : 0,
+      layerW, layerH, R.frame);
+  set_present_plan(&plan);
+  set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
+  g_acquire_timeout_ns = 0;
+  g_presented = false;
+  present(R.tv);
+  if (plan.drc_window) present(R.drc);
+  g_acquire_timeout_ns = UINT64_MAX;
+  if (async_present()) flush_async();
+  else flush();
+  set_present_plan(nullptr);
+  if (g_presented) render::note_host_present();
+  else {
+    overlay::undo_frame_sample();
+    render::hold_repeat();
+  }
+}
 void swap() {
+  const bool bunch = interp::pacing::skip_bunched_present(
+      interp::course_play_active(), interp::output_fps(), render::since_host_present_ns());
+  g_presented = false;
   service_screenshots();
   service_captures();
   frame_dumps(R.frame + 1);
@@ -1493,16 +1535,19 @@ void swap() {
 #endif
   set_present_plan(&plan);
 
-  set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
+  if (bunch) set_overlay_draw(nullptr);
+  else set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
   take_screenshots(plan);
   bool sampled[2] = {};
   if (plan.sample_auto && drcScan) {
     sampled[0] = record_signature(0, *drcScan, R.drc.srgb.load());
     sampled[1] = sampled[0] && tvScan && record_signature(1, *tvScan, R.tv.srgb.load());
   }
-  present(R.tv);
-  if (plan.drc_window)
-    present(R.drc);
+  if (!bunch) {
+    present(R.tv);
+    if (plan.drc_window)
+      present(R.drc);
+  }
 
   if (async_present() && !sampled[0])
     flush_async();
@@ -1536,6 +1581,7 @@ void swap() {
     }
   }
   set_present_plan(nullptr);
+  if (g_presented) render::note_host_present();
   service_screenshots();
   std::atomic_ref<uint64_t>(R.frame).fetch_add(1);
   R.completed = R.frame;

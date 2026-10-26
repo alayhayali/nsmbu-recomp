@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstring>
 #include <mutex>
 #include <string>
 
@@ -56,6 +57,15 @@ void init_data_imports() {
     mem_init_data_imports(alloc, alloc_ex, free_);
 }
 
+void clear_cafe_workspace() {
+    memset(mem::ptr(mem::kFgBucket), 0, mem::kFgBucketSize);
+    memset(mem::ptr(mem::kMem1), 0, mem::kMem1Size);
+    if (g_mod.data_end > mem::kMem2Start && g_mod.data_end <= mem::kMem2End) {
+        uint32_t heap = (g_mod.data_end + 0xFFF) & ~0xFFFu;
+        if (heap < mem::kMem2End) memset(mem::ptr(heap), 0, mem::kMem2End - heap);
+    }
+}
+
 void do_reboot() {
     LOG("[soft_restart] rebooting guest (%s)", g_why.c_str());
     threads::reset_for_reboot();
@@ -67,6 +77,7 @@ void do_reboot() {
     rumble::reset();
     mem::reset_allocators();
     mem_reset_heaps();
+    clear_cafe_workspace();
     mods::packages::reinitialize();
     console_language_reset();
 

@@ -42,6 +42,29 @@
 
 using namespace Latte;
 
+namespace render {
+static std::atomic<int64_t> g_host_present_ns{0};
+static std::atomic<int64_t> g_repeat_hold_ns{0};
+static std::atomic<uint64_t> g_host_presents{0};
+
+static int64_t steady_ns() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+void note_host_present() {
+    g_host_present_ns.store(steady_ns(), std::memory_order_relaxed);
+    g_host_presents.fetch_add(1, std::memory_order_relaxed);
+}
+int64_t last_host_present_ns() { return g_host_present_ns.load(std::memory_order_relaxed); }
+int64_t since_host_present_ns() {
+    const int64_t last = last_host_present_ns();
+    if (last <= 0) return -1;
+    return steady_ns() - last;
+}
+int64_t repeat_hold_ns() { return g_repeat_hold_ns.load(std::memory_order_relaxed); }
+void hold_repeat() { g_repeat_hold_ns.store(steady_ns() + 2000000, std::memory_order_relaxed); }
+uint64_t host_presents() { return g_host_presents.load(std::memory_order_relaxed); }
+}
+
 namespace gx2 {
 
 static uint32 g_regs[kNumRegs];
@@ -265,8 +288,32 @@ static void render_thread_main() {
             g_q_waiting = true;
             if (g_q_pending.empty()) {
                 const uint64_t idle = rprof::enabled() ? rprof::now_ns() : 0;
-                g_q_cv.wait(lk, [] { return !g_q_pending.empty(); });
+                const int64_t period = render::g_backend && render::g_backend->repeat_present && !uncapped()
+                    ? interp::pacing::repeat_period_ns(interp::course_play_active(), interp::output_fps())
+                    : 0;
+                const int64_t last = render::last_host_present_ns();
+                bool repeated = false;
+                if (period > 0 && last > 0) {
+                    int64_t due = last + period;
+                    const int64_t hold = render::repeat_hold_ns();
+                    if (hold > due) due = hold;
+                    const auto deadline = std::chrono::steady_clock::time_point(std::chrono::nanoseconds(due));
+                    if (!g_q_cv.wait_until(lk, deadline, [] { return !g_q_pending.empty(); }) && g_q_pending.empty()) {
+                        g_q_waiting = false;
+                        lk.unlock();
+                        render::g_backend->repeat_present();
+                        repeated = true;
+                        lk.lock();
+                        g_q_waiting = true;
+                    }
+                } else {
+                    g_q_cv.wait(lk, [] { return !g_q_pending.empty(); });
+                }
                 if (idle) rprof::add_idle(rprof::now_ns() - idle);
+                if (repeated && g_q_pending.empty()) {
+                    g_q_waiting = false;
+                    continue;
+                }
             }
             g_q_waiting = false;
             g_q_work.swap(g_q_pending);
@@ -358,7 +405,14 @@ static void render_sync(int site = kSyncShutdown) {
     uint32 w = (uint32)id;
     enqueue(OP_FENCE, &w, 1);
     std::unique_lock<std::mutex> lk(g_q_mutex);
-    g_q_done_cv.wait(lk, [&] { return g_fence_done >= id; });
+    while (g_fence_done < id) {
+        if (threads::reboot_killing()) {
+            lk.unlock();
+            threads::abort_for_reboot();
+        }
+        g_q_done_cv.wait_for(lk, std::chrono::milliseconds(2),
+                             [&] { return g_fence_done >= id || threads::reboot_killing(); });
+    }
 }
 
 void emit(Op op, const uint32* payload, uint32 n) {
@@ -1069,6 +1123,7 @@ HLE(gx2, GX2SetSwapInterval) { g_swap_interval = std::max<uint32>(arg(c, 0), 1);
 HLE(gx2, GX2WaitForVsync) {
     if (!hostui::run_in_background()) {
         while (!hostui::app_focused()) {
+            if (threads::reboot_killing()) threads::abort_for_reboot();
             threads::park_sleep_until(std::chrono::steady_clock::now() + std::chrono::milliseconds(50));
         }
     }
@@ -1201,6 +1256,9 @@ void gx2_reset_for_reboot() {
         std::lock_guard<std::mutex> fl(g_flip_mutex);
         g_pending_flips.clear();
         g_count_offset = -(int64_t)g_swap_count;
+        g_flip_count = g_swap_count;
+        g_last_flip_vsync = 0;
+        g_last_flip_time = timebase::now();
     }
     reset_uncapped_guest_pace();
     capped_vsync_reset_pace();

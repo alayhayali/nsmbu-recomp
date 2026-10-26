@@ -126,6 +126,14 @@ static void test_cap() {
     CHECK(logic_wait_matches_presents(240));
     CHECK(!logic_wait_matches_presents(144));
     CHECK(!logic_wait_matches_presents(165));
+    CHECK(repeat_period_ns(false, 165) == 1000000000LL / 165);
+    CHECK(repeat_period_ns(false, 144) == 1000000000LL / 144);
+    CHECK(repeat_period_ns(true, 165) == 0);
+    CHECK(repeat_period_ns(false, 60) == 0);
+    CHECK(skip_bunched_present(false, 165, 1000000));
+    CHECK(!skip_bunched_present(false, 165, 5000000));
+    CHECK(!skip_bunched_present(true, 165, 1000000));
+    CHECK(!skip_bunched_present(false, 165, -1));
     CHECK(collapse_duplicate_vsync(false, true, 1'000'000));
     CHECK(!collapse_duplicate_vsync(true, true, 500'000));
     CHECK(!collapse_duplicate_vsync(false, true, 6'060'606));

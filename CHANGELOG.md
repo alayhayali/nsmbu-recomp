@@ -15,12 +15,19 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- Settings soft restart no longer crashes on the next boot, and the rebooted guest reaches File Select again.
+  Guest threads are stopped before the RPX reload (busy threads hit the reboot flag on preempt; leftovers are joined or canceled).
+  Reloading the RPX also clears MEM2 gaps between sections (game singletons such as HeapMgr TLS) and wipes MEM1, FG, and the old default heap.
+  Frame-allocator and GX2 fence waits honor the reboot flag so host locks are not abandoned by a forced thread kill.
+  Soft restart also drops host mutex/event/queue/alarm state left from the previous guest, and realigns GX2 swap/flip counts so the guest is not stuck waiting on a stale flip.
 - World-map shadows no longer flicker at 120/144 fps frame interpolation (#20).
   In-between passes skip redrawing outside a course, so light maps and shadow maps keep the last logic frame.
 - The Settings restart confirmation stays centered on screen.
 - The performance overlay shows the frame rate once, above the frame-time graph.
 - A 144 or 165 fps target keeps each new frame on its own time slot.
   In-between frames were sharing one vsync wait, then the next frame waited out the rest of a 60 fps slice.
+- On the world map, the last picture stays up at the target rate while the next one is drawn.
+  Those copies were arriving together, so the frame time jumped to a whole game step.
 - Recompiling Europe 1.3.0 accepts the error-viewer hook quietly.
   Europe chooses that viewer's layout from a language table.
   The hook still skips the viewer, so closing it cannot pause the game.

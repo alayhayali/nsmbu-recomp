@@ -158,6 +158,8 @@ struct Ui {
     float frame_ms[120] = {};
     int frame_i = 0;
     double last_present = 0;
+    double sample_restore = 0;
+    bool sample_undo = false;
 
     int language = -1;
     int language_at_start = -1;
@@ -1429,9 +1431,9 @@ static void lag_row(const char* name, double ms, double frameMs, const ImVec4& c
 
 void perf_window(bool menu_open) {
     const double t = now_s();
-    if (U.fps_t0 == 0) { U.fps_t0 = t; U.fps_n0 = gx2::flips_presented(); }
+    if (U.fps_t0 == 0) { U.fps_t0 = t; U.fps_n0 = render::host_presents(); }
     if (t - U.fps_t0 >= 0.5) {
-        uint64_t n = gx2::flips_presented();
+        uint64_t n = render::host_presents();
         U.fps = (double)(n - U.fps_n0) / (t - U.fps_t0);
         U.fps_t0 = t;
         U.fps_n0 = n;
@@ -1629,6 +1631,15 @@ bool mouse_wheel(float dx, float dy) {
 }
 void set_density(float d) { g_density = d > 0.5f ? d : 1.0f; }
 
+void undo_frame_sample() {
+    if (U.sample_undo) {
+        U.frame_i = (U.frame_i + 119) % 120;
+        U.frame_ms[U.frame_i] = 0;
+    }
+    U.last_present = U.sample_restore;
+    U.sample_undo = false;
+}
+
 ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
     static TestSwitch test = parse_test();
     static bool prefs_read = false;
@@ -1699,7 +1710,11 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
     if (U.last_present > 0) {
         U.frame_ms[U.frame_i] = (float)((t - U.last_present) * 1000.0);
         U.frame_i = (U.frame_i + 1) % 120;
+        U.sample_undo = true;
+    } else {
+        U.sample_undo = false;
     }
+    U.sample_restore = U.last_present;
     U.last_present = t;
     g_last_frame = t;
     g_average.sample(t, gx2::flips_presented(), interp::logic_steps(), int(render::active()),

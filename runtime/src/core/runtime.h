@@ -91,6 +91,7 @@ bool quiesce(int timeout_ms, std::string& busy, int entry_mode = 0, int entry_af
 void thaw();
 void wait_prefix_parked(const char* prefix, int timeout_ms);
 [[noreturn]] void kill_all_for_reboot();
+[[noreturn]] void abort_for_reboot();
 void reset_for_reboot();
 bool reboot_killing();
 }

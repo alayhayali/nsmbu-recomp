@@ -22,8 +22,10 @@ extern "C" void hook_02ACD218(Cpu* c) {
             if (logged.exchange(1) == 0)
                 LOG("[heap] frame allocator waits for its buffer");
             BlockingScope block;
-            while (ld32(ring) == 0)
+            while (ld32(ring) == 0) {
+                if (threads::reboot_killing()) threads::abort_for_reboot();
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
         }
     }
     Depth depth(g_depth);

@@ -8,6 +8,9 @@
 #include <atomic>
 #include <set>
 
+#include "gfx/renderer.h"
+#include "hooks/interp.h"
+#include "hooks/interp_pacing.h"
 #include "gx2/gx2.h"
 #include "gx2_texture_regs.h"
 #include "metal.h"
@@ -431,7 +434,18 @@ uint64_t frames_completed() { return g_frames_completed; }
 
 void cache_warm_step();
 
+void repeat_present() {
+    if (!R.tv.tex) {
+        render::hold_repeat();
+        return;
+    }
+    present_screens();
+    render::note_host_present();
+}
+
 void swap() {
+    const bool bunch = interp::pacing::skip_bunched_present(
+        interp::course_play_active(), interp::output_fps(), render::since_host_present_ns());
     cache_warm_step();
     static bool sync_gpu = env::SYNC_GPU() != nullptr;
     if (sync_gpu) wait_idle();
@@ -452,7 +466,10 @@ void swap() {
     }
     if (const char* dir = capture_begin_frame()) pendingCapture = dir;
     @autoreleasepool {
-        present_screens();
+        if (!bunch) {
+            present_screens();
+            render::note_host_present();
+        }
         [command_buffer() addCompletedHandler:^(id<MTLCommandBuffer>) { g_frames_completed++; }];
         flush();
     }

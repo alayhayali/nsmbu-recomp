@@ -30,6 +30,7 @@ bool mouse_wheel(float dx, float dy);
 void set_density(float pixels_per_point);
 
 ImDrawData* frame(float pw, float ph, void (*renderer_init)());
+void undo_frame_sample();
 
 void linearize_colors(ImDrawData* d);
 

@@ -587,8 +587,9 @@ void ss_reset() {
     g_view_area = 0;
     model_clear();
     g_blend_t = 1.f;
-    const int rate = output_fps();
-    g_present_i = rate > 0 ? g_logic_steps * uint64_t(rate) / 60u : 0;
+    g_logic_steps = 0;
+    g_executed_steps.store(0, std::memory_order_relaxed);
+    g_present_i = 0;
 }
 
 static const char* const g_env_paced = env::INTERP_PACED();
