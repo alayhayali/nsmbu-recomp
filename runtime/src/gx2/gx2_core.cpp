@@ -822,7 +822,14 @@ static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void
     }
     const auto target = g_capped_vsync_last_wake + period;
     if (now >= target) {
-        g_capped_vsync_last_wake = now;
+        if (interp::pacing::output_slot_ns(interp::output_fps()) > 0 && period.count() > 0) {
+            const int64_t last = std::chrono::duration_cast<std::chrono::nanoseconds>(g_capped_vsync_last_wake.time_since_epoch()).count();
+            const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+            const int64_t absorbed = interp::pacing::absorb_late_wake(last, now_ns, period.count());
+            g_capped_vsync_last_wake = std::chrono::steady_clock::time_point(std::chrono::nanoseconds(absorbed));
+        } else {
+            g_capped_vsync_last_wake = now;
+        }
         capped_vsync_note_wake(granule);
         return;
     }

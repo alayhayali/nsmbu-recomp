@@ -75,6 +75,27 @@ inline bool logic_wait_matches_presents(int fps) {
     return valid_fps(fps) % 60 == 0;
 }
 
+inline bool fixed_output_slot(int fps) {
+    fps = valid_fps(fps);
+    return fps > 60 && fps % 60 != 0;
+}
+
+inline int64_t output_slot_ns(int fps) {
+    if (!fixed_output_slot(fps)) return 0;
+    return 1000000000LL / valid_fps(fps);
+}
+
+inline int64_t pass_budget_ns(int64_t work_ns, int64_t slot_ns) {
+    if (slot_ns <= 0) return work_ns;
+    return std::max(work_ns, slot_ns);
+}
+
+inline int64_t absorb_late_wake(int64_t last_ns, int64_t now_ns, int64_t period_ns) {
+    if (period_ns <= 0 || now_ns <= last_ns) return last_ns;
+    const int64_t slots = (now_ns - last_ns) / period_ns;
+    return last_ns + slots * period_ns;
+}
+
 inline int64_t repeat_period_ns(bool course_play, int output_fps) {
     if (course_play) return 0;
     const int fps = valid_fps(output_fps);

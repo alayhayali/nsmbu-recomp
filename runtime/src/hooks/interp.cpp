@@ -666,15 +666,18 @@ static void work_end() {
 }
 
 static int g_step_holds = 0;
+static int g_full_frames = 1;
 static uint64_t g_plan_steps = 0;
 static int plan_step() {
     g_step_holds = 0;
     const int frames = interp_on() ? pacing::frames_for_step(output_fps(), g_plan_steps++) : 1;
     if (frames <= 0) return -1;
+    g_full_frames = frames;
     int n = frames - 1;
     if (n > 0 && paced() && interp_on()) {
-        const int64_t logic = std::chrono::duration_cast<std::chrono::nanoseconds>(g_logic_avg).count();
-        const int64_t hold = std::chrono::duration_cast<std::chrono::nanoseconds>(g_hold_avg).count();
+        const int64_t slot = pacing::output_slot_ns(output_fps());
+        const int64_t logic = pacing::pass_budget_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(g_logic_avg).count(), slot);
+        const int64_t hold = pacing::pass_budget_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(g_hold_avg).count(), slot);
         const int64_t budget = kPacedBudget.count();
         n = pacing::plan_in_between(n, budget, logic, hold);
         if (pacing::next_pass(0, n, logic, hold, budget) != pacing::Next::kHold) n = 0;
@@ -714,7 +717,8 @@ static void after_pass(int phase) {
         g_hold_next = false;
         if (pacing) {
             paced_step_done(g_step_holds);
-            if (in_between() > 1 && pacing::logic_wait_matches_presents(output_fps())) g_wait_step = true;
+            if (in_between() > 1 && (pacing::logic_wait_matches_presents(output_fps()) || (g_full_frames > 1 && g_frame_n < g_full_frames)))
+                g_wait_step = true;
         }
         return;
     }
@@ -722,8 +726,11 @@ static void after_pass(int phase) {
     if (phase > 0) g_last_hold = pace_clock::now();
     const auto now = pace_clock::now();
     const bool probe = phase == 0 && now - g_last_hold >= kProbeAfter;
-    const auto pass = std::chrono::duration_cast<std::chrono::nanoseconds>(probe ? vsync_tick() : g_hold_avg).count();
-    switch (pacing::next_pass(phase, g_step_n, g_step_work, pass, kPacedBudget.count())) {
+    const int64_t slot = pacing::output_slot_ns(output_fps());
+    const int64_t pass = pacing::pass_budget_ns(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(probe ? vsync_tick() : g_hold_avg).count(), slot);
+    const int64_t elapsed = slot > 0 && phase == 0 ? std::max(g_step_work, slot) : g_step_work;
+    switch (pacing::next_pass(phase, g_step_n, elapsed, pass, kPacedBudget.count())) {
     case pacing::Next::kHold:
         g_hold_next = true;
         g_last_hold = now;

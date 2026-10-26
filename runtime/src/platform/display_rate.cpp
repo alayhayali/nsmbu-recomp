@@ -57,6 +57,43 @@ int64_t period_ns(float hz, int numerator, int denominator) {
     if (hz >= 1.f) return (int64_t)std::llround(1000000000.0 / hz);
     return 0;
 }
+
+float mode_hz(const SDL_DisplayMode* m) {
+    if (!m) return 0.f;
+    if (m->refresh_rate > 0.f) return m->refresh_rate;
+    if (m->refresh_rate_numerator > 0 && m->refresh_rate_denominator > 0)
+        return float(m->refresh_rate_numerator) / float(m->refresh_rate_denominator);
+    return 0.f;
+}
+
+const SDL_DisplayMode* mode_with_refresh(SDL_DisplayID id, SDL_DisplayMode& stored) {
+    const SDL_DisplayMode* current = id ? SDL_GetCurrentDisplayMode(id) : nullptr;
+    if (mode_hz(current) > 0.f) return current;
+    const SDL_DisplayMode* desktop = id ? SDL_GetDesktopDisplayMode(id) : nullptr;
+    if (mode_hz(desktop) > 0.f) return desktop;
+    if (!id) return current ? current : desktop;
+    int count = 0;
+    SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(id, &count);
+    const SDL_DisplayMode* match = nullptr;
+    if (modes) {
+        const int w = current && current->w > 0 ? current->w : desktop ? desktop->w : 0;
+        const int h = current && current->h > 0 ? current->h : desktop ? desktop->h : 0;
+        for (int i = 0; i < count; i++) {
+            if (!modes[i] || mode_hz(modes[i]) <= 0.f) continue;
+            if (w > 0 && h > 0 && (modes[i]->w != w || modes[i]->h != h)) continue;
+            match = modes[i];
+            break;
+        }
+        if (!match) {
+            for (int i = 0; i < count; i++) {
+                if (modes[i] && mode_hz(modes[i]) > 0.f) { match = modes[i]; break; }
+            }
+        }
+        if (match) stored = *match;
+        SDL_free(modes);
+    }
+    return match ? &stored : current ? current : desktop;
+}
 }
 
 void poll(SDL_Window* tv) {
@@ -76,24 +113,22 @@ void poll(SDL_Window* tv) {
     gx2::set_display_vsync_ns(period_ns(hz, 0, 0));
 #else
     const SDL_DisplayID id = tv ? SDL_GetDisplayForWindow(tv) : SDL_GetPrimaryDisplay();
-    const SDL_DisplayMode* m = id ? SDL_GetCurrentDisplayMode(id) : nullptr;
-    if (id && m && m->refresh_rate <= 0.f && m->refresh_rate_numerator <= 0) {
-        const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(id);
-        if (desktop) m = desktop;
-    }
+    SDL_DisplayMode stored{};
+    const SDL_DisplayMode* m = mode_with_refresh(id, stored);
     static int last_hz = 0;
     static int last_num = 0;
     static int last_den = 0;
     static int64_t last_ns = 0;
-    const int hz = m ? (int)std::lround(m->refresh_rate) : 0;
+    const float hz_f = mode_hz(m);
+    const int hz = (int)std::lround(hz_f);
     const int num = m ? m->refresh_rate_numerator : 0;
     const int den = m ? m->refresh_rate_denominator : 0;
-    const int64_t ns = m ? period_ns(m->refresh_rate, num, den) : 0;
+    const int64_t ns = m ? period_ns(hz_f, num, den) : 0;
     if (ns <= 0) {
         if (last_ns > 0) return;
         if (last_hz != -1) {
             last_hz = -1;
-            LOG("[display] mode %.3f Hz (%d/%d), period 0 ns", m ? m->refresh_rate : 0.f, num, den);
+            LOG("[display] mode %.3f Hz (%d/%d), period 0 ns", hz_f, num, den);
         }
         return;
     }
@@ -103,7 +138,7 @@ void poll(SDL_Window* tv) {
         last_num = num;
         last_den = den;
         interp::set_display_hz(hz);
-        LOG("[display] mode %.3f Hz (%d/%d), period %lld ns", m ? m->refresh_rate : 0.f, num, den, (long long)ns);
+        LOG("[display] mode %.3f Hz (%d/%d), period %lld ns", hz_f, num, den, (long long)ns);
         gx2::set_display_vsync_ns(ns);
     }
 #endif
