@@ -8,6 +8,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ## [Unreleased]
 
 - Android-hosted LLVM toolchain packaging scripts, unit tests, and CI compiler cache action.
+- Android extractor packaging installs a verified `nsmbu-extract` as an APK native library for on-device setup.
 
 ## [0.7.0] - 2026-10-26
 
