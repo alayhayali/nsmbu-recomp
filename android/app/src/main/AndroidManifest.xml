@@ -31,6 +31,13 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/crash_share_paths" />
         </provider>
+        <provider android:name=".GameFilesProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="true" android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER" /></intent-filter>
+        </provider>
+        <meta-data android:name="android.game_mode_config" android:resource="@xml/game_mode_config" />
         <!-- lets simpleperf (NDK) profile the release build from adb shell -->
         <profileable android:shell="true" />
 

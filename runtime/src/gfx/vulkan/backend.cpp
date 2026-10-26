@@ -2344,6 +2344,7 @@ static void set_window_icons() {
 void init() {
 #ifdef __ANDROID__
   SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+  SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 #endif
 
   if (hidden_windows())

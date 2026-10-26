@@ -32,6 +32,7 @@
 #include "../gfx/renderer.h"
 #ifdef __ANDROID__
 #include "../gfx/vulkan/android_driver.h"
+#include "../platform/heat_guard.h"
 #endif
 #ifdef NSMBU_HAS_VULKAN
 #include "../gfx/vulkan/settings.h"
@@ -710,6 +711,24 @@ void tab_graphics() {
     } else if (m == 1 && f > 60) {
         note("Display refresh rate unknown: %d fps are drawn; frames beyond the display's rate are not shown.", f);
     }
+#ifdef __ANDROID__
+    {
+        const int hg = heat_guard::choice.load();
+        const bool editable = !heat_guard::env_override();
+        ImGui::TextUnformatted("Heat guard");
+        static const char* const hgNames[] = {"Normal", "Relaxed", "Off"};
+        for (int i = heat_guard::kNormal; i <= heat_guard::kOff; i++) {
+            ImGui::SameLine();
+            char label[24];
+            snprintf(label, sizeof label, "%s##heatguard", hgNames[i]);
+            if (radio(label, hg == i, editable)) post_changed([i] { heat_guard::choice = i; });
+        }
+        help(editable ? "When the device gets hot, the in-between frames pause and the game keeps 60 fps until it\n"
+                        "cools down. Relaxed and Off keep the higher rate longer, but the device may slow down or get\n"
+                        "warm. Off never pauses the in-between frames for heat."
+                      : "Set by NSMBU_HEAT_GUARD for this start.");
+    }
+#endif
     bool unc;
     if (check("Uncapped (debug: the game runs too fast)", gx2::uncapped(), &unc)) hostui::post([unc] { gx2::set_uncapped(unc); });
     help("Debug only, to see how many frames a second this computer can draw: no frame limit and no\n"

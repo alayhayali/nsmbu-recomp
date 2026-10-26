@@ -57,6 +57,7 @@
     <string name="setup_paused_heat">Paused: the Android device is too warm</string>
     <string name="setup_pc_route">Copy your game folder to the Android device over USB to play.</string>
     <string name="setup_play">Play</string>
+    <string name="setup_share_log">Share log</string>
     <string name="setup_preparing">Getting the tools ready…</string>
     <string name="setup_ready">Your game is ready</string>
     <string name="setup_ready_detail">From now on the app icon starts the game.</string>

@@ -19,6 +19,7 @@ SUITES = {
     "SetupPolicyTest": ["SetupPolicy.java"],
     "SetupPresentationTest": ["SetupPresentation.java"],
     "SetupRecoveryPolicyTest": ["SetupRecoveryPolicy.java"],
+    "org.nsmbrecomp.nsmbu.HeatGuardDeviceTest": ["HeatGuardDevice.java"],
     "org.nsmbrecomp.nsmbu.SystemExitReportTest": ["SystemExitReport.java", "CrashReportFiles.java"],
     "org.nsmbrecomp.nsmbu.SystemExitCollectorTest": ["stubs/android_exit", "SystemExitReport.java", "SystemExitReports.java"],
 }

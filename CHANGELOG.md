@@ -18,6 +18,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Android setup has no shader head-start stage: the Vulkan renderer keeps its own per-device pipeline cache, so the APK carries no shader template or Yaz0 decoder.
 - Android setup screen and foreground service: choose an extracted folder, a Cemu `.wua` or a `.wud`/`.wux` disc image with its keys and an optional 1.3.0 update folder, then watch, pause and resume setup; heat and battery pauses, recovery after reboot or app update, and the app icon opens setup until a game is ready.
 - Android game loads the phone-linked `libgame.so` with its extracted game folder, so release APKs no longer ship a bundled game library; crash reports add Android's own exit reason (low-memory kills, driver aborts) and skip deliberate stops by the save tools.
+- Android plays full screen into the display cutout, Back opens and closes Settings, setup has a Share log button for the game's log, the files app can browse the app's folders (the game itself stays read-only), and a Graphics > Heat guard setting (`NSMBU_HEAT_GUARD`) pauses the in-between frames when the device runs hot, later on fan-cooled handhelds.
 
 ## [0.7.0] - 2026-10-26
 

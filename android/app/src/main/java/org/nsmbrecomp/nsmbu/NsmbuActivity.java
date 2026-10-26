@@ -7,7 +7,10 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import android.util.Log;
 import android.view.Display;
+import android.view.View;
 import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
 
 import org.libsdl.app.SDLActivity;
@@ -56,7 +59,61 @@ public class NsmbuActivity extends SDLActivity {
         }
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (!mBrokenLibraries) {
+            try {
+                int heat = HeatGuardDevice.publish(android.os.Build.MANUFACTURER, android.os.Build.BRAND, android.os.Build.MODEL);
+                Log.i("nsmbu", "heat guard device: " + (heat == HeatGuardDevice.FAN_HANDHELD ? "handheld (fan)" : "phone"));
+            } catch (UnsatisfiedLinkError e) {
+                Log.w("nsmbu", "heat guard device class not passed: " + e.getMessage());
+            }
+        }
         if (savedInstanceState == null) CrashReports.offer(this);
+    }
+
+    static void syncSystemBars(Window w) {
+        WindowInsetsController c = w != null ? w.getInsetsController() : null;
+        if (c == null) return;
+        if (mFullscreenModeActive) {
+            c.hide(WindowInsets.Type.systemBars());
+            c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        } else {
+            c.show(WindowInsets.Type.systemBars());
+        }
+    }
+
+    private void applyFullScreen() {
+        Window w = getWindow();
+        if (w == null) return;
+        w.setDecorFitsSystemWindows(!mFullscreenModeActive);
+        if (mFullscreenModeActive) {
+            WindowManager.LayoutParams lp = w.getAttributes();
+            if (lp.layoutInDisplayCutoutMode != WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES &&
+                lp.layoutInDisplayCutoutMode != WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS) {
+                lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                w.setAttributes(lp);
+            }
+        }
+        syncSystemBars(w);
+    }
+
+    private final Runnable reapplyFullScreen = this::applyFullScreen;
+
+    @Override protected void onResume() {
+        super.onResume();
+        applyFullScreen();
+    }
+
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) applyFullScreen();
+    }
+
+    @Override public void onSystemUiVisibilityChange(int visibility) {
+        super.onSystemUiVisibilityChange(visibility);
+        final boolean barsShown = (visibility & View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) == 0;
+        View decor = getWindow().getDecorView();
+        decor.removeCallbacks(reapplyFullScreen);
+        decor.postDelayed(reapplyFullScreen, mFullscreenModeActive && barsShown && hasWindowFocus() ? 2000 : 0);
     }
 
     private static final int GPU_DRIVER_REQUEST = 4972;

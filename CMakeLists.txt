@@ -297,6 +297,10 @@ target_include_directories(game_languages_test PRIVATE runtime/src runtime/inclu
 target_compile_options(game_languages_test PRIVATE -UNDEBUG)
 target_link_libraries(game_languages_test PRIVATE Threads::Threads)
 
+add_executable(heat_guard_test runtime/test/heat_guard_test.cpp)
+target_include_directories(heat_guard_test PRIVATE runtime/src)
+target_compile_options(heat_guard_test PRIVATE -UNDEBUG)
+
 add_executable(interp_pacing_test runtime/test/interp_pacing_test.cpp)
 target_include_directories(interp_pacing_test PRIVATE runtime/src)
 target_compile_options(interp_pacing_test PRIVATE -UNDEBUG)
@@ -464,6 +468,7 @@ add_test(NAME screenshot COMMAND screenshot_test)
 add_test(NAME game_font COMMAND game_font_test)
 add_test(NAME rtl_text COMMAND rtl_text_test)
 add_test(NAME game_languages COMMAND game_languages_test ${CMAKE_BINARY_DIR}/game_languages_test_work)
+add_test(NAME heat_guard COMMAND heat_guard_test)
 add_test(NAME interp_pacing COMMAND interp_pacing_test)
 add_test(NAME quit_prompt COMMAND quit_prompt_test)
 add_test(NAME write_watch COMMAND write_watch_test)

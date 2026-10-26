@@ -4,6 +4,7 @@
 #ifdef __ANDROID__
 #include <android/performance_hint.h>
 #include <android/thermal.h>
+#include <jni.h>
 #include <sched.h>
 #include <time.h>
 #include <unistd.h>
@@ -20,6 +21,7 @@
 #include "core/runtime.h"
 
 #include "hooks/interp.h"
+#include "heat_guard.h"
 
 namespace perf_hint {
 namespace {
@@ -49,6 +51,22 @@ bool enabled() {
     return on;
 }
 
+heat_guard::Limits heat_guard_limits() {
+    const auto device = heat_guard::to_device(heat_guard::device.load());
+    const auto setting = heat_guard::to_setting(heat_guard::choice.load());
+    const heat_guard::Limits limits = heat_guard::limits(device, setting);
+    static int logged = -1;
+    if (logged != int(device) * 3 + int(setting)) {
+        logged = int(device) * 3 + int(setting);
+        if (limits.active)
+            LOG("[perf] heat guard: %s%s %.2f/%.2f", heat_guard::device_name(device),
+                setting == heat_guard::kRelaxed ? ", relaxed" : "", limits.pause, limits.resume);
+        else
+            LOG("[perf] heat guard: off (%s)", heat_guard::device_name(device));
+    }
+    return limits;
+}
+
 int64_t thread_cpu_ns() {
     timespec t{};
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t);
@@ -73,23 +91,26 @@ void adapt_60(int64_t now) {
     windowStart = now; windowCpu = cpu; frames = 0;
     const int mode = interp::mode();
     sync_choice();
+    heat_guard_limits();
     if (mode == 2) return;
     if (!g_chosen) {  // 60 fps not chosen
         slow = roomy = 0;
         return;
     }
-    // Heat: a phone near its thermal limit lowers every core's maximum clock (measured: 4.47 -> 1.96
-
     static bool hot = false;
     {
+        const heat_guard::Limits limits = heat_guard_limits();
         static AThermalManager* thermal = AThermal_acquireManager();
         const float headroom = thermal ? AThermal_getThermalHeadroom(thermal, 10) : NAN;
         static int tick = 0;
         if (++tick % 15 == 0) LOG("[perf] thermal headroom %.2f%s", headroom, hot ? " (60 fps paused)" : "");
-        if (!std::isnan(headroom)) {
-            if (!hot && headroom >= 0.72f) { hot = true; LOG("[perf] 60 fps paused: thermal headroom %.2f", headroom); }
-            else if (hot && headroom < 0.60f) { hot = false; LOG("[perf] 60 fps resumed: thermal headroom %.2f", headroom); }
+        const bool next = heat_guard::next_paused(hot, headroom, limits);
+        if (next && !hot) LOG("[perf] 60 fps paused: thermal headroom %.2f", headroom);
+        else if (!next && hot) {
+            if (limits.active) LOG("[perf] 60 fps resumed: thermal headroom %.2f", headroom);
+            else LOG("[perf] 60 fps resumed: heat guard off (thermal headroom %.2f)", headroom);
         }
+        hot = next;
     }
     if (hot) {
         if (mode == 1) set_mode_auto(0);
@@ -216,6 +237,10 @@ void frame_done() {
         APerformanceHint_reportActualWorkDuration(g_session, interval);
 }
 }  // namespace perf_hint
+
+extern "C" JNIEXPORT void JNICALL Java_org_nsmbrecomp_nsmbu_HeatGuardDevice_nativeSetDeviceClass(JNIEnv*, jclass, jint device) {
+    heat_guard::device = heat_guard::to_device(device);
+}
 
 #else
 namespace perf_hint {

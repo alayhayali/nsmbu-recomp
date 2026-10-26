@@ -113,6 +113,7 @@ public class SetupActivity extends Activity {
         detail.setPadding(0, gap / 2, 0, gap);
         layout.addView(detail);
         play = button(layout, getString(R.string.setup_play), () -> startActivity(new Intent(this, NsmbuActivity.class)));
+        button(layout, getString(R.string.setup_share_log), () -> LogShare.share(this));
         play.setTextSize(20);
         play.setTextColor(0xFFFFFFFF);
         play.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF0D5C8A));

@@ -347,9 +347,6 @@ static void log_file_sink(const char* s, size_t n) {
 static void start_log_file() {
     const char* e = env::LOG_FILE();
     if (e && !strcmp(e, "0")) return;
-#ifdef __ANDROID__
-    if (!e || !*e) return;
-#endif
     host::ensure_log_dir();
     const std::string dir = host::log_dir();
     std::string path = e && *e ? e : dir + "/nsmbu.log";

@@ -459,6 +459,13 @@ void handle_event(const SDL_Event& event){
   }return;
  }
  if(env::NO_HOST_INPUT()&&!test_event(event))return;
+#ifdef __ANDROID__
+ if((event.type==SDL_EVENT_KEY_DOWN||event.type==SDL_EVENT_KEY_UP)&&event.key.scancode==SDL_SCANCODE_AC_BACK){
+  if(overlay::is_open())overlay::key(kVK_Escape,event.type==SDL_EVENT_KEY_DOWN,event.key.repeat,0);
+  else if(event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&!text_entry::active())overlay::set_open(true);
+  return;
+ }
+#endif
  if(overlay_event(event))return;
 
  if(event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat){int code=keycode(event.key.scancode);if(code>=0&&screenshot::key_down(code))return;}
