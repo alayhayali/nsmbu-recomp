@@ -29,8 +29,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - The performance overlay shows the frame rate once, above the frame-time graph.
 - A 144 or 165 fps target keeps each new frame on its own time slot.
   In-between frames were sharing one vsync wait, then the next frame waited out the rest of a 60 fps slice.
-- On the world map, the last picture stays up at the target rate while the next one is drawn.
-  Those copies were arriving together, so the frame time jumped to a whole game step.
+- On the world map, a picture that finishes early is shown on the next time slot while the next one keeps drawing.
+  It was dropped, so the overlay sat near half the selected rate while the window title still counted every swap.
+- Sampler setup keeps the last few sampler states.
+  Each texture was building a text key and searching the full sampler map.
 - Recompiling Europe 1.3.0 accepts the error-viewer hook quietly.
   Europe chooses that viewer's layout from a language table.
   The hook still skips the viewer, so closing it cannot pause the game.

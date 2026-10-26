@@ -435,6 +435,7 @@ uint64_t frames_completed() { return g_frames_completed; }
 void cache_warm_step();
 
 void repeat_present() {
+    render::clear_deferred_present();
     if (!R.tv.tex) {
         render::hold_repeat();
         return;
@@ -444,8 +445,10 @@ void repeat_present() {
 }
 
 void swap() {
-    const bool bunch = interp::pacing::skip_bunched_present(
+    const int64_t delay = interp::pacing::bunched_present_delay_ns(
         interp::course_play_active(), interp::output_fps(), render::since_host_present_ns());
+    if (delay > 0) render::arm_deferred_present_in(delay);
+    else render::clear_deferred_present();
     cache_warm_step();
     static bool sync_gpu = env::SYNC_GPU() != nullptr;
     if (sync_gpu) wait_idle();
@@ -466,7 +469,7 @@ void swap() {
     }
     if (const char* dir = capture_begin_frame()) pendingCapture = dir;
     @autoreleasepool {
-        if (!bunch) {
+        if (delay <= 0) {
             present_screens();
             render::note_host_present();
         }

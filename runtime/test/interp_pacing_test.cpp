@@ -148,6 +148,10 @@ static void test_cap() {
     CHECK(!skip_bunched_present(false, 165, 5000000));
     CHECK(!skip_bunched_present(true, 165, 1000000));
     CHECK(!skip_bunched_present(false, 165, -1));
+    CHECK(bunched_present_delay_ns(false, 165, 1000000) == 1000000000LL / 165 - 1000000);
+    CHECK(bunched_present_delay_ns(false, 165, 5000000) == 0);
+    CHECK(bunched_present_delay_ns(true, 165, 1000000) == 0);
+    CHECK(bunched_present_delay_ns(false, 165, -1) == 0);
     CHECK(collapse_duplicate_vsync(false, true, 1'000'000));
     CHECK(!collapse_duplicate_vsync(true, true, 500'000));
     CHECK(!collapse_duplicate_vsync(false, true, 6'060'606));

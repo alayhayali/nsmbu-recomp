@@ -11,6 +11,8 @@ Run `nsmbu --help` for the command list.
 ## Docs
 
 Read `docs/automation.md` for playtests, `nsmbu scripted`, and replay inputs.
+World-map boots and other reused `NSMBU_PRESS` timelines are in the `shortcuts` skill.
+Add a new shortcut there when a command is worth running again.
 Read `docs/cli.md` for install, build/launch, and the short live control commands.
 Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable.
 Read `game/README.md` for dump folder layout.
@@ -29,11 +31,11 @@ nsmbu build
 `--list` prints JSON (`active`, `versions`, `loose_images`).
 `nsmbu game <id>` writes `game/active` and skips prompts.
 Add `--extract` to extract (or re-extract) the disc.
-Add `--recomp` to refresh `build/gen` from that dump’s RPX (needed when switching USA ↔ Europe).
+Add `--recomp` to refresh `build/gen` from that dump's RPX (needed when switching between USA and Europe).
 Then `nsmbu build` (and playtests / `nsmbu open`) use that dump.
 
 Issue playtests that use `Scene` open / apply-save need a `*-1.3.0` (or combo) dump.
-Use `*-base` only to check boot and title-version messaging; mods and those Scene paths are unsupported there.
+Use `*-base` only to check boot and title-version messaging, mods and those Scene paths are unsupported there.
 
 Other non-interactive forms:
 
@@ -76,7 +78,7 @@ Fields that are not ready are left off the line.
 
 `nsmbu open` / live look commands share one control socket.
 If `nsmbu open` refuses because a game is already running, run `nsmbu status` or `nsmbu close`.
-`nsmbu test` refuses to start while that live agent is up; playtest cases use their own sockets and may run several games at once.
+`nsmbu test` refuses to start while that live agent is up, playtest cases use their own sockets and may run several games at once.
 
 Do not run `nsmbu game … --recomp` or change `game/active` while a playtest or `nsmbu open` is in flight.
 Serialize dump switches: finish the test or close the game, then switch and rebuild.

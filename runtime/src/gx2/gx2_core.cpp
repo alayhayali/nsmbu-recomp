@@ -63,6 +63,22 @@ int64_t since_host_present_ns() {
 int64_t repeat_hold_ns() { return g_repeat_hold_ns.load(std::memory_order_relaxed); }
 void hold_repeat() { g_repeat_hold_ns.store(steady_ns() + 2000000, std::memory_order_relaxed); }
 uint64_t host_presents() { return g_host_presents.load(std::memory_order_relaxed); }
+
+static std::atomic<int64_t> g_deferred_present_ns{0};
+void arm_deferred_present_in(int64_t delay_ns) {
+    if (delay_ns <= 0) {
+        g_deferred_present_ns.store(0, std::memory_order_relaxed);
+        return;
+    }
+    g_deferred_present_ns.store(steady_ns() + delay_ns, std::memory_order_relaxed);
+}
+void clear_deferred_present() { g_deferred_present_ns.store(0, std::memory_order_relaxed); }
+bool deferred_present_due() {
+    const int64_t due = g_deferred_present_ns.load(std::memory_order_relaxed);
+    if (due <= 0 || steady_ns() < due) return false;
+    int64_t expected = due;
+    return g_deferred_present_ns.compare_exchange_strong(expected, 0, std::memory_order_relaxed);
+}
 }
 
 namespace gx2 {
@@ -490,6 +506,8 @@ void execute(const uint32* words, uint32 count) {
             }
             return;
         }
+        if (render::deferred_present_due() && render::g_backend && render::g_backend->repeat_present)
+            render::g_backend->repeat_present();
         execute_one(op, &words[i + 1], n);
         i += 1 + n;
     }

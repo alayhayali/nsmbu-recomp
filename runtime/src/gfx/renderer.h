@@ -98,6 +98,9 @@ inline void swap() { g_backend->swap(); }
 void note_host_present();
 int64_t last_host_present_ns();
 int64_t since_host_present_ns();
+void arm_deferred_present_in(int64_t delay_ns);
+void clear_deferred_present();
+bool deferred_present_due();
 int64_t repeat_hold_ns();
 void hold_repeat();
 uint64_t host_presents();

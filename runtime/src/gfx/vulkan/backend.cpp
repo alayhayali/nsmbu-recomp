@@ -1476,6 +1476,7 @@ static void service_screenshots() {
   }
 }
 void repeat_present() {
+  render::clear_deferred_present();
   Surface *tvScan = R.tv.scan && R.tv.scan->image ? R.tv.scan.get() : nullptr;
   if (!tvScan) {
     render::hold_repeat();
@@ -1509,8 +1510,10 @@ void repeat_present() {
   }
 }
 void swap() {
-  const bool bunch = interp::pacing::skip_bunched_present(
+  const int64_t delay = interp::pacing::bunched_present_delay_ns(
       interp::course_play_active(), interp::output_fps(), render::since_host_present_ns());
+  if (delay > 0) render::arm_deferred_present_in(delay);
+  else render::clear_deferred_present();
   g_presented = false;
   service_screenshots();
   service_captures();
@@ -1535,7 +1538,7 @@ void swap() {
 #endif
   set_present_plan(&plan);
 
-  if (bunch) set_overlay_draw(nullptr);
+  if (delay > 0) set_overlay_draw(nullptr);
   else set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
   take_screenshots(plan);
   bool sampled[2] = {};
@@ -1543,7 +1546,7 @@ void swap() {
     sampled[0] = record_signature(0, *drcScan, R.drc.srgb.load());
     sampled[1] = sampled[0] && tvScan && record_signature(1, *tvScan, R.tv.srgb.load());
   }
-  if (!bunch) {
+  if (delay <= 0) {
     present(R.tv);
     if (plan.drc_window)
       present(R.drc);
