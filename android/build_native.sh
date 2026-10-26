@@ -42,13 +42,12 @@ mkdir -p "$out"
     "-DCMAKE_TOOLCHAIN_FILE=$ndk/build/cmake/android.toolchain.cmake" "-DANDROID_ABI=$abi" \
     "-DANDROID_PLATFORM=android-$api" -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Release \
     -DNSMBU_BUNDLED_DEPS=ON "-DGEN_DIR=$gen" ${flags[@]+"${flags[@]}"} > "$out.log"
-"$cmake" --build "$out" -j "$jobs" --target nsmbu nsmbu_yaz0 >> "$out.log" 2>&1 || { tail -40 "$out.log"; exit 1; }
+"$cmake" --build "$out" -j "$jobs" --target nsmbu >> "$out.log" 2>&1 || { tail -40 "$out.log"; exit 1; }
 libs="$here/app/libs/$abi"
 mkdir -p "$libs"
 bin="$ndk/toolchains/llvm/prebuilt/$host"
 "$bin/bin/llvm-strip$exe" --strip-unneeded "$out/libmain.so" -o "$libs/libmain.so"
 cp "$(find "$out/_deps" -name libSDL3.so -print -quit)" "$libs/"
-"$bin/bin/llvm-strip$exe" --strip-unneeded "$out/libyaz0.so" -o "$libs/libyaz0.so"
 cp "$bin/sysroot/usr/lib/$target_triple/libc++_shared.so" "$libs/"
 
 if [ "$abi" = arm64-v8a ]; then

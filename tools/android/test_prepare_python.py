@@ -12,22 +12,24 @@ from prepare_python import write_entry, verified_download, runtime_fixture_sourc
 
 
 class ResourceIdentityTests(unittest.TestCase):
-    def test_optional_template_asset_missing_or_synthetic(self):
+    def test_shader_template_is_never_bundled(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / 'tools/recomp').mkdir(parents=True)
             template = root / 'tools/shadercache/template.bin'
-            self.assertNotIn(template, source_files(root))
             template.parent.mkdir(parents=True)
             template.write_bytes(b'synthetic asset selection only')
-            self.assertIn(template, source_files(root))
+            self.assertNotIn(template, source_files(root))
+        vulkan = (Path(__file__).resolve().parents[2] / 'runtime/src/gfx/vulkan/backend_table.cpp').read_text()
+        self.assertIn('case kFeatureShaderHeadStart: return false;', vulkan,
+                      'the Vulkan renderer now reads a head start: give Android setup a shader stage')
 
     def test_bundle_has_nsmbu_setup_sources_without_tests_or_fixtures(self):
         root = Path(__file__).resolve().parents[2]
         bundled = {path.relative_to(root).as_posix() for path in source_files(root)}
         for name in ("tools/installer/setup.py", "tools/installer/toolchains.json", "tools/recomp/recomp.py",
                      "tools/recomp/builds.py", "tools/recomp/hooks.txt", "tools/rpx/rpx.py",
-                     "tools/android/setup_adapter.py", "tools/shader/shaderprep.py"):
+                     "tools/android/setup_adapter.py", "tools/android/ondevice_setup.py"):
             if (root / name).is_file():
                 self.assertIn(name, bundled)
         self.assertFalse([name for name in bundled if Path(name).name.startswith("test_")])

@@ -10,11 +10,12 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Android-hosted LLVM toolchain packaging scripts, unit tests, and CI compiler cache action.
 - Android extractor packaging installs a verified `nsmbu-extract` as an APK native library for on-device setup.
 - Android runtime SDK packaging ships the runtime objects and link recipe (no game code) so the phone links its own `libgame.so`; the installer's link step accepts an alternate recipe.
-- `android/build_native.sh` builds any ABI (`ABI=x86_64` for emulators), falls back to placeholder game code, and ships `libyaz0.so` for on-device shader preparation; custom GPU drivers stay arm64-only.
+- `android/build_native.sh` builds any ABI (`ABI=x86_64` for emulators), and falls back to placeholder game code; custom GPU drivers stay arm64-only.
 - Embedded CPython for Android setup: `libnsmbupython` bridge with the `nsmbu_native` process runner, the NSMBU setup sources bundle, and verified resource caches.
 - Android setup adapter: durable, pausable extract (folder, archive, disc image, optional update folder), translate, compile and link checkpoints around the unchanged installer; the release guard rejects Android debug fixtures.
 - Android setup job runner (`ondevice_setup.py`): one locked worker per job that resumes from checkpoints, honours pause requests, reads disc and common keys from file descriptors into memory only, and leaves a library ready to activate; the installer reads key bytes without a file.
 - Android Gradle build takes the Python, toolchain and extractor packages, ABI and version as properties, signs releases from `NSMBU_KEYSTORE_*`, and refuses release builds whose Python bundle holds debug fixtures.
+- Android setup has no shader head-start stage: the Vulkan renderer keeps its own per-device pipeline cache, so the APK carries no shader template or Yaz0 decoder.
 
 ## [0.7.0] - 2026-10-26
 

@@ -63,8 +63,7 @@ def verified_download(url, archive, expected):
 
 
 ANDROID_SOURCES = ["tools/android/setup_adapter.py", "tools/android/native_process.py",
-                   "tools/android/ondevice_setup.py", "tools/android/shader_prebuild_android.py",
-                   "tools/installer/shader_prebuild.py", "tools/shader/shaderprep.py"]
+                   "tools/android/ondevice_setup.py"]
 FIXTURE_SOURCES = ["tools/android/debug_fixture_build.py", "tools/android/embedding_smoke.py",
                    "tools/recomp/android_fixture.py"]
 
@@ -87,9 +86,6 @@ def source_files(root, test_fixtures=False):
     source_paths += sorted(path for path in (recomp / "builds").glob("*.json") if path.is_file())
     if test_fixtures:
         source_paths += [root / name for name in FIXTURE_SOURCES]
-    template = root / "tools/shadercache/template.bin"
-    if template.is_file():
-        source_paths.append(template)
     return list(dict.fromkeys(source_paths))
 
 
