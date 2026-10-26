@@ -8,6 +8,7 @@
 namespace gfx {
 void swap();
 void repeat_present();
+void peek_z(const uint32_t*, uint32_t);
 void request_tv_dump(const std::string& path, int frames_ahead);
 void run_appkit_loop();
 uint64_t frame_count();
