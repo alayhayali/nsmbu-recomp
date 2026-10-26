@@ -33,6 +33,8 @@
 #ifdef __ANDROID__
 #include "../gfx/vulkan/android_driver.h"
 #include "../platform/heat_guard.h"
+#include "../platform/phone_rumble.h"
+#include "../platform/touch_buttons.h"
 #endif
 #ifdef NSMBU_HAS_VULKAN
 #include "../gfx/vulkan/settings.h"
@@ -1374,6 +1376,48 @@ void tab_controls() {
                              : "Controller vibration: this host does not drive controller motors yet.");
     ImGui::SameLine(0, 24);
     if (ImGui::Button("Reset to defaults")) input_map::set_player(p, input_map::Mapping::defaults());
+#ifdef __ANDROID__
+    heading("Touch controls");
+    if (check("On-screen controls", touch_buttons::controls.load(), &v))
+        hostui::post([v] {
+            touch_buttons::controls = v;
+            hostui::set("touchControls", v ? "1" : "0");
+        });
+    help("The buttons and sticks drawn over the game. The small button under the view button also shows or\n"
+         "hides them; hold it to move and resize them.");
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Touch buttons");
+    static const char* const touchNames[] = {"Automatic", "Always show", "Hide"};
+    for (int i = touch_buttons::Automatic; i <= touch_buttons::Hide; i++) {
+        ImGui::SameLine();
+        char label[32];
+        snprintf(label, sizeof label, "%s##touchbuttons", touchNames[i]);
+        if (radio(label, touch_buttons::mode.load() == i))
+            hostui::post([i] {
+                touch_buttons::mode = i;
+                hostui::set("touchButtons", std::to_string(i));
+            });
+    }
+    help("Automatic hides the touch buttons while a controller is connected; a touch in the top left\n"
+         "corner brings them back for a few seconds.");
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Phone vibration");
+    static const char* const phoneNames[] = {"Off", "Touch controls", "No controller motor"};
+    const bool phoneEditable = !phone_rumble::env_override();
+    for (int i = phone_rumble::kOff; i <= phone_rumble::kFallback; i++) {
+        ImGui::SameLine();
+        char label[40];
+        snprintf(label, sizeof label, "%s##phonerumble", phoneNames[i]);
+        if (radio(label, phone_rumble::choice.load() == i, phoneEditable))
+            hostui::post([i] {
+                phone_rumble::choice = static_cast<phone_rumble::Mode>(i);
+                hostui::set("phoneRumble", std::to_string(i));
+            });
+    }
+    help(phoneEditable ? "Touch controls: the phone vibrates while you play with the on-screen controls.\n"
+                         "No controller motor: also while the connected controller has no motor."
+                       : "Set by NSMBU_PHONE_RUMBLE for this start.");
+#endif
 }
 
 int saved_language() {
@@ -1745,6 +1789,11 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
             hostui::post([pro = v == "1"] { hostui::set_pro_controller(pro); });
 
         if (!rumble::env_override() && hostui::get("rumble", v)) rumble::set_enabled(v != "0");
+#ifdef __ANDROID__
+        if (hostui::get("touchButtons", v) && !v.empty()) touch_buttons::mode = std::clamp(atoi(v.c_str()), 0, 2);
+        if (hostui::get("touchControls", v)) touch_buttons::controls = v != "0";
+        if (!phone_rumble::env_override() && hostui::get("phoneRumble", v)) phone_rumble::choice = phone_rumble::parse(v.c_str());
+#endif
 
         if (!audio::mute_env_override() && hostui::get("audioMute", v)) audio::set_muted(v == "1");
         if (!audio::volume_env_override() && hostui::get("audioVolume", v) && !v.empty())

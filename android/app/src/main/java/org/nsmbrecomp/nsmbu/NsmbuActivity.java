@@ -8,10 +8,13 @@ import java.io.InputStream;
 import android.util.Log;
 import android.view.Display;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+
+import android.widget.RelativeLayout;
 
 import org.libsdl.app.SDLActivity;
 
@@ -19,6 +22,14 @@ import java.io.File;
 
 public class NsmbuActivity extends SDLActivity {
     private AndroidGame.Selection selection;
+    private volatile PhoneRumble phoneRumble;
+
+    public static void phoneRumble(int level) {
+        if (mSingleton instanceof NsmbuActivity) {
+            PhoneRumble output = ((NsmbuActivity) mSingleton).phoneRumble;
+            if (output != null) output.update(level);
+        }
+    }
 
     @Override
     protected String[] getLibraries() {
@@ -58,6 +69,7 @@ public class NsmbuActivity extends SDLActivity {
             Log.i("nsmbu", "game folder: " + new File(files, "game"));
         }
         super.onCreate(savedInstanceState);
+        phoneRumble = new PhoneRumble(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (!mBrokenLibraries) {
             try {
@@ -67,6 +79,9 @@ public class NsmbuActivity extends SDLActivity {
                 Log.w("nsmbu", "heat guard device class not passed: " + e.getMessage());
             }
         }
+        if (mLayout != null && !mBrokenLibraries)
+            mLayout.addView(new TouchControls(this), new RelativeLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         if (savedInstanceState == null) CrashReports.offer(this);
     }
 
@@ -100,7 +115,18 @@ public class NsmbuActivity extends SDLActivity {
 
     @Override protected void onResume() {
         super.onResume();
+        if (phoneRumble != null) phoneRumble.setActive(true);
         applyFullScreen();
+    }
+
+    @Override protected void onPause() {
+        if (phoneRumble != null) phoneRumble.setActive(false);
+        super.onPause();
+    }
+
+    @Override protected void onDestroy() {
+        if (phoneRumble != null) phoneRumble.setActive(false);
+        super.onDestroy();
     }
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {

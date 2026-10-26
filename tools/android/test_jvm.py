@@ -20,6 +20,9 @@ SUITES = {
     "SetupPresentationTest": ["SetupPresentation.java"],
     "SetupRecoveryPolicyTest": ["SetupRecoveryPolicy.java"],
     "org.nsmbrecomp.nsmbu.HeatGuardDeviceTest": ["HeatGuardDevice.java"],
+    "org.nsmbrecomp.nsmbu.TouchLayoutTest": ["TouchLayout.java"],
+    "org.nsmbrecomp.nsmbu.ControllerHintPolicyTest": ["ControllerHintPolicy.java"],
+    "org.nsmbrecomp.nsmbu.PhoneRumbleTest": ["stubs/phone_rumble", "PhoneRumble.java"],
     "org.nsmbrecomp.nsmbu.SystemExitReportTest": ["SystemExitReport.java", "CrashReportFiles.java"],
     "org.nsmbrecomp.nsmbu.SystemExitCollectorTest": ["stubs/android_exit", "SystemExitReport.java", "SystemExitReports.java"],
 }

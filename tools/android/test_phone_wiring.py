@@ -27,6 +27,18 @@ class PhoneWiring(unittest.TestCase):
         self.assertIn('return config_dir() + "/logs";', text("runtime/src/platform/host.h"))
         self.assertNotRegex(main, r"#ifdef __ANDROID__\s*\n\s*if \(!e \|\| !\*e\) return;")
 
+    def test_touch_controls_jni_matches_the_java_natives(self):
+        native = text("runtime/src/platform/touch_pad.cpp")
+        natives = re.findall(r"private static native \w+ (\w+)\(", text(JAVA / "TouchControls.java"))
+        self.assertEqual(sorted(natives), sorted(re.findall(r"Java_org_nsmbrecomp_nsmbu_TouchControls_(\w+)\(", native)))
+        self.assertIn("runtime/src/platform/touch_pad.cpp", text("CMakeLists.txt"))
+        self.assertIn("new TouchControls(this)", text(JAVA / "NsmbuActivity.java"))
+
+    def test_phone_rumble_reaches_the_activity(self):
+        self.assertIn('GetStaticMethodID(cls,"phoneRumble","(I)V")', text("runtime/src/platform/input_sdl.cpp"))
+        self.assertIn("public static void phoneRumble(int level)", text(JAVA / "NsmbuActivity.java"))
+        self.assertIn('ENV(PHONE_RUMBLE, "NSMBU_PHONE_RUMBLE")', text("runtime/src/core/env.h"))
+
     def test_back_opens_settings(self):
         self.assertIn("SDL_SCANCODE_AC_BACK", text("runtime/src/platform/input_sdl.cpp"))
         self.assertIn("SDL_HINT_ANDROID_TRAP_BACK_BUTTON", text("runtime/src/gfx/vulkan/backend.cpp"))

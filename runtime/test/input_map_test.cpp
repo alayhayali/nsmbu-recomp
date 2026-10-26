@@ -10,6 +10,7 @@
 #include <string>
 
 #include "input/input_map.h"
+#include "platform/touch_face.h"
 
 #include "core/env.h"
 using namespace input_map;
@@ -340,8 +341,34 @@ static void test_conflict_helpers() {
     for (int p = 1; p < kPadCount; p++) CHECK(*pad_short_label(p));
 }
 
+static void test_touch_face() {
+    const uint32_t wiiu[4] = {input::kA, input::kB, input::kX, input::kY};
+    for (FaceLayout layout : {FaceLayout::kPosition, FaceLayout::kLabels}) {
+        Mapping m = Mapping::defaults();
+        apply_face_layout(m, layout);
+        for (int i = 0; i < 4; i++) {
+            const uint32_t sdl = touch_face::buttons(1u << i, m);
+            float v[kPadCount] = {};
+            for (int p = 0; p < kPadCount; p++)
+                if (touch_face::sdl_button(p) >= 0 && (sdl >> touch_face::sdl_button(p) & 1)) v[p] = 1;
+            CHECK(controller_state(m, v).buttons == wiiu[i]);
+        }
+    }
+    Mapping m = Mapping::defaults();
+    CHECK(touch_face::buttons(1, m) == 1u << 1);
+    apply_face_layout(m, FaceLayout::kLabels);
+    CHECK(touch_face::buttons(1, m) == 1u << 0);
+    m.pad[kA] = kPadLT;
+    CHECK(touch_face::buttons(1, m) == 0);
+    m.pad[kB] = kPadNone;
+    CHECK(touch_face::buttons(2, m) == 0);
+    CHECK(touch_face::buttons(0, Mapping::defaults()) == 0);
+    CHECK(touch_face::sdl_button(kPadDRight) == 14 && touch_face::sdl_button(kPadLSUp) == -1);
+}
+
 int main() {
     test_conflict_helpers();
+    test_touch_face();
     test_defaults();
     test_face_layout();
     test_names();

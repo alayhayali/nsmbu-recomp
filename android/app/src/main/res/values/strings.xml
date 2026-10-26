@@ -58,6 +58,14 @@
     <string name="setup_pc_route">Copy your game folder to the Android device over USB to play.</string>
     <string name="setup_play">Play</string>
     <string name="setup_share_log">Share log</string>
+    <string name="controller_settings_hint">Press Back to open Settings</string>
+    <string name="controller_settings_hint_home">Press Home on the controller or Back to open Settings</string>
+    <string name="touch_layout_access">Touch controls. Hold the controller button to edit the layout.</string>
+    <string name="touch_layout_hint">Drag a control to move it. Select one, then change its size.</string>
+    <string name="touch_layout_smaller">Size −</string>
+    <string name="touch_layout_larger">Size +</string>
+    <string name="touch_layout_reset">Reset</string>
+    <string name="touch_layout_done">Done</string>
     <string name="setup_preparing">Getting the tools ready…</string>
     <string name="setup_ready">Your game is ready</string>
     <string name="setup_ready_detail">From now on the app icon starts the game.</string>
