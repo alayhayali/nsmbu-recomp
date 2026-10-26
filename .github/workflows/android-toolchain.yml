@@ -13,6 +13,8 @@ on:
       - tools/release/guard.py
       - android/app/src/main/**
       - .github/workflows/android-toolchain.yml
+      - .github/workflows/release.yml
+      - runtime/src/platform/**
       - .github/actions/android-compiler/**
   push:
     branches: [main]
@@ -26,6 +28,8 @@ on:
       - tools/release/guard.py
       - android/app/src/main/**
       - .github/workflows/android-toolchain.yml
+      - .github/workflows/release.yml
+      - runtime/src/platform/**
       - .github/actions/android-compiler/**
 
 jobs:

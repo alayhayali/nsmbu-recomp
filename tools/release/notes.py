@@ -30,20 +30,24 @@ def main():
     new = changelog_version(readme, version)
     print("""**New Super Mario Bros. U, native PC port, %s**
 
-The Wii U game rebuilt as a native program for Windows, macOS and Linux. The download has no game
-files, no game code and no keys: the installer builds the game on your machine from your own copy.
+The Wii U game rebuilt as a native program for Windows, macOS, Linux and Android. The download has no
+game files, no game code and no keys: the installer builds the game on your machine from your own copy.
 
 | System | Start |
 | --- | --- |
 | Windows 10/11, x86-64, Vulkan | `NSMBU.exe` |
 | macOS 14+, Apple Silicon | `NSMBU.app` |
 | Linux, x86-64 or arm64, glibc 2.35+, Vulkan | `nsmbu-launcher` |
+| Android 13+, arm64, Vulkan | `android-arm64.apk` |
 
 Download the zip for your system, unzip it anywhere and start that file. The first start builds the
 game once and can take a few minutes; later starts go straight to the game. The game, saves and
 settings stay in the folder. On Linux you can also use the single-file `.AppImage` without
 unzipping (Steam Deck included); it keeps them in `~/.local/share/nsmbu` and `~/.config/nsmbu`
 instead (Ubuntu 24.04+: `libfuse2t64`, or `--appimage-extract-and-run`).
+
+On Android, install the `android-arm64.apk` (`android-x86_64` is for emulators and Chromebooks), open
+the app and choose your game: it builds the game on the phone once, which takes a few minutes.
 
 The installer takes a `.wux`/`.wud` disc image with its disc and Wii U common keys, a Cemu `.wua`
 archive (no keys needed), or an extracted game folder. Supported regions and versions are in the

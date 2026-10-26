@@ -97,6 +97,7 @@ Done when the version branch is merged into `main`, local verify passed on `main
 | --- | --- |
 | version | Sets `VERSION` from the tag |
 | macos / windows / linux-x86_64 / linux-aarch64 | Build, package, unit tests |
-| publish | Upload zips / AppImage and `gh release create` |
+| android-arm64 / android-x86_64 | Signed setup APK without game code (`ANDROID_KEYSTORE_B64` secrets) |
+| publish | Upload zips / AppImage / APKs and `gh release create` |
 
 Any failed package job skips publish.
