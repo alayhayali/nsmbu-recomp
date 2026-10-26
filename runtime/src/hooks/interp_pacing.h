@@ -114,16 +114,16 @@ inline int present_granule(int present_cap) {
 }
 
 inline int64_t repeat_period_ns(bool course_play, int output_fps) {
-    if (course_play) return 0;
-    const int fps = valid_fps(output_fps);
-    if (fps <= 60) return 0;
-    return present_period_ns(fps);
+    (void)course_play;
+    (void)output_fps;
+    return 0;
 }
 
 inline int64_t bunched_present_delay_ns(bool course_play, int output_fps, int64_t since_ns) {
-    const int64_t period = repeat_period_ns(course_play, output_fps);
-    if (period <= 0 || since_ns < 0 || since_ns * 2 >= period) return 0;
-    return period - since_ns;
+    (void)course_play;
+    (void)output_fps;
+    (void)since_ns;
+    return 0;
 }
 inline bool skip_bunched_present(bool course_play, int output_fps, int64_t since_ns) {
     return bunched_present_delay_ns(course_play, output_fps, since_ns) > 0;

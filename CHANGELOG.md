@@ -22,6 +22,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Install and recomp tools find generated code and hook lists when the install path contains square brackets.
 - High present caps keep their cadence when a frame runs late, so the world map no longer drifts well below the selected rate.
 - Logic presents at high frame rates draw the finished step (blend t = 1) instead of the open-step leftover, so Mario no longer jitters while running at 120/165.
+- World-map presents no longer defer or idle-repeat against the present-cap wake schedule, so the overworld can hold the same host frame rate as courses.
 
 ## [0.7.0] - 2026-10-26
 

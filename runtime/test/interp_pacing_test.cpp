@@ -96,10 +96,11 @@ static void test_cap() {
     CHECK(present_granule(60) == 4);
     CHECK(present_granule(120) == 2);
     CHECK(present_granule(240) == 1);
-    CHECK(repeat_period_ns(false, 165) == 1'000'000'000LL / 165);
+    CHECK(repeat_period_ns(false, 165) == 0);
     CHECK(repeat_period_ns(true, 165) == 0);
-    CHECK(skip_bunched_present(false, 165, 1000000));
+    CHECK(!skip_bunched_present(false, 165, 1000000));
     CHECK(!skip_bunched_present(false, 165, 5000000));
+    CHECK(bunched_present_delay_ns(false, 165, 1000000) == 0);
     CHECK(collapse_duplicate_vsync(false, true, 1'000'000));
     CHECK(!collapse_duplicate_vsync(true, true, 500'000));
     const int64_t period = present_period_ns(165);
