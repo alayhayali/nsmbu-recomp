@@ -21,6 +21,8 @@ Checking builds (set to 1): NSMBU_RECOMP_CR_CHECK (a dropped CR bit that is read
 NSMBU_RECOMP_LEAF_POISON (scratch registers get garbage at returns, and locals that were not
 reloaded after a call), NSMBU_RECOMP_SINGLE_CHECK (an operand left unrounded that round25 would
 change is logged).
+Hooked functions and functions with instruction-level sites keep the plain c->r[N] form: hook_X /
+site_X read and change the Cpu mid-function.
 
 Output:
   OUTDIR/funcs.h         prototypes of every recompiled function and import
@@ -33,10 +35,12 @@ Output:
 import argparse
 import bisect
 import collections
+import io
 import json
 import os
 import re
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(__file__))
 import builds as game_builds
@@ -48,7 +52,27 @@ import singleflow
 import crlive
 import leaflocal
 import names
-import time
+
+class _Output(io.StringIO):
+    """An output file that is written only when its text changed: a run on the same game and tools leaves
+    every file (and its time) as it was, so the build does not compile the game code again."""
+
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+
+    def __exit__(self, *exc):
+        if exc[0] is None:
+            text = self.getvalue()
+            try:
+                with open(self.path, encoding="utf-8") as old:
+                    same = old.read() == text
+            except (OSError, UnicodeDecodeError):
+                same = False
+            if not same:
+                with open(self.path, "w", encoding="utf-8") as f:
+                    f.write(text)
+        return super().__exit__(*exc)
 
 CRLIVE = ppc2c.pass_on("NSMBU_RECOMP_CRLIVE")
 CR_CHECK = os.environ.get("NSMBU_RECOMP_CR_CHECK", "0") == "1"
@@ -409,13 +433,16 @@ class Recompiler:
                 self.unhandled[str(e)] += 1
                 s = "ppc_unimplemented(c, 0x%08Xu, 0x%08Xu);" % (a, w)
             body.append((a, w, s))
-        if CRLIVE:
+        hooked = start in self.hooks
+        plain = hooked or any(a in self.sites for a, _, _ in body)
+        if CRLIVE and not plain:
             live_after, fields = crlive.analyze(body, self.cur_start, self.cur_end, self.p.jump_tables, branch_target,
                                                 self.sites)
             body = [(a, w, crlive.rewrite(s, fields[i], live_after[i], CR_CHECK, a)) for i, (a, w, s) in enumerate(body)]
             self.cr_stats[0] += sum(1 for f in fields if f is not None)
             self.cr_stats[1] += sum(1 for i, f in enumerate(fields) if f is not None and (live_after[i] >> (4 * f)) & 0xF == 0)
-        hooked = start in self.hooks
+        elif CRLIVE and CR_CHECK:
+            body = [(a, w, crlive.rewrite(s, None, 0, True, a)) for a, w, s in body]
         canon = self.sym(start)
         fname = "f_%08X_orig" % canon if hooked else "f_%08X" % canon
         out = []
@@ -436,25 +463,22 @@ class Recompiler:
                     start, " ".join(icases)))
         tail_wb = ""
         stmts = [s for _, _, s in body]
-        sites_done = False
-        if LEAF and not hooked and not any(a in self.sites for a, _, _ in body) and leaflocal.eligible(stmts):
+        if LEAF and not plain and leaflocal.eligible(stmts):
             prologue, stmts, tail_wb = leaflocal.transform(stmts)
             body = [(a, w, s) for (a, w, _), s in zip(body, stmts)]
             out += ["    %s" % p for p in prologue]
             self.leaf_count += 1
-        elif NONLEAF and not hooked:
-            with_sites = [("site_%08X(c); " % self.sym(a) if a in self.sites else "") + s for a, _, s in body]
-            done = leaflocal.transform_nonleaf(with_sites, [a for a, _, _ in body])
+        elif NONLEAF and not plain:
+            done = leaflocal.transform_nonleaf(stmts, [a for a, _, _ in body])
             if done:
                 prologue, stmts, tail_wb = done
                 body = [(a, w, s) for (a, w, _), s in zip(body, stmts)]
                 out += ["    %s" % p for p in prologue]
                 self.nonleaf_count += 1
-                sites_done = True
         for a, w, s in body:
             if a in self.labels:
                 out.append("L_%08X: ;" % a)
-            if a in self.sites and not sites_done:
+            if a in self.sites:
                 out.append("    site_%08X(c);" % self.sym(a))
             out.append("    %s /* %08X: %08X */" % (s, a, w))
         if self.cur_end < self.p.text_hi:
@@ -508,7 +532,7 @@ class Recompiler:
         written = set()
         for i, funcs in enumerate(files):
             name = "code_%03d.c" % i
-            with open(os.path.join(outdir, name), "w") as f:
+            with _Output(os.path.join(outdir, name)) as f:
                 f.write('#include "funcs.h"\n\n')
                 f.write("\n\n".join(funcs))
                 f.write("\n")
@@ -539,7 +563,7 @@ class Recompiler:
             label = self.names.get(canon)
             return " /* %s */" % label if label else ""
 
-        with open(os.path.join(outdir, "funcs.h"), "w") as f:
+        with _Output(os.path.join(outdir, "funcs.h")) as f:
             gqr = "#define PPC_GQR_STATIC_FLOAT 0x%02X\n" % self.static_float_gqrs() if GQR_STATIC else ""
             f.write('#pragma once\n%s%s#include "ppc.h"\n\n' % ("#define PPC_CR_CHECK 1\n" if CR_CHECK else "", gqr))
             for e in self.sorted_entries:
@@ -554,7 +578,7 @@ class Recompiler:
             f.write("\n/* imported functions */\n")
             for s in func_slots:
                 f.write("void %s(Cpu* c);\n" % self.imp_name(s))
-        with open(os.path.join(outdir, "table.c"), "w") as f:
+        with _Output(os.path.join(outdir, "table.c")) as f:
             f.write('#include "funcs.h"\n#include "recomp_table.h"\n#include "guest_addr.h"\n\n')
             f.write("const RecompEntry g_recomp_funcs[] = {\n")
             for e in self.sorted_entries:
@@ -571,13 +595,13 @@ class Recompiler:
             f.write("};\nconst unsigned g_recomp_import_count = %d;\n" % len(self.imports))
             f.write("const uint32_t g_recomp_entry_point = 0x%08Xu;\n" % self.p.entry)
             self.write_build_map(f)
-        with open(os.path.join(outdir, "imports.c"), "w") as f:
+        with _Output(os.path.join(outdir, "imports.c")) as f:
             f.write('#include "funcs.h"\n\nvoid hle_unimplemented(Cpu* c, const char* lib, const char* name);\n\n')
             for s in func_slots:
                 lib, name, _ = self.imports[s]
                 f.write('__attribute__((weak)) void %s(Cpu* c) { hle_unimplemented(c, "%s", "%s"); }\n' % (
                     self.imp_name(s), lib, name))
-        with open(os.path.join(outdir, "imports.json"), "w") as f:
+        with _Output(os.path.join(outdir, "imports.json")) as f:
             json.dump([{"slot": s, "lib": l, "name": n, "kind": k} for s, (l, n, k) in sorted(self.imports.items())], f, indent=1)
 
     def write_build_map(self, f):
@@ -602,7 +626,7 @@ class Recompiler:
         f.write("const unsigned g_guest_changed_code_count = %d;\n" % len(b.differing))
 
     def write_report(self, outdir, nfiles):
-        with open(os.path.join(outdir, "report.txt"), "w") as f:
+        with _Output(os.path.join(outdir, "report.txt")) as f:
             f.write("build: %s (title %s)\n" % (self.build.name, self.build.title_id))
             for name, only in self.skipped_hooks:
                 f.write("hooks skipped: %s (only for the %s build)\n" % (name, only))

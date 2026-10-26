@@ -22,7 +22,7 @@ site_def = re.compile(r"\bsite_([0-9A-F]{8})\s*\(")
 
 def runtime_texts():
     for ext in ("c", "cpp", "h", "mm"):
-        for path in glob.glob(os.path.join(root, "runtime", "**", "*." + ext), recursive=True):
+        for path in glob.glob(os.path.join(glob.escape(root), "runtime", "**", "*." + ext), recursive=True):
             if path.endswith("nsmbu_guest_stubs.c"):
                 continue
             with open(path, errors="replace") as f:

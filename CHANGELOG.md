@@ -11,6 +11,15 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - `nsmbu installer --no-open` packages the installer and returns without opening setup.
 
+### Changed
+
+- Recompiling an unchanged game no longer rewrites every generated C file, so a normal rebuild skips guest code that did not change.
+- Hooked game functions and instruction-level hook sites keep plain register form in the recompiled C (the runtime hook can read and write the Cpu mid-function).
+
+### Fixed
+
+- Install and recomp tools find generated code and hook lists when the install path contains square brackets.
+
 ## [0.7.0] - 2026-10-26
 
 ### Added

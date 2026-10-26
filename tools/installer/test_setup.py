@@ -655,6 +655,24 @@ class ShaderWarm(unittest.TestCase):
                 with self.assertRaisesRegex(setup.SetupError, "shader precompile"):
                     setup.precompile_shaders(exe, d, d)
 
+class BracketsInInstallFolder(unittest.TestCase):
+    def test_recompile_counts_generated_code_in_a_folder_with_brackets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            gen_dir = os.path.join(temporary, "NSMBU [WiiU]", "data", "work", "gen")
+
+            class FakeProc:
+                def __init__(self):
+                    self.stdout = iter([])
+
+                def wait(self):
+                    os.makedirs(gen_dir, exist_ok=True)
+                    for name in ("code_000.c", "code_001.c"):
+                        open(os.path.join(gen_dir, name), "w").close()
+                    return 0
+
+            with mock.patch.object(setup.subprocess, "Popen", return_value=FakeProc()):
+                self.assertEqual(setup.recompile(os.path.join(temporary, "game"), gen_dir), 2)
+
 class NonInteractive(unittest.TestCase):
     def test_ui_refuses_to_prompt(self):
         ui = setup.UI(False)
