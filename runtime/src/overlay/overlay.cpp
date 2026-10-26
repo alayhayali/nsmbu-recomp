@@ -1526,7 +1526,6 @@ void perf_window(bool menu_open) {
         ImGui::TextUnformatted(device.c_str());
         ImGui::TextUnformatted(metrics.c_str());
         ImGui::PlotLines("##ft", U.frame_ms, 120, U.frame_i, nullptr, 0.0f, 50.0f, ImVec2(220, 36));
-        ImGui::TextDisabled("%s  %gx  %s", render::api_name(render::active()), hostui::res_scale(), interp::mode_name());
         rprof::Breakdown b;
         if (perf_detail_shown() && rprof::latest_breakdown(b)) {
             ImGui::SeparatorText("Lag breakdown");

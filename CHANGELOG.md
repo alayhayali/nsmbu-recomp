@@ -11,8 +11,9 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - Decomp notes for the sead / ApplicationFramework frame loop, and a plan to drive present rate from wall-clock time while keeping 60 logic steps/s.
 - Settings → Saves shows a short preview of the real game save (files, world, lives, play time) and opens that saves folder (not save states) from the top of the tab.
-- The performance overlay shows average fps and logic steps/s, GPU/device, Game/Render CPU, and GPU interval, with a footer for renderer, scale, and frame mode.
+- The performance overlay shows average fps and logic steps/s, GPU/device, Game/Render CPU, and GPU interval.
   Reset also clears those averages; Copy performance report includes them.
+  The overlay no longer shows the renderer, scale, and frame-mode footer under the graph.
 
 ### Changed
 
