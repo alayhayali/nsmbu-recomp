@@ -1454,7 +1454,6 @@ void perf_window(bool menu_open) {
             ImGui::Text("%s %.1f C", name.c_str(), value);
 #endif
         ImGui::PlotLines("##ft", U.frame_ms, 120, U.frame_i, nullptr, 0.0f, 50.0f, ImVec2(220, 36));
-        ImGui::TextDisabled("%.0f fps", U.fps);
         rprof::Breakdown b;
         if (perf_detail_shown() && rprof::latest_breakdown(b)) {
             ImGui::SeparatorText("Lag breakdown");
