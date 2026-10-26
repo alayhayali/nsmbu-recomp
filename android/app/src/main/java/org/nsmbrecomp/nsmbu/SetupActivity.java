@@ -48,14 +48,17 @@ public class SetupActivity extends Activity {
     private static final int FOLDER = 10, ARCHIVE = 11, IMAGE = 12, DISC = 13, COMMON = 14, RESTORE = 15, UPDATE = 16;
     static final String EXTRA_SHOW_SETUP = "org.nsmbrecomp.nsmbu.SHOW_SETUP";
 
+    private boolean pcGame() {
+        File external = getExternalFilesDir(null);
+        return external != null && new File(external, "game/code/red-pro2.rpx").isFile() &&
+            new File(getApplicationInfo().nativeLibraryDir, "libmain.so").isFile();
+    }
+
     /** A game is ready: an active phone build that needs no rebuild and no setup in progress, or the
      *  PC route's game folder. */
     private boolean readyToPlay() {
         try {
-            if (!phoneSetup) {
-                File external = getExternalFilesDir(null);
-                return external != null && new File(external, "game/code/red-pro2.rpx").isFile();
-            }
+            if (!phoneSetup) return pcGame();
             if (!new File(AndroidGame.storage(this), "active.json").isFile() || AndroidGame.needsRebuild(this))
                 return false;
             File job = SetupStore.current(this);
@@ -490,9 +493,8 @@ public class SetupActivity extends Activity {
                 resume.setEnabled(phoneSetup && job != null && (!needsKeys || (discReady && commonReady)));
                 pause.setEnabled(phoneSetup && job != null);
                 for (Button picker : pickers) picker.setEnabled(phoneSetup && replaceable(job) && !checkingFolder);
-                File external = getExternalFilesDir(null);
                 play.setEnabled(new File(AndroidGame.storage(SetupActivity.this), "active.json").isFile() ||
-                    (external != null && new File(external, "game/code/red-pro2.rpx").isFile()));
+                    pcGame());
                 String hostName = hostState == null ? (job == null ? "" : "selected") : hostState.optString("state");
                 boolean working = hostName.equals("activating") || hostName.equals("importing") || hostName.equals("preparing") || hostName.equals("running");
                 show(play, play.isEnabled() && !working);

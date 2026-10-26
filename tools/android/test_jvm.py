@@ -19,7 +19,17 @@ SUITES = {
     "SetupPolicyTest": ["SetupPolicy.java"],
     "SetupPresentationTest": ["SetupPresentation.java"],
     "SetupRecoveryPolicyTest": ["SetupRecoveryPolicy.java"],
+    "org.nsmbrecomp.nsmbu.SystemExitReportTest": ["SystemExitReport.java", "CrashReportFiles.java"],
+    "org.nsmbrecomp.nsmbu.SystemExitCollectorTest": ["stubs/android_exit", "SystemExitReport.java", "SystemExitReports.java"],
 }
+
+
+def source_paths(names):
+    """App sources by file name; a "stubs/..." name stands for every Java file of that test stub tree."""
+    paths = []
+    for name in names:
+        paths += sorted(str(path) for path in (TESTS / name).rglob("*.java")) if name.startswith("stubs/") else [str(APP / name)]
+    return paths
 
 
 class JvmTests(unittest.TestCase):
@@ -28,8 +38,9 @@ class JvmTests(unittest.TestCase):
             self.skipTest("JDK required")
         test = TESTS / (main.rsplit(".", 1)[-1] + ".java")
         with tempfile.TemporaryDirectory() as classes:
-            subprocess.run(["javac", "-d", classes] + [str(APP / name) for name in sources] + [str(test)],
-                           check=True, capture_output=True, text=True)
+            compiled = subprocess.run(["javac", "-d", classes] + source_paths(sources) + [str(test)],
+                                      capture_output=True, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
             result = subprocess.run(["java", "-cp", classes, main], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
