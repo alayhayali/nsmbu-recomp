@@ -132,5 +132,11 @@ inline bool collapse_duplicate_vsync(bool presented_since_wake, bool wake_valid,
     return since_wake_ns < 2'000'000;
 }
 
+inline int64_t absorb_late_wake(int64_t last_ns, int64_t now_ns, int64_t period_ns) {
+    if (period_ns <= 0 || now_ns <= last_ns) return last_ns;
+    const int64_t slots = (now_ns - last_ns) / period_ns;
+    return last_ns + slots * period_ns;
+}
+
 }
 }

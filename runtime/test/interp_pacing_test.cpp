@@ -102,6 +102,17 @@ static void test_cap() {
     CHECK(!skip_bunched_present(false, 165, 5000000));
     CHECK(collapse_duplicate_vsync(false, true, 1'000'000));
     CHECK(!collapse_duplicate_vsync(true, true, 500'000));
+    const int64_t period = present_period_ns(165);
+    CHECK(absorb_late_wake(0, period / 2, period) == 0);
+    CHECK(absorb_late_wake(0, period + period / 3, period) == period);
+    CHECK(absorb_late_wake(0, period * 3 + 100, period) == period * 3);
+    int64_t last = 0;
+    for (int i = 0; i < 165; i++) {
+        const int64_t now = last + period + period / 10;
+        last = absorb_late_wake(last, now, period);
+        CHECK(last % period == 0);
+    }
+    CHECK(last == period * 165);
 }
 
 static void test_accumulator() {

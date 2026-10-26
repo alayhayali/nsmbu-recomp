@@ -20,6 +20,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ### Fixed
 
 - Install and recomp tools find generated code and hook lists when the install path contains square brackets.
+- High present caps keep their cadence when a frame runs late, so the world map no longer drifts well below the selected rate.
 
 ## [0.7.0] - 2026-10-26
 
