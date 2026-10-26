@@ -26,7 +26,7 @@ Initialize the LuaJIT submodule before the first build: `git submodule update --
 | `nsmbu launch --trace` | Start with `--trace` for HLE logging |
 | `nsmbu run` | Run `nsmbu build`, then `nsmbu launch` |
 | `nsmbu run 3` | Same, and load save slot 3 |
-| `nsmbu installer [--version VERSION]` | Build this Linux host's GitHub Release zip folder at `build/installer`, then open setup |
+| `nsmbu installer [--version VERSION] [--no-open]` | Build this Linux host's GitHub Release zip folder at `build/installer`, then open setup; `--no-open` returns after the package is ready |
 | `nsmbu recomp` | Translate `game/code/red-pro2.rpx` into `build/gen` |
 | `nsmbu launch --gdb` | Start the game under gdb |
 | `nsmbu launch --lldb` | Start the game under lldb |

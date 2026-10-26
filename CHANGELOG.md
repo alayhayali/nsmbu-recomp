@@ -7,6 +7,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Added
+
+- `nsmbu installer --no-open` packages the installer and returns without opening setup.
+
 ## [0.7.0] - 2026-10-26
 
 ### Added
