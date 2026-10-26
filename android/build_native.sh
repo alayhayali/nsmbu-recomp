@@ -1,5 +1,4 @@
-
-
+#!/usr/bin/env bash
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
@@ -13,6 +12,12 @@ sdk="${ANDROID_SDK:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$default_sdk}}}"
 ndk="$sdk/ndk/${NDK_VERSION:-30.0.16248370}"
 [ -f "$ndk/build/cmake/android.toolchain.cmake" ] || { echo "no NDK at $ndk (sdkmanager --install \"ndk;${NDK_VERSION:-30.0.16248370}\")"; exit 1; }
 jobs="${JOBS:-8}"
+abi="${ABI:-arm64-v8a}"
+case "$abi" in
+arm64-v8a) target_triple=aarch64-linux-android ;;
+x86_64) target_triple=x86_64-linux-android ;;
+*) echo "unsupported Android ABI: $abi"; exit 2 ;;
+esac
 api=33
 
 cmake="$(command -v cmake || true)"
@@ -24,23 +29,33 @@ cpu="${CPU:-generic}"
 flags=()
 if [ "$cpu" != generic ]; then flags=("-DCMAKE_C_FLAGS=-mcpu=$cpu" "-DCMAKE_CXX_FLAGS=-mcpu=$cpu"); fi
 
-echo "== game (libmain.so), NDK $(basename "$ndk"), CPU $cpu"
+gen="${GEN_DIR:-$root/build/gen}"
+if [ "$gen" = stub ] || ! compgen -G "$gen/code_*.c" > /dev/null; then
+    gen="${OUT:-$here/build}/gen-stub"
+    echo "== placeholder game code (tools/recomp/stubgen.py) in $gen"
+    python3 "$root/tools/recomp/stubgen.py" "$gen"
+fi
+
+echo "== game (libmain.so), NDK $(basename "$ndk"), ABI $abi, CPU $cpu"
 mkdir -p "$out"
 "$cmake" -S "$root" -B "$out" -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" \
-    "-DCMAKE_TOOLCHAIN_FILE=$ndk/build/cmake/android.toolchain.cmake" -DANDROID_ABI=arm64-v8a \
+    "-DCMAKE_TOOLCHAIN_FILE=$ndk/build/cmake/android.toolchain.cmake" "-DANDROID_ABI=$abi" \
     "-DANDROID_PLATFORM=android-$api" -DANDROID_STL=c++_shared -DCMAKE_BUILD_TYPE=Release \
-    -DNSMBU_BUNDLED_DEPS=ON "-DGEN_DIR=${GEN_DIR:-$root/build/gen}" ${flags[@]+"${flags[@]}"} > "$out.log"
-"$cmake" --build "$out" -j "$jobs" --target nsmbu >> "$out.log" 2>&1 || { tail -40 "$out.log"; exit 1; }
-libs="$here/app/libs/arm64-v8a"
+    -DNSMBU_BUNDLED_DEPS=ON "-DGEN_DIR=$gen" ${flags[@]+"${flags[@]}"} > "$out.log"
+"$cmake" --build "$out" -j "$jobs" --target nsmbu nsmbu_yaz0 >> "$out.log" 2>&1 || { tail -40 "$out.log"; exit 1; }
+libs="$here/app/libs/$abi"
 mkdir -p "$libs"
 bin="$ndk/toolchains/llvm/prebuilt/$host"
 "$bin/bin/llvm-strip$exe" --strip-unneeded "$out/libmain.so" -o "$libs/libmain.so"
 cp "$(find "$out/_deps" -name libSDL3.so -print -quit)" "$libs/"
-cp "$bin/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" "$libs/"
+"$bin/bin/llvm-strip$exe" --strip-unneeded "$out/libyaz0.so" -o "$libs/libyaz0.so"
+cp "$bin/sysroot/usr/lib/$target_triple/libc++_shared.so" "$libs/"
 
-for hook in main_hook hook_impl file_redirect_hook gsl_alloc_hook; do
-    hook_file="$(find "$out/_deps" -name "lib${hook}.so" -print -quit)"
-    [ -n "$hook_file" ] || { echo "missing AdrenoTools hook: $hook"; exit 1; }
-    cp "$hook_file" "$libs/"
-done
+if [ "$abi" = arm64-v8a ]; then
+    for hook in main_hook hook_impl file_redirect_hook gsl_alloc_hook; do
+        hook_file="$(find "$out/_deps" -name "lib${hook}.so" -print -quit)"
+        [ -n "$hook_file" ] || { echo "missing AdrenoTools hook: $hook"; exit 1; }
+        cp "$hook_file" "$libs/"
+    done
+fi
 ls -la "$libs"

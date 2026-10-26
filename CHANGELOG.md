@@ -10,6 +10,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Android-hosted LLVM toolchain packaging scripts, unit tests, and CI compiler cache action.
 - Android extractor packaging installs a verified `nsmbu-extract` as an APK native library for on-device setup.
 - Android runtime SDK packaging ships the runtime objects and link recipe (no game code) so the phone links its own `libgame.so`; the installer's link step accepts an alternate recipe.
+- `android/build_native.sh` builds any ABI (`ABI=x86_64` for emulators), falls back to placeholder game code, and ships `libyaz0.so` for on-device shader preparation; custom GPU drivers stay arm64-only.
 
 ## [0.7.0] - 2026-10-26
 
