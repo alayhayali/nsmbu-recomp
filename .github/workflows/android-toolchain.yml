@@ -4,19 +4,23 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - tools/android/build_toolchain.py
-      - tools/android/package_toolchain.py
-      - tools/android/test_build_toolchain.py
-      - tools/android/test_package_toolchain.py
+      - tools/android/**
+      - tools/installer/setup.py
+      - tools/release/package.py
+      - tools/recomp/**
+      - android/python/**
+      - android/app/src/main/java/org/nsmbrecomp/nsmbu/**
       - .github/workflows/android-toolchain.yml
       - .github/actions/android-compiler/**
   push:
     branches: [main]
     paths:
-      - tools/android/build_toolchain.py
-      - tools/android/package_toolchain.py
-      - tools/android/test_build_toolchain.py
-      - tools/android/test_package_toolchain.py
+      - tools/android/**
+      - tools/installer/setup.py
+      - tools/release/package.py
+      - tools/recomp/**
+      - android/python/**
+      - android/app/src/main/java/org/nsmbrecomp/nsmbu/**
       - .github/workflows/android-toolchain.yml
       - .github/actions/android-compiler/**
 
@@ -28,9 +32,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Toolchain packaging unit tests
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android setup unit tests
         working-directory: tools/android
-        run: python3 -m unittest test_build_toolchain test_package_toolchain -v
+        run: python3 -m unittest discover -s . -p 'test_*.py' -v
 
   compiler-cache:
     runs-on: ubuntu-latest
