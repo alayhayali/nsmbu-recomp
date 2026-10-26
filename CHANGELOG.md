@@ -13,6 +13,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - `android/build_native.sh` builds any ABI (`ABI=x86_64` for emulators), falls back to placeholder game code, and ships `libyaz0.so` for on-device shader preparation; custom GPU drivers stay arm64-only.
 - Embedded CPython for Android setup: `libnsmbupython` bridge with the `nsmbu_native` process runner, the NSMBU setup sources bundle, and verified resource caches.
 - Android setup adapter: durable, pausable extract (folder, archive, disc image, optional update folder), translate, compile and link checkpoints around the unchanged installer; the release guard rejects Android debug fixtures.
+- Android setup job runner (`ondevice_setup.py`): one locked worker per job that resumes from checkpoints, honours pause requests, reads disc and common keys from file descriptors into memory only, and leaves a library ready to activate; the installer reads key bytes without a file.
 
 ## [0.7.0] - 2026-10-26
 

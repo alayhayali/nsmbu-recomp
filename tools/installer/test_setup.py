@@ -145,6 +145,17 @@ class KeyFiles(unittest.TestCase):
                 self.assertIn("16 raw bytes", setup.key_file_problem(p, kind))
             self.assertIn("cannot be read", setup.key_file_problem(os.path.join(d, "missing"), "common"))
 
+    def test_key_bytes_without_a_file(self):
+        text = ("common = %s\ndisc = %s\n" % (KEY_HEX, OTHER_HEX)).encode()
+        self.assertEqual(setup.key_from_data(text, "disc"), bytes.fromhex(OTHER_HEX))
+        self.assertEqual(setup.named_key_from_data(text, "common"), bytes.fromhex(KEY_HEX))
+        self.assertEqual(setup.key_from_data(bytes(range(16)), "common"), bytes(range(16)))
+        self.assertIsNone(setup.named_key_from_data(bytes(range(16)), "common"))
+        self.assertIsNone(setup.key_from_data(b"garbage", "disc"))
+        self.assertIn("16 raw bytes", setup.key_data_problem(b"garbage", "disc"))
+        self.assertIn("larger than 4096", setup.key_data_problem(b"0" * 4097, "common"))
+        self.assertIsNone(setup.key_data_problem(text, "common"))
+
     def test_discovery(self):
         if any(os.path.isfile(os.path.join(setup.PKG, n)) for n in ("common.key", "keys.txt")):
             self.skipTest("a key file is in the release folder")
