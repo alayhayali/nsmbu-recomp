@@ -1,12 +1,15 @@
 ---
 name: changelog
-description: "Edit CHANGELOG.md or modding/examples/CHANGELOG.md in Keep a Changelog form: player-facing notes, type sections, importance order within a section, and release cleanup. Use when adding, rewriting, or sorting changelog entries, preparing Unreleased for a version heading, or when AGENTS.md requires the changelog skill."
+description: "Clean Unreleased into a player-facing version block when cutting a release. Do not use when appending ordinary commit notes under Unreleased."
 ---
 
 # Changelog
 
 `CHANGELOG.md` and `modding/examples/CHANGELOG.md` follow [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 GitHub Release bodies copy the matching version block from `CHANGELOG.md` via `tools/release/notes.py`.
+
+Day-to-day appends belong under `## [Unreleased]` per `AGENTS.md` (commit message or short change note; rough wording is fine).
+This skill runs only at release cleanup, when the `release` skill (or an explicit cleanup ask) turns that block into the published version notes.
 
 ## Which file
 
@@ -15,21 +18,22 @@ GitHub Release bodies copy the matching version block from `CHANGELOG.md` via `t
 A note about one example mod's behaviour goes only in the examples changelog.
 A note about loading packages, the Mods tab, or install stays in `CHANGELOG.md`.
 
-## When to edit
+## When this skill runs
 
-Append under `## [Unreleased]` as work lands.
-At release, the `release` skill moves the `CHANGELOG.md` block under a dated `## [X.Y.Z] - YYYY-MM-DD` heading and leaves Unreleased empty.
+Only when preparing a release or when asked to clean the changelog for release.
+Leave ordinary Unreleased appends to `AGENTS.md`; do not gate those on player-facing rules.
+
+At cleanup, move the cleaned block under a dated `## [X.Y.Z] - YYYY-MM-DD` heading and leave Unreleased empty.
 Refresh the compare links at the bottom of `CHANGELOG.md` when versions change.
 The examples changelog keeps its own headings and is not copied into the GitHub Release.
-The same rules apply to every version heading, not only Unreleased.
 
-## Audience
+## Audience (published block)
 
-Write for someone who plays or installs the game.
+Rewrite for someone who plays or installs the game.
 Keep installer, crash reporting, mods UI, and in-game behaviour the player can notice or act on.
 Drop CLI, tools, CI, docs paths, env vars, address maps, and other developer-only detail.
 When a change is purely technical (upload paths, decode, caches, and similar), write only the performance the player feels, not the mechanism.
-Skip the note when there is no player-visible performance or behaviour change.
+Drop the note when there is no player-visible performance or behaviour change.
 
 ## Sections
 
@@ -84,12 +88,13 @@ One sentence per line, wrap continuation lines with two spaces under the bullet.
 
 Version headings use brackets and an ISO date (`## [X.Y.Z] - YYYY-MM-DD`).
 Unreleased has no date.
-Keep each bullet to one outcome plus at most one short supporting sentence unless a breaking caveat needs a third line.
+Keep each published bullet to one outcome plus at most one short supporting sentence unless a breaking caveat needs a third line.
 
 ## Steps
 
-1. Read the changelog for that change (`CHANGELOG.md` or `modding/examples/CHANGELOG.md`) and the change being documented.
-2. Decide whether the change is player-facing, skip the edit when it is not.
-3. Place the note under the right `###` section using Audience, Sections, and Wording.
-4. Re-sort that section so importance order still holds.
-5. Done when types are grouped Keep-a-Changelog style, each section reads top-down by player importance, and no developer-only notes remain.
+1. Read `## [Unreleased]` in the right file (`CHANGELOG.md` or `modding/examples/CHANGELOG.md`).
+2. Drop or rewrite notes that are not player-facing using Audience.
+3. Place remaining notes under the right `###` section using Sections and Wording.
+4. Re-sort each section so importance order still holds.
+5. Move the cleaned block under `## [X.Y.Z] - YYYY-MM-DD`, leave Unreleased empty, and refresh compare links when the version changes.
+6. Done when the new version block is Keep-a-Changelog grouped, top-down by player importance, and free of developer-only notes.

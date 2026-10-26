@@ -1,9 +1,15 @@
 
-
 #include "text/game_languages.h"
 
 #include <atomic>
+#include <cstring>
+#include <filesystem>
 #include <mutex>
+#include <string>
+
+namespace config {
+extern std::string game_dir;
+}
 
 namespace game_lang {
 namespace {
@@ -15,11 +21,46 @@ std::mutex g_mu;
 Start g_start;
 std::atomic<bool> g_started{false};
 
+std::string g_scanned_dir;
+bool g_carried[kLanguages];
+
+void ensure_scan() {
+    if (g_scanned_dir == config::game_dir) return;
+    g_scanned_dir = config::game_dir;
+    std::memset(g_carried, 0, sizeof(g_carried));
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    bool any = false;
+    for (const char* region : {"US", "EU", "JP"}) {
+        const fs::path dir = fs::path(config::game_dir) / "content" / region;
+        if (!fs::is_directory(dir, ec)) continue;
+        for (fs::directory_iterator it(dir, ec), end; it != end; it.increment(ec)) {
+            if (ec || !it->is_directory(ec)) continue;
+            const std::string folder = it->path().filename().string();
+            if (folder == "font" || folder == "timestamp") continue;
+            for (int i = 0; i < kLanguages; i++) {
+                if (folder == kNames[i]) {
+                    g_carried[i] = true;
+                    any = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (!any) g_carried[1] = true;
+}
+
 }
 
 const char* name(int language) { return language >= 0 && language < kLanguages ? kNames[language] : "?"; }
 
-int usable(int language) { return language >= 0 && language < kLanguages ? language : 1; }
+bool carried(int language) {
+    if (language < 0 || language >= kLanguages) return false;
+    ensure_scan();
+    return g_carried[language];
+}
+
+int usable(int language) { return carried(language) ? language : 1; }
 
 Start choose(int language) {
     Start s;

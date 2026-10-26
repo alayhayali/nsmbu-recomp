@@ -3,10 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-Player-facing notes only; within each section, order by importance to someone playing the game.
-Use the `changelog` skill when editing.
+Append each change under Unreleased as it lands; at release the `changelog` skill cleans that block into player-facing version notes.
 
 ## [Unreleased]
+
+### Changed
+
+- Settings → Language lists only the text languages on the installed disc.
+  A USA dump shows English, French, and Spanish; a European dump adds the other European languages.
+- Rename `runtime/tools` to `runtime/test`.
+- Run playtests in parallel and split each case into its own file.
 
 ## [0.6.3] - 2026-10-25
 

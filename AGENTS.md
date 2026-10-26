@@ -4,16 +4,13 @@
 
 Assume that the Typescript to Lua watcher is already running.
 Never comment on github issues.
+Add each commit message/change to the changelog it will be reformated later for release.
 
 ## Verify
 
 The `nsmbu` cli is on `PATH`.
 Game regressions go in `tools/cli/src/playtest/cases/` (shared helpers in `helpers.ts`) and run with `nsmbu test`.
-
-## Changelog
-
-When editing `CHANGELOG.md`, use the `changelog` skill.
-Notes for the example mods go in `modding/examples/CHANGELOG.md` and use that same form.
+Write tests for each feature implemented so we can catch regressions. You might need to improve the test harness in some cases.
 
 ## Code style
 

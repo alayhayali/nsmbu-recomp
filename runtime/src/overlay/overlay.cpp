@@ -1338,7 +1338,7 @@ void tab_about() {
     const long env_value = env_set ? strtol(env, &end, 10) : 1;
     const int env_language = env_set && !*end && env_value >= 0 && env_value < game_lang::kLanguages ? (int)env_value : 1;
     if (U.language < 0) {
-        U.language = saved_language();
+        U.language = game_lang::usable(saved_language());
         const game_lang::Start now = game_lang::current();
         U.language_at_start = now.language;
         if (U.language_at_start < 0) {
@@ -1347,11 +1347,14 @@ void tab_about() {
         }
     }
     heading("Console language (applies on the next start)");
-    note("The game picks its text language from the console language; the game shows only the languages its disc carries.");
+    note("The game picks its text language from the console language. Only languages on this disc are listed.");
     ImGui::BeginDisabled(env_set);
+    int col = 0;
     for (int i : {1, 2, 5, 3, 4, 8, 9, 10, 7, 0, 6, 11}) {
-        if (i != 1 && i != 3 && i != 9 && i != 0) ImGui::SameLine();
+        if (!game_lang::carried(i)) continue;
+        if (col % 3 != 0) ImGui::SameLine();
         if (radio(game_lang::name(i), U.language == i)) choose_language(i);
+        col++;
     }
     ImGui::EndDisabled();
     if (env_set) {
