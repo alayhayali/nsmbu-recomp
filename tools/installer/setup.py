@@ -1296,7 +1296,9 @@ def compile_gamecode(tc, manifest, gen_dir, obj_dir, jobs, cancel=None, progress
     pr.done("%d files" % total)
     return sorted(objs)
 
-def link_game(tc, manifest, objs, work, out_exe):
+def link_game(tc, manifest, objs, work, out_exe, recipe=None, glue=()):
+    """recipe: a link line other than manifest["link"] (the Android runtime SDK), whose {glue} stands
+    for the objects `glue`"""
     lib = os.path.join(work, "libgamecode.a")
     if os.path.exists(lib):
         os.remove(lib)
@@ -1308,7 +1310,9 @@ def link_game(tc, manifest, objs, work, out_exe):
     else:
         run_logged(tc.ar + ["rcs", lib] + objs, env=tc.env, what="archiving the game code")
     m = {"sdk": fwd(os.path.join(PKG, "sdk")), "gamecode": fwd(lib), "out": fwd(out_exe)}
-    args = [sub(a, m) for a in manifest["link"]]
+    args = []
+    for a in (recipe or manifest["link"]):
+        args += [fwd(g) for g in glue] if a == "{glue}" else [sub(a, m)]
     if IS_LINUX:
         args += ["-Wl,-rpath,$ORIGIN"]
     if tc.rsp:

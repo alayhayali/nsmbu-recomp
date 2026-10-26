@@ -31,6 +31,14 @@ class SDKPackage(unittest.TestCase):
                 self.assertEqual(count, 4)
                 self.assertEqual(problems, [])
 
+    def test_sdk_manifest_fields(self):
+        manifest = package.sdk_manifest("v1", "android-arm64-v8a", "android-ndk", "libgame.so", "/ndk/bin/clang++",
+                                        ["-O3"], ["{gamecode}", "-o", "{out}"])
+        self.assertEqual(manifest["format"], 1)
+        self.assertEqual(manifest["built_with"], "clang++")
+        self.assertEqual(manifest["runtime_files"], [])
+        self.assertEqual(manifest["link"], ["{gamecode}", "-o", "{out}"])
+
     def test_installer_local_imports_are_shipped(self):
         installer = Path(package.ROOT) / "tools/installer"
         shipped = set(package.INSTALLER_FILES)
