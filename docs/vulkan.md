@@ -210,7 +210,7 @@ pipelines before gameplay.
 
 Set `NSMBU_VK_STATS=1` to report frame rate, frame-interval percentiles, upload
 traffic, shader compilation, and GPU/presentation waits every 120 frames.
-The SDL window title displays live presented FPS and the selected 60 FPS mode.
+Use the performance overlay for live presented FPS; the window title stays as the app name.
 Stats also report descriptor allocation/reuse, SPIR-V compilation and disk hits,
 decompiler time, and Vulkan pipeline-creation time. Cache snapshot-copy time is
 reported separately from background serialization and disk-write time.

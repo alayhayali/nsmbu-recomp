@@ -64,7 +64,7 @@
 #endif
 #include <vulkan/vulkan_beta.h>
 
-namespace gx2 { uint64_t flips_presented(); void checkpoint_vulkan_caches(); }
+namespace gx2 { void checkpoint_vulkan_caches(); }
 namespace render { bool shader_warm_tick(uint64_t activity); }
 #include "hooks/interp.h"
 #include "hooks/interp_pacing.h"
@@ -2678,7 +2678,6 @@ static bool close_request(const SDL_Event& event) {
 
 void run_main_loop() {
   auto titleTime = std::chrono::steady_clock::now();
-  uint64_t titleFrames = gx2::flips_presented();
 
   const char* exitAt=env::EXIT_AT_FRAME();
   const uint64_t exitFrame=exitAt ? std::strtoull(exitAt,nullptr,10) : 0;
@@ -2743,23 +2742,18 @@ void run_main_loop() {
       display_rate::poll(R.tv.window);
     }
     if (elapsed >= 0.5 && !input::text_prompt_active()) {
-      uint64_t frames = gx2::flips_presented();
       if (exitFrame && frame_count() >= exitFrame) {
         SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);
       }
       char title[160];
-      if (build::dev()) {
-        std::snprintf(title, sizeof title, "%s - %.0f fps", app_title::kName, double(frames - titleFrames) / elapsed);
-        if (gx2::uncapped()) std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
-      } else {
-        std::snprintf(title, sizeof title, "%s", app_title::kName);
-      }
+      std::snprintf(title, sizeof title, "%s", app_title::kName);
+      if (build::dev() && gx2::uncapped())
+        std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
       static char lastTitle[160];
       if (strcmp(title, lastTitle)) {
         memcpy(lastTitle, title, sizeof lastTitle);
         SDL_SetWindowTitle(R.tv.window, title);
       }
-      titleFrames = frames;
       titleTime = now;
     }
     if (render::shader_warm_tick(vk::shader_stats().spirvCompiles + R.pipelineCreates)) {

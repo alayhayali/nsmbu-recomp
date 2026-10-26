@@ -713,9 +713,9 @@ void tab_graphics() {
     bool unc;
     if (check("Uncapped (debug: the game runs too fast)", gx2::uncapped(), &unc)) hostui::post([unc] { gx2::set_uncapped(unc); });
     help("Debug only, to see how many frames a second this computer can draw: no frame limit and no\n"
-         "vsync. The game counts frames, so it runs faster than normal. The frame rate is in the window\n"
-         "title and the performance overlay. Not saved. (At frame targets above 60 fps the game logic\n"
-         "still keeps 60 steps a second.)");
+         "vsync. The game counts frames, so it runs faster than normal. The frame rate is in the\n"
+         "performance overlay. Not saved. (At frame targets above 60 fps the game logic still keeps\n"
+         "60 steps a second.)");
 
     heading("Internal resolution");
     static const float scales[] = {1.0f, 1.5f, 2.0f, 3.0f};

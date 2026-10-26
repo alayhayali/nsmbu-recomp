@@ -17,6 +17,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Changed
 
+- The window title never shows a live frame rate, including in development builds.
+  Use the performance overlay for fps.
 - Settings language and content-mod Restart now relaunches the app (same path as switching Metal and Vulkan) instead of soft-rebooting the guest in the same window.
 - Setup precompiles shaders as part of install, repair, and update (after the game is built).
   Menu and Ready to play keep a Recompile shaders button to run that pass again.
@@ -24,6 +26,9 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- 144 and 165 fps keep 60 logic steps/s.
+  Pass timing treated each present slot as work, so the pacer skipped in-between frames; with one wait per present that left about two presents per step (~80 steps/s at 165 fps).
+  Those rates now keep every planned present, and pad only when a step shows fewer frames than planned.
 - High frame rates keep 60 logic steps/s when the pacer drops every in-between frame.
   A full drop left no wait, so vsync at 120 Hz ran the game about twice as fast.
 - The mod package test builds with the Scene restart Lua call.
