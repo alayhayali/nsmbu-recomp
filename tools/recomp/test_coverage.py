@@ -76,6 +76,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(
             [(site, canon) for site, canon, _, _ in entries],
             [(False, 0x02ACD218), (False, 0x024D752C), (True, 0x022A79C4),
+             (False, 0x022A7760), (False, 0x02A06818), (False, 0x02A061AC), (False, 0x02A062EC),
              (False, 0x02994164), (False, 0x029CBBB4), (False, 0x024BD86C),
              (True, 0x024B8324), (False, 0x0226FBC4), (True, 0x0226FD14),
              (True, 0x0226FECC), (True, 0x02270310), (True, 0x022703A4),

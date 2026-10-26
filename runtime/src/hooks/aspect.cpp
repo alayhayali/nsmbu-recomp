@@ -2,6 +2,7 @@
 
 #include "gfx/aspect.h"
 #include "gfx/aspect_panes.h"
+#include "gfx/aspect_view.h"
 #include "mods/cemu_pack.h"
 
 #include <algorithm>
@@ -41,6 +42,9 @@ std::atomic<int> g_mode{parse_env_mode(g_custom)};
 std::atomic<float> g_window{kBase};
 
 std::atomic<float> g_game{kBase};
+std::atomic<float> g_draw{kBase};
+std::mutex g_fovy_mu;
+std::unordered_map<uint32_t, float> g_fovy;
 
 float clamp_aspect(float a) { return std::fmin(std::fmax(a, 1.0f), 4.0f); }
 
@@ -143,6 +147,7 @@ float on_swap() {
     bool changed = !same(a, g_game);
 
     float render = g_game.load();
+    g_draw.store(render, std::memory_order_relaxed);
     g_game = a;
     if (changed) {
         LOG("[aspect] game aspect %.4f from swap %llu", a, (unsigned long long)swaps);
@@ -385,9 +390,77 @@ extern "C" void hook_02874038(Cpu* c) { with_tv_projection(c, f_02874038_orig); 
 extern "C" void f_028F8250_orig(Cpu* c);
 extern "C" void hook_028F8250(Cpu* c) { with_tv_projection(c, f_028F8250_orig); }
 
+static void adjust_perspective(Cpu* c) {
+    float fovy = (float)c->f[3].ps0, aspect_arg = (float)c->f[4].ps0;
+    auto p = aspect::view::expand_perspective(fovy, aspect_arg, aspect::g_draw.load(std::memory_order_relaxed));
+    c->f[3].ps0 = c->f[3].ps1 = p.fovy;
+    c->f[4].ps0 = c->f[4].ps1 = p.aspect;
+}
+
+extern "C" void f_02A06818_orig(Cpu* c);
+extern "C" void hook_02A06818(Cpu* c) {
+    auto o = aspect::view::expand_ortho((float)c->f[1].ps0, (float)c->f[2].ps0, (float)c->f[3].ps0, (float)c->f[4].ps0,
+                                         aspect::g_draw.load(std::memory_order_relaxed));
+    c->f[1].ps0 = c->f[1].ps1 = o.top;
+    c->f[2].ps0 = c->f[2].ps1 = o.bottom;
+    c->f[3].ps0 = c->f[3].ps1 = o.left;
+    c->f[4].ps0 = c->f[4].ps1 = o.right;
+    f_02A06818_orig(c);
+}
+
+extern "C" void f_02A061AC_orig(Cpu* c);
+extern "C" void hook_02A061AC(Cpu* c) {
+    float fovy = (float)c->f[3].ps0, aspect_arg = (float)c->f[4].ps0;
+    adjust_perspective(c);
+    f_02A061AC_orig(c);
+    if (aspect::view::near_base(aspect_arg) && c->r[3] >= 0x10000000u) {
+        std::lock_guard<std::mutex> lk(aspect::g_fovy_mu);
+        aspect::g_fovy[c->r[3]] = fovy;
+    }
+}
+
+extern "C" void f_02A062EC_orig(Cpu* c);
+extern "C" void hook_02A062EC(Cpu* c) {
+    adjust_perspective(c);
+    f_02A062EC_orig(c);
+}
+
+extern "C" void f_022A7760_orig(Cpu* c);
+extern "C" void hook_022A7760(Cpu* c) {
+    uint32_t self = c->r[3];
+    if (self >= 0x10000000u) {
+        uint32_t proj = self + 168;
+        float stored = (float)ldf32(proj + 172), fovy = (float)ldf32(proj + 156), base = fovy;
+        if (aspect::view::near_base(stored)) {
+            std::lock_guard<std::mutex> lk(aspect::g_fovy_mu);
+            aspect::g_fovy[proj] = fovy;
+        } else {
+            std::lock_guard<std::mutex> lk(aspect::g_fovy_mu);
+            auto it = aspect::g_fovy.find(proj);
+            if (it != aspect::g_fovy.end()) base = it->second;
+            else base = 0;
+        }
+        if (base > 0.0f) {
+            auto p = aspect::view::expand_perspective(base, aspect::view::kBase, aspect::g_draw.load(std::memory_order_relaxed));
+            if (std::fabs(p.fovy - fovy) > 1e-6f || std::fabs(p.aspect - stored) > 1e-5f) {
+                Cpu g = *c;
+                g.r[3] = proj;
+                g.f[1].ps0 = g.f[1].ps1 = ldf32(proj + 148);
+                g.f[2].ps0 = g.f[2].ps1 = ldf32(proj + 152);
+                g.f[3].ps0 = g.f[3].ps1 = p.fovy;
+                g.f[4].ps0 = g.f[4].ps1 = p.aspect;
+                f_02A062EC_orig(&g);
+            }
+        }
+    }
+    f_022A7760_orig(c);
+}
+
 void aspect::ss_reset() {
     std::lock_guard<std::mutex> lk(aspect::g_root_mu);
     aspect::g_root_calc.clear();
+    std::lock_guard<std::mutex> fk(aspect::g_fovy_mu);
+    aspect::g_fovy.clear();
 }
 
 extern "C" void site_0287714C(Cpu* c) {

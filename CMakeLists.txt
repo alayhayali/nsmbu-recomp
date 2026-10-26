@@ -543,6 +543,10 @@ add_executable(aspect_panes_test runtime/test/aspect_panes_test.cpp)
 target_include_directories(aspect_panes_test PRIVATE runtime/src)
 add_test(NAME aspect_panes COMMAND aspect_panes_test)
 
+add_executable(aspect_view_test runtime/test/aspect_view_test.cpp)
+target_include_directories(aspect_view_test PRIVATE runtime/src)
+add_test(NAME aspect_view COMMAND aspect_view_test)
+
 if(NSMBU_HAS_VULKAN)
   add_executable(barrier_state_test runtime/test/barrier_state_test.cpp)
   target_include_directories(barrier_state_test PRIVATE runtime/src)

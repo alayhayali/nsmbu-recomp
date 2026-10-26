@@ -5,6 +5,10 @@
 02ACD218  # frame allocator: wait for the ring at this+0x4A8 on nested grow
 024D752C  # draw queues: drop items whose model pointer at node+0x28 is null
 @022A79C4  # DistantViewMgr::calcView_: scale the flicker before it is added to the projection
+022A7760  # DistantViewMgr::calcView_: keep the distant-view projection on the chosen aspect
+02A06818  # sead::OrthoProjection::setTBLR: widen or heighten a 16:9 screen rect
+02A061AC  # sead::PerspectiveProjection ctor: replace a baked 16:9 aspect
+02A062EC  # sead::PerspectiveProjection::set: same replacement on the per-frame setter
 02994164  # Scene::setNextScene: onSceneChange and scene src for mod API transitions
 029CBBB4  # error viewer: this port does not draw it, so the call must not pause the game
 024BD86C  # course setup: skip while a story load is leaving the live course
