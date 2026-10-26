@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 #include "core/env.h"
+#include "perf_metrics.h"
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -221,6 +222,7 @@ static std::string reg_name(uint32_t r) {
 }
 
 void frame_end(bool hold) {
+    perf::render_frame();
     if (!enabled()) return;
     const uint64_t t = now_ns();
     if (!windowStart) {

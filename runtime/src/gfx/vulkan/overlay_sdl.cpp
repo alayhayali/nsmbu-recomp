@@ -173,6 +173,12 @@ void set(const char* key, const std::string& value) {
     g_values[key] = value;
     save_locked();
 }
+void reload_settings() {
+    std::lock_guard<std::mutex> lk(g_mu);
+    g_loaded = false;
+    g_values.clear();
+    load_locked();
+}
 
 float res_scale() { return gfxvk::requested_res_scale(); }
 void set_res_scale(float s) { gfxvk::set_res_scale(s); }

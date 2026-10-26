@@ -10,7 +10,8 @@ disc dump:
   3. translates the game's PowerPC code to C (tools/recomp/recomp.py);
   4. compiles that code with a C compiler (Apple's Command Line Tools on macOS, a pinned llvm-mingw
      on Windows, a pinned zig toolchain on Linux; downloaded and checked automatically);
-  5. links it with the prebuilt runtime (sdk/) into the game executable and starts it.
+  5. links it with the prebuilt runtime (sdk/) into the game executable;
+  6. precompiles shaders by running the game once in the background, then starts it.
 
 Run it again to play, to repair the installation, or to update after downloading a new release.
 Saves are never changed without asking.
@@ -1748,14 +1749,18 @@ STEP_TITLES = {
     "translate": "Translating the game code to C",
     "compile": "Compiling the game code (the longest step: several minutes)",
     "app": "Building the game",
+    "shaders": "Precompiling shaders",
 }
 
 def plan_steps(kind):
-    return {"image": ["keys", "compiler", "extract", "translate", "compile", "app"],
-            "archive": ["archive", "compiler", "extract", "translate", "compile", "app"],
-            "folder": ["folder", "compiler"] + ([] if PORTABLE else ["copy"]) + ["translate", "compile", "app"],
-            "installed": ["compiler", "translate", "compile", "app"],
-            "gen": ["compiler", "compile", "app"]}[kind]
+    steps = {"image": ["keys", "compiler", "extract", "translate", "compile", "app"],
+             "archive": ["archive", "compiler", "extract", "translate", "compile", "app"],
+             "folder": ["folder", "compiler"] + ([] if PORTABLE else ["copy"]) + ["translate", "compile", "app"],
+             "installed": ["compiler", "translate", "compile", "app"],
+             "gen": ["compiler", "compile", "app"]}[kind]
+    if kind != "gen":
+        steps = steps + ["shaders"]
+    return steps
 
 def install(ctx, source, keys=None, info=None, ui=None, check_keys=None):
     """The whole build for one source: ("image", path) | ("archive", path) | ("folder", path) |
@@ -1908,6 +1913,9 @@ def install(ctx, source, keys=None, info=None, ui=None, check_keys=None):
         else:
             windows_shortcuts(data_dir, exe)
             say("  Shortcuts: Start menu and desktop (\"%s\")" % APP_NAME)
+    if kind != "gen":
+        begin("shaders")
+        precompile_shaders(state["exe"], ctx.game_dir, data_dir)
     if not args.keep_work:
         shutil.rmtree(work, ignore_errors=True)
     if kind != "gen":
@@ -2105,8 +2113,45 @@ def shader_warm_failure(code, compiled, tail):
         head = "The game stopped before shader precompile finished (exit code %d)." % code
     lines = [ln for ln in tail if ln.strip() and not ln.startswith("[warm] progress ")][-8:]
     body = "\n".join(lines)
-    hint = "You can play anyway. Shaders compile the first time a scene needs them."
+    hint = "Run Setup again and choose Repair to retry. Shaders also compile the first time a scene needs them."
     return head + (("\n" + body) if body else "") + "\n" + hint
+
+def precompile_shaders(exe, game_dir, data_dir):
+    """Run the built game until shaders settle. Raises SetupError on failure or cancel."""
+    if not exe or not os.path.isfile(exe):
+        raise SetupError("The game program is missing; cannot precompile shaders.")
+    if not valid_game_folder(game_dir):
+        raise SetupError("The game files are missing from %s; cannot precompile shaders." % game_dir)
+    work = os.path.join(data_dir, "work", "shader-warm")
+    save = os.path.join(work, "save")
+    stop = os.path.join(work, "stop")
+    shutil.rmtree(work, ignore_errors=True)
+    os.makedirs(save)
+    say("  Precompiling shaders.")
+    bar = Progress("shaders")
+    last = {"done": -1}
+
+    def on_progress(done, total, detail):
+        if done == last["done"]:
+            return
+        last["done"] = done
+        text = detail or ("Waiting for the game to draw." if not done else "%d shaders compiled" % done)
+        bar.update(done, total, text)
+        if done:
+            say("  " + (detail or "%d shaders compiled" % done))
+
+    try:
+        code, compiled, cancelled, tail = run_shader_warm(exe, game_dir, save, stop, on_progress)
+    except OSError as e:
+        raise SetupError("Could not start the game to compile shaders.\n%s" % e)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    if cancelled:
+        raise SetupError("Shader precompile was stopped.")
+    if code != 0 or compiled == 0:
+        raise SetupError(shader_warm_failure(code if code is not None else -1, compiled, tail))
+    bar.done("%d shaders compiled" % compiled)
+    say("  Shader precompile finished (%d shaders compiled)." % compiled)
 
 def run_shader_warm(exe, game_dir, save_dir, stop_file, on_progress):
     env = os.environ.copy()
@@ -2441,23 +2486,23 @@ def gui_main(args):
         st = ctx.state()
         if not ctx.installed() or not st:
             return fail(req, "not_installed",
-                        "Install the game first. Precompile shaders is available after setup finishes.")
+                        "Install the game first. Recompile shaders is available after setup finishes.")
         if st.get("placeholder_code"):
             return fail(req, "placeholder", "This build cannot run the game, so shaders cannot be compiled.")
         exe = st.get("exe") or ""
         game_dir = st.get("game_dir") or ctx.game_dir
         if not exe or not os.path.isfile(exe):
             return fail(req, "missing_exe",
-                        "The game program is missing.\nUse Repair, then try Precompile shaders again.")
+                        "The game program is missing.\nUse Repair, then try Recompile shaders again.")
         if not valid_game_folder(game_dir):
             return fail(req, "missing_game",
-                        "The game files are missing from %s.\nChoose the game again, then try Precompile shaders." % game_dir)
+                        "The game files are missing from %s.\nChoose the game again, then try Recompile shaders." % game_dir)
         work = os.path.join(ctx.data_dir, "work", "shader-warm")
         save = os.path.join(work, "save")
         stop = os.path.join(work, "stop")
         shutil.rmtree(work, ignore_errors=True)
         os.makedirs(save)
-        say("  Precompiling shaders.")
+        say("  Recompiling shaders.")
         GUI.emit({"event": "shader", "phase": "Starting the game", "done": 0, "total": 0,
                   "detail": "Waiting for the game to draw."})
         last = {"done": -1}
@@ -2477,17 +2522,17 @@ def gui_main(args):
         except OSError as e:
             return fail(req, "spawn",
                         "Could not start the game to compile shaders.\n%s\n"
-                        "You can play anyway. Shaders compile the first time a scene needs them." % e)
+                        "Run Setup again and choose Repair, or try Recompile shaders later." % e)
         finally:
             shutil.rmtree(work, ignore_errors=True)
         if cancelled:
-            say("  Shader precompile stopped (%d shaders compiled)." % compiled)
+            say("  Shader recompile stopped (%d shaders compiled)." % compiled)
             return reply(req, cancelled=True, compiled=compiled)
         if code != 0 or compiled == 0:
             message = shader_warm_failure(code if code is not None else -1, compiled, tail)
             say("  " + message.replace("\n", "\n  "))
             return fail(req, "shaders", message)
-        say("  Shader precompile finished (%d shaders compiled)." % compiled)
+        say("  Shader recompile finished (%d shaders compiled)." % compiled)
         reply(req, compiled=compiled)
 
     handlers = {"probe": probe, "check_keys": check, "install": do_install, "import_save": save,

@@ -10,6 +10,7 @@ void post(std::function<void()> fn);
 
 bool get(const char* key, std::string& value);
 void set(const char* key, const std::string& value);
+void reload_settings();
 
 float res_scale();
 void set_res_scale(float s);

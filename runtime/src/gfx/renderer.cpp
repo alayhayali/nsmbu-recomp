@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 #include "core/env.h"
+#include "core/runtime.h"
+#include "core/user_error.h"
 #ifdef _WIN32
 #define strcasecmp _stricmp
 #else
@@ -26,8 +28,6 @@
 #include <mach-o/dyld.h>
 #endif
 
-#include "core/runtime.h"
-#include "core/user_error.h"
 #ifdef NSMBU_SDL_HOST
 #include <SDL3/SDL_messagebox.h>
 #ifdef __ANDROID__

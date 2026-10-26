@@ -25,7 +25,6 @@
 #include "input/input.h"
 #include "mods/mods.h"
 #include "agent/agent_ctl.h"
-#include "core/soft_restart.h"
 #include "overlay/hostui.h"
 #include "overlay/overlay.h"
 #ifdef NSMBU_SDL_HOST
@@ -35,6 +34,7 @@
 #include "platform/display_rate.h"
 #include "platform/host.h"
 #include "platform/perf_hint.h"
+#include "perf_metrics.h"
 #include "core/runtime.h"
 #include "gfx/screenshot.h"
 #include "shaders.h"
@@ -475,8 +475,66 @@ static uint64_t timestamp_elapsed_ticks(uint64_t start, uint64_t end, uint32_t b
   const uint64_t mask = bits == 64 ? UINT64_MAX : (uint64_t{1} << bits) - 1;
   return (end - start) & mask;
 }
+struct OverlayGpuQuery {
+  VkQueryPool pool = VK_NULL_HANDLE;
+  uint64_t frame = 0, token = 0;
+  bool pending = false;
+};
+static std::array<OverlayGpuQuery, 256> overlayGpuQueries{};
+static void destroy_overlay_gpu_queries() {
+  for (auto& q : overlayGpuQueries) {
+    if (q.pool) vkDestroyQueryPool(R.device, q.pool, nullptr);
+    q = {};
+  }
+}
+static bool overlay_timestamp_capable() {
+  return timestamp_capable(R.gpuTimestampValidBits, R.properties.limits.timestampPeriod);
+}
+static void begin_overlay_gpu_queries(VkCommandBuffer cmd, Renderer::Submission& submission) {
+  submission.perfQuery = UINT32_MAX;
+  if (!perf::enabled() || !overlay_timestamp_capable()) return;
+  static uint64_t lastPoll = UINT64_MAX;
+  if (lastPoll != R.frame) {
+    lastPoll = R.frame;
+    for (auto& q : overlayGpuQueries) {
+      if (!q.pending || q.frame >= R.frame) continue;
+      struct Result { uint64_t ticks, available; } values[2]{};
+      perf::timestamp_read(R.frame - q.frame);
+      VkResult result = vkGetQueryPoolResults(R.device, q.pool, 0, 2, sizeof(values), values,
+          sizeof(Result), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+      if (result == VK_NOT_READY || (result == VK_SUCCESS &&
+          (!values[0].available || !values[1].available))) continue;
+      double ns = result == VK_SUCCESS
+          ? double(timestamp_elapsed_ticks(values[0].ticks, values[1].ticks, R.gpuTimestampValidBits)) *
+                double(R.properties.limits.timestampPeriod) : -1;
+      perf::gpu_complete(q.frame, q.token, ns);
+      q.pending = false;
+    }
+  }
+  perf::gpu_advance(R.frame);
+  uint64_t token = perf::gpu_begin(R.frame);
+  if (!token) return;
+  for (uint32_t i = 0; i < overlayGpuQueries.size(); ++i) {
+    auto& q = overlayGpuQueries[i];
+    if (q.pending) continue;
+    if (!q.pool) {
+      VkQueryPoolCreateInfo info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+      info.queryType = VK_QUERY_TYPE_TIMESTAMP; info.queryCount = 2;
+      if (vkCreateQueryPool(R.device, &info, nullptr, &q.pool) != VK_SUCCESS) {
+        perf::gpu_complete(R.frame, token, -1); return;
+      }
+    }
+    q.frame = R.frame; q.token = token; q.pending = true;
+    submission.perfQuery = i;
+    vkCmdResetQueryPool(cmd, q.pool, 0, 2);
+    vkCmdWriteTimestamp(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, q.pool, 0);
+    perf::timestamp_write();
+    return;
+  }
+  perf::gpu_complete(R.frame, token, -1);
+}
 static void destroy_gpu_timestamp_queries() {
-
+  destroy_overlay_gpu_queries();
   R.gpuTimestampsEnabled = false;
   R.gpuPassTimestampsEnabled = false;
   for (auto& slot : R.submissions) {
@@ -613,6 +671,7 @@ VkCommandBuffer command_buffer() {
     bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vk_check(vkBeginCommandBuffer(R.cmd, &bi), "begin command buffer");
     R.recording = true;
+    begin_overlay_gpu_queries(R.cmd, R.submissions[R.activeSubmission]);
     if (R.gpuTimestampsEnabled) {
       auto& slot = R.submissions[R.activeSubmission];
       vkCmdResetQueryPool(R.cmd, slot.timestampQueries, 0,
@@ -818,6 +877,12 @@ static void submit(VkSemaphore wait = VK_NULL_HANDLE,
     return;
   end_encoder();
   auto& recordingSlot = R.submissions[R.activeSubmission];
+  if (recordingSlot.perfQuery != UINT32_MAX) {
+    auto& q = overlayGpuQueries[recordingSlot.perfQuery];
+    vkCmdWriteTimestamp(R.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, q.pool, 1);
+    perf::timestamp_write();
+    recordingSlot.perfQuery = UINT32_MAX;
+  }
   if (recordingSlot.timestampRecorded)
     vkCmdWriteTimestamp(R.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                         recordingSlot.timestampQueries, 1);
@@ -2665,7 +2730,6 @@ void run_main_loop() {
     input::update();
     agent_ctl::service();
     ::hostui::run_posted();
-    soft_restart::run_if_ready();
     test_drc_key();
     test_fullscreen_key();
     if (const int m = gfx::display_test_mode(frame_count()); m >= 0)

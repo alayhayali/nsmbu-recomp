@@ -151,9 +151,9 @@ One JSON object per line. Events on stdout all have `"event"`:
 | `hello` | `version`, `platform`, `data_dir`, `app_dir`, `log`, `portable`, `package`, `installed` (state or null), `game_files`, `game_dir`, `save_exists`, `legacy` (an earlier installation to copy from), `free_bytes`, `toolchain` |
 | `log` | `text` (also written to `setup.log`) |
 | `plan` | `steps`: `[{id, title}]` of the installation that starts |
-| `step` | `n`, `total`, `title`, `id` (`keys`, `archive`, `folder`, `compiler`, `extract`, `copy`, `translate`, `compile`, `app`) |
-| `progress` | `label`, `done`, `total`, `detail` |
-| `shader` | `phase`, `done`, `total`, `detail` while `shaders` is running |
+| `step` | `n`, `total`, `title`, `id` (`keys`, `archive`, `folder`, `compiler`, `extract`, `copy`, `translate`, `compile`, `app`, `shaders`) |
+| `progress` | `label`, `done`, `total`, `detail` (including shader warm counts during the `shaders` install step) |
+| `shader` | `phase`, `done`, `total`, `detail` while the optional `shaders` command is running |
 | `reply` | `id` and `cmd` of the request, `ok`; on failure `problem` and `message` |
 | `fatal` | `message` (setup cannot run, e.g. the wrong release for this system) |
 
@@ -163,7 +163,7 @@ Requests on stdin: `{"cmd": ..., "id": n, ...}`
 |---|---|---|
 | `probe` | `path` | `kind` (`image`/`archive`/`folder`), `disc_key` (found next to the image), `common_key` (where one was found); for a folder `in_place`, `bytes`; for an archive `title`, `folder`, `bytes`, `message` (which title is used and why); problem `wrong_title` when the archive has no usable game |
 | `check_keys` | `image`, optional `disc_key_file` or `disc_key_hex`, `common_key_file` or `common_key_hex` | `title_id`, `files`, `bytes`; problems `disc_key_wrong`, `common_key_wrong`, `wrong_title`, ... |
-| `install` | `source` (`image`/`archive`/`folder`/`installed`), `path`, optional `jobs` | streams `plan`/`step`/`progress`/`log`, then `app`, `exe`, `data_dir`, `game_dir`, `toolchain_bytes` |
+| `install` | `source` (`image`/`archive`/`folder`/`installed`), `path`, optional `jobs` | streams `plan`/`step`/`progress`/`log` (including a required `shaders` step after the game is built, except for placeholder `--gen-dir` builds), then `app`, `exe`, `data_dir`, `game_dir`, `toolchain_bytes` |
 | `import_save` | `kind` (`nsmbu`), `path`, optional `replace` | `message`; problem `exists` when a save is installed and `replace` is not set (with `replace`, the old save is moved to `nsmbu/save.backup-<time>` first) |
 | `import_existing` | optional `path` (another release folder; none: the earlier per-user installation), `replace` | `message` (saves and settings copied, never moved; problem `exists` as above) |
 | `remove_toolchain` | | `freed` bytes |

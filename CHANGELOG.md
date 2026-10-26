@@ -10,21 +10,25 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ### Added
 
 - Decomp notes for the sead / ApplicationFramework frame loop, and a plan to drive present rate from wall-clock time while keeping 60 logic steps/s.
-- Settings can restart the game in the same window when language or content mods need it.
-  Confirm Restart now; progress since your last save is lost.
-  Switching Metal and Vulkan still relaunches the app.
+- Settings → Saves shows a short preview of the real game save (files, world, lives, play time) and opens that saves folder (not save states) from the top of the tab.
+- The performance overlay shows average fps and logic steps/s, GPU/device, Game/Render CPU, and GPU interval, with a footer for renderer, scale, and frame mode.
+  Reset also clears those averages; Copy performance report includes them.
+
+### Changed
+
+- Settings language and content-mod Restart now relaunches the app (same path as switching Metal and Vulkan) instead of soft-rebooting the guest in the same window.
+- Setup precompiles shaders as part of install, repair, and update (after the game is built).
+  Menu and Ready to play keep a Recompile shaders button to run that pass again.
+- `nsmbu installer` prints each build step (toolchain, SDL, compile, package, setup) instead of staying quiet until the end.
 
 ### Fixed
 
-- The mod package test builds with the soft-restart Lua call.
+- High frame rates keep 60 logic steps/s when the pacer drops every in-between frame.
+  A full drop left no wait, so vsync at 120 Hz ran the game about twice as fast.
+- The mod package test builds with the Scene restart Lua call.
 - 144 and 165 fps keep the rate you select when a frame runs past its time slot.
   A late frame was starting the schedule over, so each following frame waited a full slot and the picture settled well below the selection (about 105 fps with 165 fps selected).
   The display refresh rate is taken from the monitor's mode list when the desktop does not report one.
-- Settings soft restart no longer crashes on the next boot, and the rebooted guest reaches File Select again.
-  Guest threads are stopped before the RPX reload (busy threads hit the reboot flag on preempt; leftovers are joined or canceled).
-  Reloading the RPX also clears MEM2 gaps between sections (game singletons such as HeapMgr TLS) and wipes MEM1, FG, and the old default heap.
-  Frame-allocator and GX2 fence waits honor the reboot flag so host locks are not abandoned by a forced thread kill.
-  Soft restart also drops host mutex/event/queue/alarm state left from the previous guest, and realigns GX2 swap/flip counts so the guest is not stuck waiting on a stale flip.
 - World-map shadows no longer flicker at 120/144 fps frame interpolation (#20).
   In-between passes skip redrawing outside a course, so light maps and shadow maps keep the last logic frame.
 - The Settings restart confirmation stays centered on screen.
@@ -44,9 +48,6 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Changed
 
-- Disc images stay under `game/` as `New Super Mario Bros. U (USA).wux` / `(Europe).wux`.
-  Version folders only hold the extract.
-  Keys use a single Cemu-style `game/keys.txt` (`common=` and title-id lines).
 - Wider and taller aspect ratios show more of the scene instead of stretching the picture.
   The HUD stays in its original frame.
 - Settings tabs: Controls is first; Saves sits between Audio and Mods; Language drops the About blurb; Debug is capitalized.

@@ -14,8 +14,6 @@
 #include <unordered_map>
 
 #include "core/runtime.h"
-#include "core/soft_restart.h"
-
 #include "core/env.h"
 struct GuestArgs {
     Cpu* c = nullptr;
@@ -135,6 +133,7 @@ static uint32_t console_language() {
 }
 
 void console_language_reset() {
+    hostui::reload_settings();
     g_console_language_ready = false;
     g_console_language = read_console_language();
     g_console_language_ready = true;
@@ -299,17 +298,14 @@ HLE(coreinit, __gh_set_errno) {}
 
 HLE(coreinit, exit) {
     LOG("[game] exit(%d)", (int)arg(c, 0));
-    if (soft_restart::process_exit_blocked()) threads::kill_all_for_reboot();
     std::exit((int)arg(c, 0));
 }
 HLE(coreinit, _Exit) {
     LOG("[game] _Exit(%d)", (int)arg(c, 0));
-    if (soft_restart::process_exit_blocked()) threads::kill_all_for_reboot();
     std::_Exit((int)arg(c, 0));
 }
 HLE(coreinit, __PPCExit) {
     LOG("[game] __PPCExit");
-    if (soft_restart::process_exit_blocked()) threads::kill_all_for_reboot();
     std::exit(0);
 }
 

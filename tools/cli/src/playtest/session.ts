@@ -20,6 +20,8 @@ export type PlayStatus = {
     node?: number;
     world?: number;
     player?: { x: number; y: number; z: number } | null;
+    sound_ready?: boolean;
+    audio_buffered?: number;
 };
 
 export function formatStatus(s: PlayStatus): string {
@@ -35,6 +37,8 @@ export function formatStatus(s: PlayStatus): string {
     if (s.world !== undefined) parts.push(`world=${s.world}`);
     if (s.player) parts.push(`player=(${s.player.x}, ${s.player.y}, ${s.player.z})`);
     else parts.push("player=none");
+    if (s.sound_ready !== undefined) parts.push(`sound_ready=${s.sound_ready ? 1 : 0}`);
+    if (s.audio_buffered !== undefined) parts.push(`audio_buffered=${s.audio_buffered}`);
     return parts.join(" ");
 }
 
@@ -184,19 +188,21 @@ export class Session {
         const sock = this.sockPath();
         const args = ["--save", this.saveDir];
         if (this.openPack) args.push(this.openPack);
+        const extraEnv: Record<string, string> = {
+            NSMBU_LOG_FILE: this.logPath,
+            NSMBU_AGENT_SOCK: sock,
+            NSMBU_HIDDEN_WINDOWS: "1",
+            NSMBU_NO_HOST_INPUT: "1",
+            NSMBU_NO_AUDIO: "1",
+            NSMBU_VK_PRESENT_MODE: "immediate",
+            NSMBU_RES_SCALE: "1",
+            ...this.env,
+        };
+        if (this.env.NSMBU_NO_AUDIO === "0") delete extraEnv.NSMBU_NO_AUDIO;
         const child = spawnPython(this.repo, "tools/run/launch.py", args, {
             detached: true,
             stdio: "ignore",
-            extraEnv: {
-                NSMBU_LOG_FILE: this.logPath,
-                NSMBU_AGENT_SOCK: sock,
-                NSMBU_HIDDEN_WINDOWS: "1",
-                NSMBU_NO_HOST_INPUT: "1",
-                NSMBU_NO_AUDIO: "1",
-                NSMBU_VK_PRESENT_MODE: "immediate",
-                NSMBU_RES_SCALE: "1",
-                ...this.env,
-            },
+            extraEnv,
         });
         child.unref();
         if (child.pid === undefined) throw new Error("failed to spawn game");
@@ -226,6 +232,8 @@ export class Session {
             node: r.node,
             world: r.world,
             player: r.player,
+            sound_ready: r.sound_ready,
+            audio_buffered: r.audio_buffered,
         };
         this.last = formatStatus(s);
         return s;

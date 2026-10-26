@@ -29,7 +29,6 @@
 #include "gfx/aspect.h"
 #include "crash/crashrec.h"
 #include "text/game_languages.h"
-#include "core/soft_restart.h"
 #include "../gfx/renderer.h"
 #ifdef __ANDROID__
 #include "../gfx/vulkan/android_driver.h"
@@ -53,8 +52,10 @@ namespace gfxvk { bool buffer_cache_enabled(); }
 #include "hooks/course_hot_reload.h"
 #include "core/runtime.h"
 #include "save/savestate.h"
+#include "save/save_preview.h"
 #include "gfx/screenshot.h"
 #include "gfx/render_prof.h"
+#include "perf_metrics.h"
 #include "core/build_info.h"
 #include "crash/report_header.h"
 
@@ -151,6 +152,7 @@ struct Ui {
 
     ss::SlotInfo slots[ss::kSlots + 1];
     crashrec::AutoInfo autos[crashrec::kAutoSlots + 1];
+    save_preview::Info game_save;
     double slots_time = -1;
 
     double fps_t0 = 0, fps = 0;
@@ -446,10 +448,24 @@ void refresh_slots(bool force) {
     U.slots_time = t;
     for (int i = 1; i <= ss::kSlots; i++) U.slots[i] = ss::slot_info(i);
     for (int i = 1; i <= crashrec::kAutoSlots; i++) U.autos[i] = crashrec::auto_info(i);
+    U.game_save = save_preview::inspect_dir(config::save_dir);
 }
 
 void tab_saves() {
     refresh_slots(false);
+    note("%s", save_preview::summary(U.game_save).c_str());
+    if (hostui::can_open_folder() && !config::save_dir.empty()) {
+        if (ImGui::Button("Open saves folder")) {
+            std::string d = config::save_dir;
+            hostui::post([d] { hostui::open_folder(d); });
+        }
+        help("Your game save files (rp_personal_savedata.dat and rp_savedata.dat), not save states.");
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("%s", config::save_dir.c_str());
+    } else if (!config::save_dir.empty()) {
+        note("Saves folder: %s", config::save_dir.c_str());
+    }
     std::string msg = ss::last_message();
     if (!msg.empty()) note("%s", msg.c_str());
     heading("Save states");
@@ -570,6 +586,62 @@ void tab_saves() {
         else ImGui::TextDisabled("Automatic state %d:  empty", i);
         ImGui::PopID();
     }
+}
+
+std::string performance_device() {
+    std::string device = render::device();
+#ifdef __APPLE__
+    if (!render::vulkan()) device += ", driver: " + reporthdr::os_description();
+#endif
+#ifdef __ANDROID__
+    const auto driver = gfxvk::drivers::active_name();
+    if (!driver.empty()) device += " (" + driver + ")";
+#endif
+    return device.empty() ? "GPU/driver: n/a" : device;
+}
+
+std::string performance_report() {
+    float sum = 0, worst = 0;
+    for (float f : U.frame_ms) { sum += f; worst = std::max(worst, f); }
+    char frame[180];
+    snprintf(frame, sizeof frame, "FPS %.1f (average %.1f), frame %.2f ms (worst %.2f), average logic steps/s %.1f\n",
+             U.fps, g_average.fps, sum / 120.0f, worst, g_average.logic);
+    std::string report = std::string(frame) + perf::summary();
+#ifdef __ANDROID__
+    static AndroidTelemetry telemetry;
+    telemetry.read();
+    if (telemetry.busy >= 0) {
+        char busy[64];
+        snprintf(busy, sizeof busy, "GPU busy %.0f%%\n", telemetry.busy);
+        report += busy;
+    }
+    for (const auto& [name, value] : telemetry.temperatures) {
+        char line[96];
+        snprintf(line, sizeof line, "%s %.1f C\n", name.c_str(), value);
+        report += line;
+    }
+#endif
+    report += "CPU time is thread running time per output frame. GPU submission intervals may include stalls; not GPU load.\n";
+    const std::string detailed = rprof::latest_report();
+    report += detailed.empty() ? "No detailed report yet: play for a few seconds, then copy again.\n" : detailed;
+    reporthdr::Info h;
+    h.version = build::version();
+    h.commit = build::commit();
+    h.os = reporthdr::os_description();
+    h.gpu = performance_device();
+    h.renderer = render::api_name(render::active());
+    h.host = hostui::name();
+    h.fps = interp::mode_name();
+    h.scale = hostui::res_scale();
+#ifdef NSMBU_HAS_VULKAN
+    if (render::vulkan()) {
+        h.bufferCache = gfxvk::buffer_cache_enabled();
+        h.overrides = reporthdr::vulkan_overrides([](const env::Var& n) -> const char* { return n(); });
+    }
+#endif
+    if (const int g = motion::settings().source; g != motion::kOff) h.gyro = motion::source_id(g);
+    report = reporthdr::format(h) + report;
+    return report;
 }
 
 void tab_graphics() {
@@ -705,30 +777,11 @@ void tab_graphics() {
     if (check("Performance overlay (FPS, frame time)", perf_shown(), &v)) set_perf_shown(v);
     if (check("Performance overlay detail (lag breakdown)", perf_detail_shown(), &v, perf_shown())) set_perf_detail_shown(v);
     if (!perf_shown()) help("Needs the performance overlay on");
-    if (ImGui::Button("Reset performance averages")) g_average.reset();
+    if (ImGui::Button("Reset performance averages")) { g_average.reset(); perf::reset(); }
 
     static double copiedAt = -10;
     if (ImGui::Button("Copy performance report")) {
-        std::string report = rprof::latest_report();
-
-        reporthdr::Info h;
-        h.version = build::version();
-        h.commit = build::commit();
-        h.os = reporthdr::os_description();
-        h.gpu = render::device();
-        h.renderer = render::vulkan() ? "Vulkan" : "Metal";
-        h.host = hostui::name();
-        h.fps = interp::mode_name();
-        h.scale = hostui::res_scale();
-#ifdef NSMBU_HAS_VULKAN
-        if (render::vulkan()) {
-            h.bufferCache = gfxvk::buffer_cache_enabled();
-            h.overrides = reporthdr::vulkan_overrides([](const env::Var& n) -> const char* { return n(); });
-        }
-#endif
-        if (const int g = motion::settings().source; g != motion::kOff) h.gyro = motion::source_id(g);
-        report = reporthdr::format(h) +
-                 (report.empty() ? std::string("No report yet: play for a few seconds, then copy again.\n") : report);
+        std::string report = performance_report();
         hostui::post([report] { hostui::set_clipboard(report); });
         copiedAt = ImGui::GetTime();
     }
@@ -857,9 +910,9 @@ void tab_display() {
     }
 }
 
-void ask_soft_restart(const char* why);
-void soft_restart_button(const char* why);
-void soft_restart_confirm();
+void ask_restart(const char* why);
+void restart_button(const char* why);
+void restart_confirm();
 
 void package_controls() {
     using namespace mods::packages;
@@ -968,7 +1021,7 @@ void package_controls() {
         if (mod.pending_restart) any_restart = true;
     if (any_restart) {
         warn("A content or graphics pack change needs a restart.");
-        soft_restart_button("Apply mod changes.");
+        restart_button("Apply mod changes.");
     }
 }
 
@@ -1318,24 +1371,24 @@ void choose_language(int language) {
     hostui::post([language] { hostui::set("language", std::to_string(language)); });
 }
 
-void ask_soft_restart(const char* why) {
+void ask_restart(const char* why) {
     U.restart_why = why && *why ? why : "settings";
     U.restart_confirm = true;
 }
 
-void soft_restart_confirm() {
+void restart_confirm() {
     if (!U.restart_confirm) return;
-    ImGui::OpenPopup("Restart the game?###soft_restart");
+    ImGui::OpenPopup("Restart the game?###restart");
     const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    if (!ImGui::BeginPopupModal("Restart the game?###soft_restart", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    if (!ImGui::BeginPopupModal("Restart the game?###restart", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
     ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
-    ImGui::TextWrapped("%s Progress since your last save is lost.", U.restart_why.c_str());
+    ImGui::TextWrapped("%s This relaunches the app. Progress since your last save is lost.", U.restart_why.c_str());
     ImGui::PopTextWrapPos();
     if (ImGui::Button("Restart now", ImVec2(140, 0))) {
-        soft_restart::request(U.restart_why.c_str());
         U.restart_confirm = false;
         ImGui::CloseCurrentPopup();
+        hostui::post([] { render::restart(); });
     }
     ImGui::SameLine();
     if (ImGui::Button("Cancel", ImVec2(140, 0))) {
@@ -1345,12 +1398,8 @@ void soft_restart_confirm() {
     ImGui::EndPopup();
 }
 
-void soft_restart_button(const char* why) {
-    if (soft_restart::pending()) {
-        note("Restarting…");
-        return;
-    }
-    if (ImGui::Button("Restart now")) ask_soft_restart(why);
+void restart_button(const char* why) {
+    if (ImGui::Button("Restart now")) ask_restart(why);
 }
 
 void tab_debug() {
@@ -1390,7 +1439,6 @@ void tab_about() {
     char* end = nullptr;
     const long env_value = env_set ? strtol(env, &end, 10) : 1;
     const int env_language = env_set && !*end && env_value >= 0 && env_value < game_lang::kLanguages ? (int)env_value : 1;
-    if (soft_restart::take_ui_refresh()) U.language = -1;
     if (U.language < 0) {
         U.language = game_lang::usable(saved_language());
         const game_lang::Start now = game_lang::current();
@@ -1416,7 +1464,7 @@ void tab_about() {
     } else if (U.language != U.language_at_start) {
         warn("%s is saved. Restart to apply it: the game reads the console language only when it starts.",
              game_lang::name(U.language));
-        soft_restart_button("Apply the console language.");
+        restart_button("Apply the console language.");
     }
 }
 
@@ -1431,12 +1479,16 @@ static void lag_row(const char* name, double ms, double frameMs, const ImVec4& c
 
 void perf_window(bool menu_open) {
     const double t = now_s();
+    static std::string metrics;
+    static std::string device;
     if (U.fps_t0 == 0) { U.fps_t0 = t; U.fps_n0 = render::host_presents(); }
     if (t - U.fps_t0 >= 0.5) {
         uint64_t n = render::host_presents();
         U.fps = (double)(n - U.fps_n0) / (t - U.fps_t0);
         U.fps_t0 = t;
         U.fps_n0 = n;
+        metrics = perf::summary();
+        device = performance_device();
     }
     float worst = 0, sum = 0;
     for (float f : U.frame_ms) { worst = std::max(worst, f); sum += f; }
@@ -1445,8 +1497,21 @@ void perf_window(bool menu_open) {
     ImGuiWindowFlags fl = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                           ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##perf", nullptr, fl)) {
-        ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
         ImGui::Text("%.0f fps   %.1f ms (worst %.1f)", U.fps, sum / 120.0f, worst);
+        ImGui::Text("Average %.1f fps   %.1f logic steps/s", g_average.fps, g_average.logic);
+        {
+            static double t0 = 0; static uint64_t s0 = 0; static double rate = 60;
+            static int slowWindows = 0;
+            static bool slow = false;
+            if (t0 == 0 || t - t0 < 0) { t0 = t; s0 = interp::logic_steps(); }
+            else if (t - t0 >= 2.0) {
+                rate = (double)(interp::logic_steps() - s0) / (t - t0); t0 = t; s0 = interp::logic_steps();
+                slowWindows = rate > 1 && rate < 58.0 ? slowWindows + 1 : 0;
+                slow = slow ? rate > 1 && rate < 59.0 : slowWindows >= 2;
+            }
+            if (slow && interp::mode() == 1 && !interp::paced_interpolation())
+                ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.3f, 1.0f), "Slow motion: %.1f of 60 logic steps/s. Turn on Keep game speed", rate);
+        }
 #ifdef __ANDROID__
         static AndroidTelemetry telemetry;
         static double next_read = 0;
@@ -1455,7 +1520,13 @@ void perf_window(bool menu_open) {
         for (const auto& [name, value] : telemetry.temperatures)
             ImGui::Text("%s %.1f C", name.c_str(), value);
 #endif
+        ImGui::Separator();
+        if (device.empty()) device = performance_device();
+        if (metrics.empty()) metrics = perf::summary();
+        ImGui::TextUnformatted(device.c_str());
+        ImGui::TextUnformatted(metrics.c_str());
         ImGui::PlotLines("##ft", U.frame_ms, 120, U.frame_i, nullptr, 0.0f, 50.0f, ImVec2(220, 36));
+        ImGui::TextDisabled("%s  %gx  %s", render::api_name(render::active()), hostui::res_scale(), interp::mode_name());
         rprof::Breakdown b;
         if (perf_detail_shown() && rprof::latest_breakdown(b)) {
             ImGui::SeparatorText("Lag breakdown");
@@ -1482,7 +1553,6 @@ void perf_window(bool menu_open) {
             ImGui::TextDisabled("renders %.2f ops ms/frame, %.1f MiB uploads/frame, %.0f logic steps/s",
                                 b.renderCpuMs, b.uploadMiB, b.logicRate);
         }
-        ImGui::PopStyleColor();
     }
     ImGui::End();
     (void)menu_open;
@@ -1539,7 +1609,7 @@ void settings_window() {
             U.select_tab = -1;
             ImGui::EndTabBar();
         }
-        soft_restart_confirm();
+        restart_confirm();
     }
     ImGui::End();
 
@@ -1724,6 +1794,7 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
     const bool open = is_open(), perf = perf_shown(), text = !open && text_entry::active();
     const bool coll = collision_wireframe::enabled();
     const bool gui = mods::lua_gui::active();
+    perf::set_demand(perf, open && U.tab == kGraphics);
 
     const std::string toast = open ? std::string() : ss::last_message();
     U.linearized = false;

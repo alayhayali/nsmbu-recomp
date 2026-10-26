@@ -19,6 +19,8 @@ type AgentResponse = {
     node?: number;
     world?: number;
     player?: { x: number; y: number; z: number } | null;
+    sound_ready?: boolean;
+    audio_buffered?: number;
     path?: string;
     output?: string;
 };

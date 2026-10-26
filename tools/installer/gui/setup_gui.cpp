@@ -1083,7 +1083,7 @@ static void handle_reply(const J& ev) {
     } else if (cmd == "shaders") {
         A.shader_running = false;
         if (ev.boolean("cancelled")) {
-            show_toast("Precompile stopped. Shaders compiled so far are kept.");
+            show_toast("Recompile stopped. Shaders compiled so far are kept.");
             go(A.shader_back);
             return;
         }
@@ -1357,24 +1357,24 @@ static void screen_menu() {
     page_header(A.portable ? "NSMBU" : "NSMBU is installed",
                 update ? "Prepared with " + A.installed_version + ". This release: " + A.version + "."
                        : "Version " + A.version + ", in " + home_folder());
-    const char* precompile = "Precompile shaders";
     if (update) {
         float full_w = ImGui::GetContentRegionAvail().x;
         float primary_h = ImGui::GetFrameHeight() + 12;
         if (button("Update to this release", ImVec2(full_w, primary_h), true)) start_install("installed");
-        button_caption("Rebuilds the game with this release. Your game files and saves are kept; no keys needed.");
+        button_caption("Rebuilds the game with this release and precompiles shaders. Your game files and saves are kept; no keys needed.");
     }
     if (button("Repair", ImVec2(button_w("Repair"), 0))) start_install("installed");
-    button_caption("Rebuilds the game code from the installed game files.");
+    button_caption("Rebuilds the game code from the installed game files, then precompiles shaders.");
+    const char* recompile = "Recompile shaders";
     if (update) {
         ImGui::BeginDisabled();
-        button(precompile, ImVec2(button_w(precompile), 0));
+        button(recompile, ImVec2(button_w(recompile), 0));
         ImGui::EndDisabled();
-        button_caption("Update to this release first, then precompile shaders.");
-    } else if (button(precompile, ImVec2(button_w(precompile), 0))) {
+        button_caption("Update to this release first, then recompile shaders.");
+    } else if (button(recompile, ImVec2(button_w(recompile), 0))) {
         start_shaders(Screen::Menu);
     } else {
-        button_caption("Compiles shaders now so play starts with less waiting. You can skip this and play.");
+        button_caption("Runs the game in the background again to refresh shader caches.");
     }
     if (button("Change the game...", ImVec2(button_w("Change the game..."), 0))) go(Screen::Source);
     if (button("Import saves or settings...", ImVec2(button_w("Import saves or settings..."), 0))) go(Screen::Save);
@@ -1619,7 +1619,8 @@ static void screen_keys() {
 static double step_weight(const std::string& id) {
     static const std::map<std::string, double> w = {{"keys", 1},      {"archive", 1},   {"folder", 1},
                                                     {"compiler", 3},  {"extract", 15},  {"copy", 8},
-                                                    {"translate", 8}, {"compile", 60},  {"app", 4}};
+                                                    {"translate", 8}, {"compile", 60},  {"app", 4},
+                                                    {"shaders", 25}};
     auto it = w.find(id);
     return it == w.end() ? 1 : it->second;
 }
@@ -1811,8 +1812,8 @@ static void screen_done() {
         muted("Off by default: then nothing is written outside this folder.");
     }
     ImGui::Spacing();
-    if (button("Precompile shaders", ImVec2(button_w("Precompile shaders"), 0)) && !busy()) start_shaders(Screen::Done);
-    muted("Optional. Compiles shaders now so the first time you play spends less time waiting.");
+    if (button("Recompile shaders", ImVec2(button_w("Recompile shaders"), 0)) && !busy()) start_shaders(Screen::Done);
+    muted("Runs the game in the background again to refresh shader caches.");
     int b = footer({"Quit", "Open folder", "Play"}, 2, busy() || !A.after.empty() ? 7 : 0);
     auto queue_options = [] {
         if (A.portable && A.toolchain_bytes > 0 && A.opt_remove_toolchain) A.queue.push_back({"remove_toolchain", ""});
@@ -1855,7 +1856,7 @@ static void cancel_shaders() {
 
 static void screen_shaders() {
     if (!A.shader_error.empty()) {
-        page_header("Could not precompile shaders");
+        page_header("Could not recompile shaders");
         std::string head = A.shader_error, rest;
         if (size_t nl = head.find('\n'); nl != std::string::npos) rest = head.substr(nl + 1), head = head.substr(0, nl);
         if (!head.empty()) head[0] = (char)toupper((unsigned char)head[0]);
@@ -1891,7 +1892,7 @@ static void screen_shaders() {
         if (b == 1) A.after = "play";
         return;
     }
-    page_header("Precompiling shaders",
+    page_header("Recompiling shaders",
                 "The game is running in the background. You can keep using your computer. This can take several minutes.");
     heading(A.shader_phase.empty() ? "Starting the game" : A.shader_phase.c_str());
     float bar_h = ImGui::GetFrameHeight() + 6;
@@ -1904,8 +1905,8 @@ static void screen_shaders() {
     muted("Elapsed: " + format_elapsed(ImGui::GetTime() - A.shader_started));
     ImGui::Spacing();
     muted("Stop leaves the shaders already compiled in place. You can play without finishing this.");
-    if (footer({"Cancel"}, -1, A.shader_running ? 0 : 1) == 0) ImGui::OpenPopup("Stop precompiling?");
-    if (begin_confirm("Stop precompiling?")) {
+    if (footer({"Cancel"}, -1, A.shader_running ? 0 : 1) == 0) ImGui::OpenPopup("Stop recompiling?");
+    if (begin_confirm("Stop recompiling?")) {
         ImGui::TextUnformatted("Stop compiling shaders now?");
         muted("Shaders already compiled are kept. You can run this again later.");
         ImGui::Spacing();
@@ -2523,7 +2524,7 @@ int main(int argc, char** argv) {
         }
         if (quit_requested) {
             if (A.screen == Screen::Installing) ImGui::OpenPopup("Stop setup?");
-            else if (A.screen == Screen::Shaders && A.shader_running) ImGui::OpenPopup("Stop precompiling?");
+            else if (A.screen == Screen::Shaders && A.shader_running) ImGui::OpenPopup("Stop recompiling?");
             else A.exit_code = 0;
             quit_requested = false;
         }

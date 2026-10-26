@@ -43,7 +43,6 @@
 #include "mods/mods.h"
 #include "mods/packages.h"
 #include "core/runtime.h"
-#include "core/soft_restart.h"
 #ifdef __ANDROID__
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -559,17 +558,10 @@ int main(int argc, char** argv) {
                 render::api_name(render::active()));
         return 1;
     }
-    soft_restart::set_module(m);
-    soft_restart::set_argv_ea(argv_arr);
-    std::thread([] {
-        for (;;) {
-            threads::run_main(soft_restart::module(), 1, soft_restart::argv_ea());
-            if (!soft_restart::on_guest_main_exit()) {
-                LOG("[boot] game main thread returned");
-                std::exit(0);
-            }
-            soft_restart::wait_until_idle();
-        }
+    std::thread([m, argv_arr] {
+        threads::run_main(m, 1, argv_arr);
+        LOG("[boot] game main thread returned");
+        std::exit(0);
     }).detach();
     render::run_main_loop();
     return 0;

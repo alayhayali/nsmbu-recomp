@@ -1,6 +1,9 @@
 #include "core/runtime.h"
-#include "core/soft_restart.h"
 #include "input/input.h"
+
+namespace render {
+__attribute__((weak)) bool restart() { return false; }
+}
 
 void log_msg(const char*, ...) {}
 
@@ -36,7 +39,3 @@ __attribute__((weak)) bool pro_controller() { return false; }
 __attribute__((weak)) PadState read() { return PadState{}; }
 }
 
-namespace soft_restart {
-__attribute__((weak)) bool pending() { return false; }
-__attribute__((weak)) void request(const char*) {}
-}

@@ -23,6 +23,8 @@ One guest thread runs on an emulated core at a time.
 
 `tools/recomp/recomp.py` writes `build/gen/code_*.c`, `table.c`, and `imports.c`.
 
+Run `nsmbu game <id> --recomp` only when `recomp.py` changed, hooks lists changed, or you need a different dump version; it is slow, so prefer reusing `build/gen` and `nsmbu build`.
+
 `hooks.txt` and `hooks_*.txt` name the call sites the runtime replaces.
 
 `guest_stubs.py` writes weak stubs for symbols the runtime still imports.

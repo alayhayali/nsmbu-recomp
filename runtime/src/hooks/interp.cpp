@@ -16,6 +16,7 @@
 #include "hooks/interp_pacing.h"
 #include "guest_addr.h"
 #include "gfx/render_prof.h"
+#include "perf_metrics.h"
 #include "core/runtime.h"
 #include "core/write_watch.h"
 #include "agent/agent_ctl.h"
@@ -717,7 +718,9 @@ static void after_pass(int phase) {
         g_hold_next = false;
         if (pacing) {
             paced_step_done(g_step_holds);
-            if (in_between() > 1 && (pacing::logic_wait_matches_presents(output_fps()) || (g_full_frames > 1 && g_frame_n < g_full_frames)))
+            if (g_step_n <= 0 ||
+                (in_between() > 1 && (pacing::logic_wait_matches_presents(output_fps()) ||
+                                      (g_full_frames > 1 && g_frame_n < g_full_frames))))
                 g_wait_step = true;
         }
         return;
@@ -786,6 +789,7 @@ std::string pass_cpu_report() {
 
 extern "C" void hook_029C52CC(Cpu* c) {
     using namespace interp;
+    perf::game_frame();
     if (!enabled()) {
         static const uint64_t at = env::INTERP_AT_STEP.u64_or(0);
         static uint64_t passes = 0;

@@ -80,6 +80,7 @@ Cpu* current();
 uint32_t current_thread();
 
 Cpu* make_service_cpu(const char* name, uint32_t stack_size = 0x10000);
+void retire_service_cpu();
 
 void service_begin();
 void service_end();

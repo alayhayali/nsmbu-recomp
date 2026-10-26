@@ -6,14 +6,12 @@ import { openedCourse } from "./opened-course.ts";
 import { openingCinematic } from "./opening-cinematic.ts";
 import { saveRoundtrip } from "./save-roundtrip.ts";
 import { saveState } from "./save-state.ts";
-import { softRestart } from "./soft-restart.ts";
 import { startup } from "./startup.ts";
 
 export type { PlayCase } from "../helpers.ts";
 
 export const CASES: PlayCase[] = [
     startup,
-    softRestart,
     openedCourse,
     openingCinematic,
     saveRoundtrip,

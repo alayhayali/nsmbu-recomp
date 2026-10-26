@@ -26,7 +26,6 @@
 #include "core/runtime.h"
 #include "agent/agent_ctl.h"
 #include "save/savestate.h"
-#include "core/soft_restart.h"
 #include "mods/sdk/nsmbu.h"
 #include "guest_addr.h"
 #include "gfx/aspect.h"
@@ -1126,7 +1125,6 @@ HLE(gx2, GX2SwapScanBuffers) {
         if (ms > slow_ms) LOG("[gx2] slow swap %llu: %.1f ms", (unsigned long long)g_swap_count, ms);
     }
     ss::service(c);
-    soft_restart::prepare();
     if (g_swap_count % 300 == 1) {
         static auto last = std::chrono::steady_clock::now();
         auto now = std::chrono::steady_clock::now();

@@ -733,6 +733,20 @@ Cpu* make_service_cpu(const char* name, uint32_t stack_size) {
     host::boost_thread_priority();
     return &ht->cpu;
 }
+
+void retire_service_cpu() {
+    HostThread* ht = t_self;
+    if (!ht || !ht->service) return;
+    {
+        std::lock_guard<std::mutex> lk(g_threads_mutex);
+        auto it = g_threads.find(ht->guest);
+        if (it != g_threads.end() && it->second == ht) g_threads.erase(it);
+    }
+    t_self = nullptr;
+    t_cpu = nullptr;
+    ht->exited = true;
+    delete ht;
+}
 }
 
 HLE(coreinit, OSCreateThread) {
@@ -1421,7 +1435,7 @@ void reset_for_reboot() {
     for (HostThread* t : leftover) {
         if (!t) continue;
         if (!t->exited) {
-            LOG("[soft_restart] leftover guest thread still running guest=%08X; forcing host stop", t->guest);
+            LOG("[thread] leftover guest thread still running guest=%08X; forcing host stop", t->guest);
 #ifdef _WIN32
             if (t->pt) {
                 TerminateThread(t->pt, 0);

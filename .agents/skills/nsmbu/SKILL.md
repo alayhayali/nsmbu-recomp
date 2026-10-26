@@ -31,7 +31,9 @@ nsmbu build
 `--list` prints JSON (`active`, `versions`, `loose_images`).
 `nsmbu game <id>` writes `game/active` and skips prompts.
 Add `--extract` to extract (or re-extract) the disc.
-Add `--recomp` to refresh `build/gen` from that dump's RPX (needed when switching between USA and Europe).
+Add `--recomp` to refresh `build/gen` from that dump's RPX.
+`--recomp` is slow; reuse `build/gen` unless `tools/recomp/recomp.py` changed, you switch game version (e.g. USA ↔ Europe), or `hooks.txt` / `hooks_*.txt` changed.
+Runtime-only edits need `nsmbu build` only.
 Then `nsmbu build` (and playtests / `nsmbu open`) use that dump.
 
 Issue playtests that use `Scene` open / apply-save need a `*-1.3.0` (or combo) dump.

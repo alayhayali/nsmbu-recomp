@@ -5,6 +5,7 @@
 #import <ImageIO/ImageIO.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
+#include <array>
 #include <atomic>
 #include <set>
 
@@ -16,6 +17,7 @@
 #include "metal.h"
 #include "core/runtime.h"
 #include "input/input.h"
+#include "perf_metrics.h"
 
 namespace gfx {
 Renderer R;
@@ -94,8 +96,39 @@ id<MTLBuffer> guest_buffer(uint32_t addr, uint32_t* offset) {
     return nil;
 }
 
+static uint64_t commandFrame = 0, commandToken = 0;
+struct OverlayGpuTime {
+    id<MTLCommandBuffer> buffer = nil;
+    uint64_t frame = 0, token = 0;
+};
+static std::array<OverlayGpuTime, 256> overlayGpuTimes;
+static bool overlayGpuPending = false;
+static void read_overlay_gpu_times() {
+    if (!perf::enabled()) {
+        if (overlayGpuPending) { overlayGpuTimes = {}; overlayGpuPending = false; }
+        return;
+    }
+    static uint64_t lastPoll = UINT64_MAX;
+    if (lastPoll == R.frame) return;
+    lastPoll = R.frame;
+    for (auto& q : overlayGpuTimes) {
+        if (!q.buffer || q.frame >= R.frame) continue;
+        auto status = q.buffer.status;
+        if (status != MTLCommandBufferStatusCompleted && status != MTLCommandBufferStatusError) continue;
+        perf::timestamp_read(R.frame - q.frame);
+        double ns = status == MTLCommandBufferStatusCompleted
+            ? (q.buffer.GPUEndTime - q.buffer.GPUStartTime) * 1e9 : -1;
+        perf::gpu_complete(q.frame, q.token, ns);
+        q = {};
+    }
+}
 id<MTLCommandBuffer> command_buffer() {
-    if (!R.cmd) R.cmd = [R.queue commandBuffer];
+    if (!R.cmd) {
+        read_overlay_gpu_times();
+        R.cmd = [R.queue commandBuffer];
+        commandFrame = R.frame;
+        commandToken = perf::gpu_begin(commandFrame);
+    }
     return R.cmd;
 }
 
@@ -103,6 +136,15 @@ uint32_t g_draws_since_commit = 0;
 std::atomic<uint64_t> g_gpu_ns{0};
 
 static void track_gpu_time(id<MTLCommandBuffer> cb) {
+    const uint64_t frame = commandFrame;
+    const uint64_t token = commandToken;
+    if (token) {
+        bool stored = false;
+        for (auto& q : overlayGpuTimes) if (!q.buffer) {
+            q = {cb, frame, token}; overlayGpuPending = true; stored = true; break;
+        }
+        if (!stored) perf::gpu_complete(frame, token, -1);
+    }
     [cb addCompletedHandler:^(id<MTLCommandBuffer> b) {
         double t = b.GPUEndTime - b.GPUStartTime;
         if (t > 0) g_gpu_ns += (uint64_t)(t * 1e9);
@@ -476,6 +518,7 @@ void swap() {
         [command_buffer() addCompletedHandler:^(id<MTLCommandBuffer>) { g_frames_completed++; }];
         flush();
     }
+    perf::gpu_advance(R.frame);
     if (R.frame % 300 == 1) {
 
         timespec ts{};
