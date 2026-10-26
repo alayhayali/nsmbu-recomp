@@ -9,6 +9,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Added
 
+- Decomp notes for the sead / ApplicationFramework frame loop, and a plan to drive present rate from wall-clock time while keeping 60 logic steps/s.
 - Settings can restart the game in the same window when language or content mods need it.
   Confirm Restart now; progress since your last save is lost.
   Switching Metal and Vulkan still relaunches the app.
