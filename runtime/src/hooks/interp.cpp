@@ -713,7 +713,7 @@ static void after_pass(int phase) {
         g_hold_next = false;
         if (pacing) {
             paced_step_done(g_step_holds);
-            if (in_between() > 1) g_wait_step = true;
+            if (in_between() > 1 && pacing::logic_wait_matches_presents(output_fps())) g_wait_step = true;
         }
         return;
     }

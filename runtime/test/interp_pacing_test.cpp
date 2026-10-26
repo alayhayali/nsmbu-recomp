@@ -121,6 +121,15 @@ static void test_cap() {
     CHECK(cap_fps(240, 0, true) == 240);
     CHECK(cap_fps(240, 60, false) == 240);
     CHECK(cap_fps(100, 240, true) == 120);
+    CHECK(logic_wait_matches_presents(60));
+    CHECK(logic_wait_matches_presents(120));
+    CHECK(logic_wait_matches_presents(240));
+    CHECK(!logic_wait_matches_presents(144));
+    CHECK(!logic_wait_matches_presents(165));
+    CHECK(collapse_duplicate_vsync(false, true, 1'000'000));
+    CHECK(!collapse_duplicate_vsync(true, true, 500'000));
+    CHECK(!collapse_duplicate_vsync(false, true, 6'060'606));
+    CHECK(!collapse_duplicate_vsync(false, false, 0));
     CHECK(valid_fps(0) == 60);
     CHECK(valid_fps(59) == 60);
     CHECK(valid_fps(100) == 120);

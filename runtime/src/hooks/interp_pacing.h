@@ -71,6 +71,15 @@ inline int display_fps(int hz) {
     return shown;
 }
 
+inline bool logic_wait_matches_presents(int fps) {
+    return valid_fps(fps) % 60 == 0;
+}
+
+inline bool collapse_duplicate_vsync(bool presented_since_wake, bool wake_valid, int64_t since_wake_ns) {
+    if (presented_since_wake || !wake_valid) return false;
+    return since_wake_ns < 2'000'000;
+}
+
 inline int cap_fps(int fps, int hz, bool vsync) {
     fps = valid_fps(fps);
     if (!vsync || hz <= 0) return fps;

@@ -38,6 +38,7 @@
 #include "hooks/collision_wireframe.h"
 #include "hooks/course_hot_reload.h"
 #include "hooks/interp.h"
+#include "hooks/interp_pacing.h"
 
 using namespace Latte;
 
@@ -718,6 +719,7 @@ static std::chrono::steady_clock::time_point g_capped_vsync_last_wake;
 static bool g_capped_vsync_last_wake_valid = false;
 static uint64_t g_paced_vsync = 0;
 static bool g_paced_vsync_valid = false;
+static bool g_presented_since_wake = false;
 static std::chrono::nanoseconds capped_vsync_wait_period(uint64_t granule) {
     if (interp::mode() == 1) {
         const int fps = interp::output_fps();
@@ -728,10 +730,13 @@ static std::chrono::nanoseconds capped_vsync_wait_period(uint64_t granule) {
 }
 static bool capped_vsync_same_frame(uint64_t granule, std::chrono::steady_clock::time_point now) {
     (void)granule;
-    if (!g_capped_vsync_last_wake_valid) return false;
-    return now < g_capped_vsync_last_wake + std::chrono::milliseconds(2);
+    const int64_t since = g_capped_vsync_last_wake_valid
+        ? std::chrono::duration_cast<std::chrono::nanoseconds>(now - g_capped_vsync_last_wake).count()
+        : 0;
+    return interp::pacing::collapse_duplicate_vsync(g_presented_since_wake, g_capped_vsync_last_wake_valid, since);
 }
 static void capped_vsync_note_wake(uint64_t granule) {
+    g_presented_since_wake = false;
     if (!g_paced_vsync_valid) {
         g_paced_vsync = vsync_index() / granule * granule;
         g_paced_vsync_valid = true;
@@ -741,6 +746,7 @@ static void capped_vsync_note_wake(uint64_t granule) {
 static void capped_vsync_reset_pace() {
     g_capped_vsync_last_wake_valid = false;
     g_paced_vsync_valid = false;
+    g_presented_since_wake = false;
 }
 static uint64_t flip_clock() { return g_paced_vsync_valid ? g_paced_vsync : vsync_index(); }
 static void capped_vsync_ready_flip_last_wake(uint64_t granule) {
@@ -970,6 +976,7 @@ HLE(gx2, GX2DrawDone) {
     ret(c, 1);
 }
 HLE(gx2, GX2SwapScanBuffers) {
+    g_presented_since_wake = true;
     align_swap_after_wake();
 
     static int trace = env::TRACE_SWAP.integer_or(0);
