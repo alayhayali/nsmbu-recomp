@@ -24,6 +24,7 @@ Issue links that the cases cover:
 - `startup` — [#6](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/6)
 - `opening-cinematic`, `save-roundtrip`, `course-enter`, `save-state` — [#14](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/14) (Quick Save / story map / high fps)
 - `course-enter-120` — [#15](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/15) at 120 fps
+- `map-shadow-120` — [#20](https://github.com/nsmbu-recomp/nsmbu-recomp/issues/20) at 120 fps (world map stays open)
 - `opened-course` — 0.6.1 course-open / leave-to-map regressions
 
 Closed-issue coverage outside playtests:

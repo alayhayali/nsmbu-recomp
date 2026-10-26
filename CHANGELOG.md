@@ -13,6 +13,11 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
   Confirm Restart now; progress since your last save is lost.
   Switching Metal and Vulkan still relaunches the app.
 
+### Fixed
+
+- World-map shadows no longer flicker at 120/144 fps frame interpolation (#20).
+  In-between passes skip redrawing outside a course, so light maps and shadow maps keep the last logic frame.
+
 ### Changed
 
 - Settings tabs: Controls is first; Saves sits between Audio and Mods; Language drops the About blurb; Debug is capitalized.

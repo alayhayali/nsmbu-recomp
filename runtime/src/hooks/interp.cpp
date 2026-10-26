@@ -845,6 +845,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
 extern "C" void hook_029C4FE4(Cpu* c) {
     using namespace interp;
     if (enabled() && !g_hold && g_frame_n <= 0) return;
+    if (enabled() && g_hold && !course_play_active()) return;
     f_029C4FE4_orig(c);
     if (!g_models_on || !enabled() || !course_play_active() || g_exact_step || !model_subst_pending()) return;
     imp_gx2_GX2DrawDone(c);

@@ -1,6 +1,7 @@
 import type { PlayCase } from "../helpers.ts";
 import { courseEnter } from "./course-enter.ts";
 import { courseEnter120 } from "./course-enter-120.ts";
+import { mapShadow120 } from "./map-shadow-120.ts";
 import { openedCourse } from "./opened-course.ts";
 import { openingCinematic } from "./opening-cinematic.ts";
 import { saveRoundtrip } from "./save-roundtrip.ts";
@@ -17,4 +18,5 @@ export const CASES: PlayCase[] = [
     saveState,
     courseEnter,
     courseEnter120,
+    mapShadow120,
 ];
