@@ -175,5 +175,16 @@ class Hooks(unittest.TestCase):
         self.assertEqual(by_canon[0x029CBBB4], combo.code(0x029CBBB4))
         self.assertTrue(combo.body_differs(0x029CBBB4))
 
+    def test_hook_files_in_folder_with_brackets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            d = os.path.join(temporary, "tools [recomp]")
+            os.makedirs(d)
+            open(os.path.join(d, "hooks.txt"), "w").close()
+            with open(os.path.join(d, "hooks_perf.txt"), "w", encoding="utf-8") as source:
+                source.write("029C52CC\n")
+            paths = builds.hook_files(d)
+        self.assertEqual(paths[0], os.path.join(d, "hooks.txt"))
+        self.assertEqual([os.path.basename(p) for p in paths[1:]], ["hooks_perf.txt"])
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

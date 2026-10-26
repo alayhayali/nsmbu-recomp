@@ -35,7 +35,7 @@ def runtime_refs():
     funcs = set()
     pat = re.compile(r"\bf_([0-9A-F]{8})(?:_orig)?\b")
     for ext in ("c", "cpp", "h", "mm"):
-        for p in glob.glob(os.path.join(root, "runtime", "src", "**", "*." + ext), recursive=True):
+        for p in glob.glob(os.path.join(glob.escape(root), "runtime", "src", "**", "*." + ext), recursive=True):
             with open(p, errors="replace") as f:
                 funcs.update(int(m, 16) for m in pat.findall(f.read()))
     return funcs

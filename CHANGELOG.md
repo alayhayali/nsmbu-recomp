@@ -7,6 +7,15 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Changed
+
+- Recompiling an unchanged game no longer rewrites every generated C file, so a normal rebuild skips guest code that did not change.
+- Hooked game functions and instruction-level hook sites keep plain register form in the recompiled C (the runtime hook can read and write the Cpu mid-function).
+
+### Fixed
+
+- Install and recomp tools find generated code and hook lists when the install path contains square brackets.
+
 ### Added
 
 - Decomp notes for the sead / ApplicationFramework frame loop, and a plan to drive present rate from wall-clock time while keeping 60 logic steps/s.
