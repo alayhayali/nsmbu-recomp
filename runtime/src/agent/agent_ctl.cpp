@@ -59,6 +59,7 @@ struct PadOverlay {
     bool stick = false;
     bool rstick = false;
     uint64_t until = 0;
+    int samples = 0;
 };
 PadOverlay g_pad;
 
@@ -157,17 +158,22 @@ std::string handle_status(int id) {
     return mods::json::dump(v);
 }
 
-void apply_press(uint32_t bits, int frames) {
-    const uint64_t until = render::frame_count() + uint64_t(frames);
+void apply_press(uint32_t bits, int frames, bool tap) {
     std::lock_guard<std::mutex> lk(g_mu);
     g_pad.buttons = bits;
-    g_pad.until = until;
     g_pad.stick = false;
     g_pad.rstick = false;
+    if (tap) {
+        g_pad.samples = 1;
+        g_pad.until = 0;
+    } else {
+        g_pad.samples = 0;
+        g_pad.until = interp::logic_steps() + uint64_t(frames);
+    }
 }
 
 void apply_stick(float x, float y, int frames, bool right) {
-    const uint64_t until = render::frame_count() + uint64_t(frames);
+    const uint64_t until = interp::logic_steps() + uint64_t(frames);
     std::lock_guard<std::mutex> lk(g_mu);
     if (right) {
         g_pad.rx = x;
@@ -178,6 +184,7 @@ void apply_stick(float x, float y, int frames, bool right) {
         g_pad.ly = y;
         g_pad.stick = true;
     }
+    g_pad.samples = 0;
     g_pad.until = until;
 }
 
@@ -196,7 +203,9 @@ void handle_request(const mods::json::Value& req) {
             queue_line(response_err(id, "missing bits"));
             return;
         }
-        apply_press(uint32_t(bv.number), request_frames(req, 20));
+        const auto& tapv = req.get("tap");
+        const bool tap = tapv.type == mods::json::Value::Bool && tapv.boolean;
+        apply_press(uint32_t(bv.number), request_frames(req, 20), tap);
         queue_line(response_ok(id));
         return;
     }
@@ -417,7 +426,7 @@ void service() {
 #endif
     {
         std::lock_guard<std::mutex> lk(g_mu);
-        expire_pad(render::frame_count());
+        expire_pad(interp::logic_steps());
     }
     if (g_quit.exchange(false)) {
 #ifdef NSMBU_SDL_HOST
@@ -537,10 +546,25 @@ void guest_observe() {
 
 void apply_pad(input::PadState& pad) {
     if (!g_active.load()) return;
-    const uint64_t frame = render::frame_count();
+    const uint64_t step = interp::logic_steps();
     std::lock_guard<std::mutex> lk(g_mu);
-    expire_pad(frame);
-    if (!g_pad.until || g_pad.until <= frame) return;
+    if (g_pad.samples > 0) {
+        if (interp::hold_pass()) return;
+        pad.buttons |= g_pad.buttons;
+        if (g_pad.stick) {
+            pad.lx = g_pad.lx;
+            pad.ly = g_pad.ly;
+        }
+        if (g_pad.rstick) {
+            pad.rx = g_pad.rx;
+            pad.ry = g_pad.ry;
+        }
+        g_pad.samples--;
+        if (g_pad.samples <= 0) g_pad = {};
+        return;
+    }
+    expire_pad(step);
+    if (!g_pad.until || g_pad.until <= step) return;
     pad.buttons |= g_pad.buttons;
     if (g_pad.stick) {
         pad.lx = g_pad.lx;

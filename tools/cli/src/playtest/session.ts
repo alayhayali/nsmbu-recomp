@@ -245,9 +245,9 @@ export class Session {
         return (r.output ?? "").trim();
     }
 
-    async press(button: string, frames = 20): Promise<void> {
+    async press(button: string, frames = 20, tap = false): Promise<void> {
         const r = await withTimeout(
-            this.live().request({ cmd: "press", bits: parseButtonBits(button), frames }),
+            this.live().request({ cmd: "press", bits: parseButtonBits(button), frames, tap }),
             Math.max(15000, frames * 50),
             "press",
         );
