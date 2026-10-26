@@ -36,17 +36,15 @@ def symbols():
     return sorted(found)
 
 def hook_lists():
+    from builds import _parse_hook, hook_files
     hooks, sites = set(), set()
-    paths = [os.path.join(here, "hooks.txt")] + sorted(glob.glob(os.path.join(here, "hooks_*.txt")))
-    for path in paths:
-        if not os.path.exists(path):
-            continue
-        for line in open(path):
-            line = line.split("#")[0].strip()
-            if line.startswith("@"):
-                sites.add(int(line[1:], 16))
-            elif line:
-                hooks.add(int(line, 16))
+    for path in hook_files():
+        for lineno, raw in enumerate(open(path), 1):
+            line = raw.split("#")[0].strip()
+            if not line:
+                continue
+            site, canon, _same = _parse_hook(line, "%s:%d" % (os.path.basename(path), lineno))
+            (sites if site else hooks).add(canon)
     return hooks, sites
 
 def defined(pattern):

@@ -109,24 +109,27 @@ class Recompiler:
         """A hook is written against the canonical code, so check that it can mean the same thing in
         this build (see tools/recomp/mkbuildmap.py). An instruction-level site inside a function the
         build compiled differently patches different code: that is an error. A hook on the entry of
-        such a function wraps it whole, which usually still holds, but it is reported."""
+        such a function wraps it whole, which usually still holds, but it is reported. A line marked
+        `same` was already checked, so that wrap is quiet."""
         self.hooks_in_changed = []
         kept = []
-        for site, canon, addr, where in hook_entries:
+        for site, canon, addr, where, same in hook_entries:
             if self.build.body_differs(canon):
-                if site or addr not in self.entries:
-                    if not self.build.mods:
-                        print("warning: %s: skipping site %08X on %s (changed code; mods unsupported on this build)"
-                              % (where, canon, self.build.name), file=sys.stderr)
-                        continue
+                fate = game_builds.differing_hook(site, same, addr in self.entries, self.build.mods)
+                if fate == "skip":
+                    print("warning: %s: skipping site %08X on %s (changed code; mods unsupported on this build)"
+                          % (where, canon, self.build.name), file=sys.stderr)
+                    continue
+                if fate == "refuse":
                     raise SystemExit('%s: %08X is inside a function the %s build compiled differently; the '
                                      'hook is written for the canonical (USA) code. Mark its file with '
                                      '"# builds: USA" or write the hook for this build.' % (
                                          where, canon, self.build.name))
-                self.hooks_in_changed.append((where, canon, addr))
-                print("warning: %s: the %s build compiled %08X (there: %08X) differently; the hook wraps "
-                      "the whole function, so check that it still means the same thing" % (
-                          where, self.build.name, canon, addr), file=sys.stderr)
+                if fate == "warn":
+                    self.hooks_in_changed.append((where, canon, addr))
+                    print("warning: %s: the %s build compiled %08X (there: %08X) differently; the hook wraps "
+                          "the whole function, so check that it still means the same thing" % (
+                              where, self.build.name, canon, addr), file=sys.stderr)
             if not self.p.in_text(addr):
                 if not self.build.mods:
                     print("warning: %s: skipping %08X on %s (outside code; mods unsupported on this build)"

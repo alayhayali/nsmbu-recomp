@@ -17,6 +17,9 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - World-map shadows no longer flicker at 120/144 fps frame interpolation (#20).
   In-between passes skip redrawing outside a course, so light maps and shadow maps keep the last logic frame.
+- Recompiling Europe 1.3.0 accepts the error-viewer hook quietly.
+  Europe chooses that viewer's layout from a language table.
+  The hook still skips the viewer, so closing it cannot pause the game.
 
 ### Changed
 

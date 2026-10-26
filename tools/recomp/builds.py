@@ -12,7 +12,9 @@ A hooks file (`hooks*.txt`) may start with
 to say that its hooks belong to one build only. That is for hooks that patch code which another
 build already has, like the European language code the USA build lacks (`hooks_language.txt`).
 Everything else is checked automatically: a hook or site inside a function whose body differs
-between the builds is refused, because the code it patches is not the same code there.
+between the builds is refused, because the code it patches is not the same code there. A wrap of
+the whole function is allowed and reported, unless the line says `same`: the replacement was
+checked and applies to that function in every build.
 """
 import bisect
 import glob
@@ -187,12 +189,26 @@ def identify(rpx_path):
 
 _BUILDS_RE = re.compile(r"^#\s*builds:\s*(.+)$", re.I)
 
+def differing_hook(site, same, is_entry, mods):
+    """What to do with a hook in a function this build compiled differently.
+
+    "keep" applies it quietly. "warn" applies a whole-function wrap and reports it. "skip" drops
+    an instruction site when this build has no mods. "refuse" is that site on a build that has mods.
+    `same` is a wrap whose replacement was checked against the other bodies.
+    """
+    if same and not site and is_entry:
+        return "keep"
+    if site or not is_entry:
+        return "skip" if not mods else "refuse"
+    return "warn"
+
 def read_hooks(paths, build):
     """Read the hooks files that apply to `build`.
 
     Returns (entries, skipped): entries is a list of (is_site, canonical address, this build's
-    address, "file:line"), skipped names the files that belong to another build. The caller checks
-    that every entry applies to the build (the recompiler does, once it knows every function).
+    address, "file:line", same), skipped names the files that belong to another build. `same` is
+    true when the line says the whole-function replacement applies to every build. The caller
+    checks that every entry applies to the build (the recompiler does, once it knows every function).
     """
     entries, skipped = [], []
     for path in paths:
@@ -212,16 +228,29 @@ def read_hooks(paths, build):
             if not text:
                 continue
             where = "%s:%d" % (os.path.basename(path), lineno)
-            site = text.startswith("@")
-            canon = int(text[1:] if site else text, 16)
+            site, canon, same = _parse_hook(text, where)
             try:
                 mapped = build.code(canon)
             except ValueError:
                 # Interior of a differently compiled function: keep the piecewise address so the
                 # recompiler can skip or error with a useful location.
                 mapped = build._code.apply(canon)
-            entries.append((site, canon, mapped, where))
+            entries.append((site, canon, mapped, where, same))
     return entries, skipped
+
+def _parse_hook(text, where):
+    site = text.startswith("@")
+    body = text[1:].strip() if site else text
+    parts = body.split()
+    if len(parts) != 1 and not (len(parts) == 2 and parts[1].lower() == "same"):
+        raise ValueError("%s: a hook is an address, optionally followed by 'same'" % where)
+    if site and len(parts) == 2:
+        raise ValueError("%s: 'same' is for a whole-function hook" % where)
+    try:
+        canon = int(parts[0], 16)
+    except ValueError:
+        raise ValueError("%s: %s is not an address" % (where, parts[0]))
+    return site, canon, len(parts) == 2
 
 def hook_files(directory=None):
     d = directory or HERE
