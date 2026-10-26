@@ -21,6 +21,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Android plays full screen into the display cutout, Back opens and closes Settings, setup has a Share log button for the game's log, the files app can browse the app's folders (the game itself stays read-only), and a Graphics > Heat guard setting (`NSMBU_HEAT_GUARD`) pauses the in-between frames when the device runs hot, later on fan-cooled handhelds.
 - Android has on-screen controls (stick, D-pad, A B X Y, L R ZL ZR, + −) that follow your face-button layout, hide while a controller is connected, and can be moved and resized by holding their button; the phone can vibrate while you play with them (Controls > Phone vibration, `NSMBU_PHONE_RUMBLE`).
 - Releases include a signed Android APK for arm64 (and x86_64 for emulators and Chromebooks) that sets the game up on the phone; it carries no game code.
+- Android save import/export looks for NSMBU `user/rp_personal_savedata.dat` instead of the leftover WWHD save name.
 - New [Android guide](docs/android.md) for players and an [on-device setup design](docs/android-implementation.md) for contributors; the device checklist lists the setup, touch and release checks still to run on real hardware.
 
 ## [0.7.0] - 2026-10-26

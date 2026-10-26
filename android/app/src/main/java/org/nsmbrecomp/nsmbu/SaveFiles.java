@@ -30,7 +30,7 @@ final class SaveFiles {
     }
 
     static boolean hasSave(Context c) {
-        return new File(saveDir(c), "user/cking.sav").isFile();
+        return new File(saveDir(c), "user/rp_personal_savedata.dat").isFile();
     }
 
     static void zip(File dir, OutputStream out) throws IOException {
@@ -60,9 +60,9 @@ final class SaveFiles {
         try (ZipInputStream zip = new ZipInputStream(in)) {
             for (ZipEntry e; (e = zip.getNextEntry()) != null; ) {
                 String n = e.getName().replace('\\', '/');
-                if (n.equals("user/cking.sav")) return "";
-                int i = n.indexOf("/user/cking.sav");
-                if (i > 0 && n.length() == i + "/user/cking.sav".length() && n.indexOf('/') == i) return n.substring(0, i + 1);
+                if (n.equals("user/rp_personal_savedata.dat")) return "";
+                int i = n.indexOf("/user/rp_personal_savedata.dat");
+                if (i > 0 && n.length() == i + "/user/rp_personal_savedata.dat".length() && n.indexOf('/') == i) return n.substring(0, i + 1);
             }
         }
         return null;
