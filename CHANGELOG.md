@@ -7,6 +7,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Added
+
+- `nsmbu installer --no-open` packages the installer and returns without opening setup.
+
 ### Changed
 
 - Recompiling an unchanged game no longer rewrites every generated C file, so a normal rebuild skips guest code that did not change.

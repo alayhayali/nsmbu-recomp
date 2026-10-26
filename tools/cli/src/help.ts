@@ -16,7 +16,7 @@ Usage:
   nsmbu replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name> […]
   nsmbu profile […]
   nsmbu perf […]
-  nsmbu installer [--version VERSION]
+  nsmbu installer [--version VERSION] [--no-open]
   nsmbu lint
   nsmbu recomp
   nsmbu scripted <name> […]

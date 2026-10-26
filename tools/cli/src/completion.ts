@@ -84,7 +84,10 @@ const COMMANDS: CommandSpec[] = [
     {
         name: "installer",
         description: "Build the installer",
-        flags: [{ name: "version", description: "Release version string" }],
+        flags: [
+            { name: "version", description: "Release version string" },
+            { name: "no-open", description: "Stop after the package is ready" },
+        ],
     },
     { name: "lint", description: "Build TypeScript mods and format the Lua", noFiles: true },
     { name: "recomp", description: "Run recomp only", noFiles: true },

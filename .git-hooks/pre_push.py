@@ -85,11 +85,38 @@ def tree_is_clean_at(commit):
     return status.stdout == ""
 
 
+def worktree_is_registered(path):
+    listed = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    target = os.path.abspath(path)
+    prefix = "worktree "
+    for line in listed.stdout.splitlines():
+        if line.startswith(prefix) and os.path.abspath(line[len(prefix):]) == target:
+            return True
+    return False
+
+
 def ensure_worktree(commit):
     os.makedirs(os.path.dirname(WORKTREE), exist_ok=True)
     if not os.path.exists(os.path.join(WORKTREE, ".git")):
         if os.path.exists(WORKTREE):
             reject(WORKTREE + " exists and is not a git worktree")
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=ROOT,
+            check=True,
+        )
+        if worktree_is_registered(WORKTREE):
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", WORKTREE],
+                cwd=ROOT,
+                check=False,
+            )
         subprocess.run(
             ["git", "worktree", "add", "--detach", WORKTREE, commit],
             cwd=ROOT,
