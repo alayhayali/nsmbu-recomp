@@ -132,15 +132,21 @@ static void test_accumulator() {
 
     WakePlan one = advance_accumulator(hold.acc_ns, kLogicStepNs, true);
     CHECK(one.logic_steps == 1);
-    CHECK_NEAR(one.t, 0.25, 1e-6);
+    CHECK(one.t == 1.f);
+    CHECK_NEAR(blend_t(one.acc_ns), 0.25, 1e-6);
 
     WakePlan hitch = advance_accumulator(0, 200'000'000LL, true);
     CHECK(hitch.logic_steps == kMaxLogicStepsPerWake);
+    CHECK(hitch.t == 1.f);
     CHECK(hitch.acc_ns == kMaxDtNs - kMaxLogicStepsPerWake * kLogicStepNs);
 
     WakePlan multi = advance_accumulator(0, kLogicStepNs * 2 + kLogicStepNs / 3, true);
     CHECK(multi.logic_steps == 2);
-    CHECK_NEAR(multi.t, 1.0 / 3.0, 1e-6);
+    CHECK(multi.t == 1.f);
+    CHECK_NEAR(blend_t(multi.acc_ns), 1.0 / 3.0, 1e-6);
+
+    CHECK(present_t(0, 0.4f) == 0.4f);
+    CHECK(present_t(1, 0.4f) == 1.f);
 
     int64_t acc = 0;
     float prev_t = -1.f;
@@ -151,6 +157,7 @@ static void test_accumulator() {
         acc = p.acc_ns;
         if (p.logic_steps) {
             logics += p.logic_steps;
+            CHECK(p.t == 1.f);
             prev_t = -1.f;
         } else {
             holds++;
@@ -162,6 +169,14 @@ static void test_accumulator() {
     }
     CHECK_NEAR(logics, 60, 2);
     CHECK(holds > 40);
+
+    acc = 0;
+    for (int i = 0; i < 165; i++) {
+        WakePlan p = advance_accumulator(acc, present_period_ns(165), true);
+        acc = p.acc_ns;
+        if (p.logic_steps) CHECK(p.t == 1.f);
+        else CHECK(p.t < 1.f);
+    }
 }
 
 static void test_present_spacing() {

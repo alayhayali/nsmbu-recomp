@@ -746,7 +746,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
     }
     g_acc_ns = plan.acc_ns;
     g_blend_t = interpolate ? plan.t : 1.f;
-    g_exact_step = !interpolate;
+    g_exact_step = !interpolate || plan.logic_steps > 0;
 
     if (interpolate && plan.logic_steps == 0) {
         g_phase = std::min(g_phase + 1, std::max(1, g_step_n));
@@ -769,7 +769,6 @@ extern "C" void hook_029C52CC(Cpu* c) {
     g_phase = 0;
     g_logic_steps++;
     g_record_passes++;
-    g_exact_step = !interpolate;
     c->r[3] = self;
     {
         PassTimer timer(0);

@@ -75,6 +75,8 @@ inline float blend_t(int64_t acc_ns) {
     return float(double(acc_ns) / double(kLogicStepNs));
 }
 
+inline float present_t(int logic_steps, float open_t) { return logic_steps > 0 ? 1.f : open_t; }
+
 struct WakePlan {
     int logic_steps = 0;
     float t = 1.f;
@@ -96,7 +98,7 @@ inline WakePlan advance_accumulator(int64_t acc_ns, int64_t dt_ns, bool interpol
         out.acc_ns -= kLogicStepNs;
         out.logic_steps++;
     }
-    out.t = blend_t(out.acc_ns);
+    out.t = present_t(out.logic_steps, blend_t(out.acc_ns));
     return out;
 }
 
