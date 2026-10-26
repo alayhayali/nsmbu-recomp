@@ -49,13 +49,13 @@ def list_state(game):
         )
     loose = []
     for path in game_keys.list_loose_images(game):
-        side = game_keys.sidecar_key_path(path)
         loose.append(
             {
                 "path": path,
                 "name": os.path.basename(path),
-                "has_sidecar_key": os.path.isfile(side),
+                "has_key": game_keys.keys_ready(path, game),
                 "has_common": game_keys.find_common_key(path, game)[0] is not None,
+                "title_id": game_keys.guess_title_id(path),
             }
         )
     common, common_src = game_keys.find_common_key(game=game)
@@ -95,8 +95,7 @@ def main(argv=None):
             version_id = argv[2]
             dest = game_keys.import_loose_image(game, image, version_id)
             selected = gv.activate(game, version_id)
-            say("imported %s -> game/%s/game%s" % (
-                os.path.basename(image), version_id, os.path.splitext(dest)[1]))
+            say("imported %s -> game/%s" % (os.path.basename(image), os.path.basename(dest)))
             say("active: game/%s (%s)" % (selected["id"], selected["label"]))
             print(dest)
             return 0

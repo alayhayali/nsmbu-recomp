@@ -42,8 +42,11 @@ class Build:
                 raise ValueError("invalid address bounds")
         self._code = _Shift(d.get("code_steps", []))
         self._data = _Shift(d.get("data_steps", []))
-        self.differing = [(int(a, 16), int(s1), int(b, 16), int(s2))
-                          for a, s1, b, s2 in d.get("differing_functions", [])]
+        self.differing = sorted(
+            ((int(a, 16), int(s1), int(b, 16), int(s2))
+             for a, s1, b, s2 in d.get("differing_functions", [])),
+            key=lambda row: row[0],
+        )
         self._differ_starts = [a for a, _, _, _ in self.differing]
         self._differ_ends = [a + s for a, s, _, _ in self.differing]
 

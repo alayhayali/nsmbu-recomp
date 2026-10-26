@@ -52,12 +52,13 @@ The upstream built-in mods and cheats are removed.
 ## Game files
 
 User files live under `game/`.
-Drop any named `.wux` into `game/` plus keys (`common.key`, Cemu `keys.txt`, sidecar `.key`).
-`nsmbu game` imports the image into `game/<id>/game.wux`, stores the disc key as `game/<id>.key`, then can extract and recomp.
+Drop a `.wux` into `game/` and put keys in `game/keys.txt` (Cemu format: `common=` plus title-id lines).
+`nsmbu game` renames the image to `New Super Mario Bros. U (USA).wux` or `(Europe).wux`, extracts into a version folder, and can recomp.
 Recommended ids are `usa-base`, `usa-1.3.0`, `eu-base`, `eu-1.3.0`, `nsmbu-nslu-usa`, and `nsmbu-nslu-eu`.
 Keep the base disc and the 1.3.0 merge in separate folders (`*-base` vs `*-1.3.0`).
-A version folder only needs `code/`, `content/`, and `meta/` to play; keys stay under `game/`.
-See [game/README.md](../../game/README.md) for the full recommended layout.
+A version folder only needs `code/`, `content/`, and `meta/` to play.
+Disc images and `keys.txt` stay at the `game/` root.
+See [game/README.md](../../game/README.md) for the layout.
 `nsmbu game usa-1.3.0` activates that folder; add `--recomp` to recomp without the menu.
 It writes `game/active`.
 Build, launch, and playtests resolve the active folder with `game_versions.active_dir()` (for example `game/usa-1.3.0/`).
@@ -65,23 +66,17 @@ Build, launch, and playtests resolve the active folder with `game_versions.activ
 
 Inside a version folder:
 
-- `game.wux` — disc image after import (optional once extracted)
 - `update/` — optional matching 1.3.0 update (USA title version 64, or Europe 80), with `code/`, `content/`, `meta/`.
   Without it, a known USA or Europe base-disc RPX (title version 0) is allowed.
   Mods are unsupported on that build.
 - `code/`, `content/`, `meta/` — extract output (base disc, or base plus update for `*-1.3.0`)
 
-Keys under `game/`:
+Keys: `game/keys.txt`, or `WIIU_COMMON_KEY` for the common key only.
 
-- `common.key` or `keys.txt` (`common=`) or `WIIU_COMMON_KEY`
-- `<id>.key` or a sidecar next to a dropped `.wux`, or `disc=` in `keys.txt`
-
-In the setup window you can also type or paste each key as 32 hex digits instead of a key file.
-
-`.gitignore` ignores all of `game/` except `game/README.md` (layout and steps for this folder).
+`.gitignore` ignores all of `game/` except `game/README.md`.
 
 Extract (from `nsmbu game` or `nsmbu extract`) checks `update/` under the active dump when present.
-It extracts `game.wux` into `code/`, `content/`, and `meta/`.
+It extracts the matching root `.wux` into `code/`, `content/`, and `meta/`.
 It applies `update/` over those folders when present, then checks that `code/red-pro2.rpx` is a known build.
 See [docs/builds.md](../builds.md) for the address map between those builds.
 

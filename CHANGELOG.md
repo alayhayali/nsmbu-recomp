@@ -15,6 +15,9 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- 144 and 165 fps keep the rate you select when a frame runs past its time slot.
+  A late frame was starting the schedule over, so each following frame waited a full slot and the picture settled well below the selection (about 105 fps with 165 fps selected).
+  The display refresh rate is taken from the monitor's mode list when the desktop does not report one.
 - Settings soft restart no longer crashes on the next boot, and the rebooted guest reaches File Select again.
   Guest threads are stopped before the RPX reload (busy threads hit the reboot flag on preempt; leftovers are joined or canceled).
   Reloading the RPX also clears MEM2 gaps between sections (game singletons such as HeapMgr TLS) and wipes MEM1, FG, and the old default heap.
@@ -31,9 +34,15 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Recompiling Europe 1.3.0 accepts the error-viewer hook quietly.
   Europe chooses that viewer's layout from a language table.
   The hook still skips the viewer, so closing it cannot pause the game.
+- Recompiling a base disc no longer warns about hooks that wrap a differently compiled function, or about hooks the base disc does not have.
+  The draw-queue, course-setup, and continue-first-save wraps still apply on those bodies.
+  Hooks with no matching function on the base disc are skipped without a message; mods stay unsupported there.
 
 ### Changed
 
+- Disc images stay under `game/` as `New Super Mario Bros. U (USA).wux` / `(Europe).wux`.
+  Version folders only hold the extract.
+  Keys use a single Cemu-style `game/keys.txt` (`common=` and title-id lines).
 - Wider and taller aspect ratios show more of the scene instead of stretching the picture.
   The HUD stays in its original frame.
 - Settings tabs: Controls is first; Saves sits between Audio and Mods; Language drops the About blurb; Debug is capitalized.

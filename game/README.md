@@ -1,70 +1,59 @@
 # `game/` — your copies of NSMBU
 
-This folder holds **your** Wii U dumps, keys, optional updates, and extracted game files.
-
+Your Wii U dumps, keys, and extracted files live here.
 Nothing here except this readme is in git.
 
-## Walkthrough
+## Quick start
 
 ```bash
 nsmbu game
 ```
 
-1. Drop any named `.wux` (or `.wud`) into `game/`.
-2. Drop keys into `game/` too (`common.key`, Cemu `keys.txt`, and a sidecar `.key` next to the image).
-3. Run `nsmbu game` — it moves the image into a version folder as `game.wux`, keeps the disc key as `game/<id>.key`, then can extract and recomp.
+1. Drop a `.wux` (or `.wud`) into `game/`.
+2. Put keys in `game/keys.txt` (Cemu format).
+3. Run `nsmbu game`.
+   It renames the image to the standard USA/Europe name, extracts into a version folder, and can recomp.
 
 `nsmbu game usa-1.3.0` activates that folder without the menu.
-Add `--recomp` to recomp after activating.
+Add `--recomp` to refresh `build/gen`.
 
 ## Layout
 
 ```text
 game/
-  active                 # written by nsmbu game (e.g. usa-1.3.0)
-  common.key             # Wii U common key (or use keys.txt / WIIU_COMMON_KEY)
-  keys.txt               # optional Cemu-style keys (common= / disc=)
-  usa-base.key           # disc key for usa-base (from the sidecar on import)
-  eu-base.key
-  My Disc.wux            # drop zone — any name; imported by nsmbu game
-  My Disc.key            # optional sidecar disc key for that image
-  usa-base/
-    game.wux             # moved + renamed on import (optional after extract)
-    code/ content/ meta/ # extract of the base disc (title version 0)
+  active                                              # e.g. usa-1.3.0
+  keys.txt                                            # Cemu keys (common= + title ids)
+  New Super Mario Bros. U (USA).wux                   # disc image
+  New Super Mario Bros. U (Europe).wux
+  usa-base/                                           # extract only
+    code/ content/ meta/
   usa-1.3.0/
-    code/ content/ meta/ # base extract with the 1.3.0 update merged in
+    code/ content/ meta/
+    update/                                           # optional 1.3.0 update merge
   eu-base/
-    game.wux
     code/ content/ meta/
   eu-1.3.0/
     code/ content/ meta/
 ```
 
+Version folders only need `code/`, `content/`, and `meta/` to play.
+Disc images stay at the `game/` root.
 Recommended ids: `usa-base`, `usa-1.3.0`, `eu-base`, `eu-1.3.0`, `nsmbu-nslu-usa`, `nsmbu-nslu-eu`.
 
-Version folders only need `code/`, `content/`, and `meta/` to play.
-Keys stay under `game/` — not inside the version folder.
-`game.wux` in a version folder is only needed to (re)extract.
-
 `*-base` is title version 0.
-`*-1.3.0` is the merged update (mods).
-A 1.3.0 folder can be a merge of `*-base` plus an update’s `code/`, `content/`, and `meta/` with no disc image.
-
-`nsmbu build`, `nsmbu launch`, and playtests resolve the active folder via `game/active`.
-
-If you still have a flat `game/code/` tree from before, run `nsmbu game` to migrate it into a version folder.
+`*-1.3.0` is the base extract with the update applied (mods).
 
 ## Keys
 
-| Path | What it is |
-|------|------------|
-| `common.key` | Wii U common key (16 raw bytes or one line of 32 hex digits) |
-| `keys.txt` | Cemu-style file with `common=` and optional `disc=` lines |
-| `<id>.key` | Disc key for `game/<id>/game.wux` (created when you import a sidecar `.key`) |
-| `WIIU_COMMON_KEY` | Environment variable alternative for the common key |
+One file: `game/keys.txt`.
 
-A sidecar `Something.key` next to a dropped `Something.wux` is moved to `game/<id>.key` on import.
-Legacy `game.key` / `common.key` inside a version folder still work if present.
+```text
+common = <32 hex digits>
+0005000010101d00 = <USA disc key>
+0005000010101e00 = <Europe disc key>
+```
+
+`WIIU_COMMON_KEY` can supply the common key instead of `common=`.
 
 ## Updates
 
@@ -72,12 +61,10 @@ Optional matching **1.3.0** update as `game/<id>/update/` (`code/`, `content/`, 
 
 USA 1.3.0 is title version **64**.
 Europe 1.3.0 is title version **80**.
-The USA base disc alone is title version **0** (build `USA_V0`).
-The Europe base disc alone is title version **0** (build `EU_V0`).
-Both are playable.
-**Mods are not supported** on either base disc without the update.
+A base disc alone (title version 0) is playable.
+**Mods are not supported** without the update.
 
-## More detail
+## More
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) and [docs/nsmbu/port.md](../docs/nsmbu/port.md).
-See [docs/builds.md](../docs/builds.md) for USA, base-disc, and Europe address maps.
+See [docs/builds.md](../docs/builds.md) for address maps.

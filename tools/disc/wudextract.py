@@ -10,8 +10,7 @@ usage:
   wudextract.py IMAGE extract OUTDIR [GLOB ...]
 
 Keys (none are included in this repository; dump them from your own console):
-  - the disc key is read from IMAGE.key, game/<id>.key, game/keys.txt (disc=), or game/game.key;
-  - the Wii U common key is read from WIIU_COMMON_KEY, game/common.key, or game/keys.txt (common=).
+  - disc and common keys come from game/keys.txt (Cemu format), or WIIU_COMMON_KEY for the common key.
 """
 import fnmatch
 import hashlib
@@ -38,7 +37,7 @@ def common_key(image):
     key, src = game_keys.find_common_key(image)
     if key:
         return key
-    sys.exit("Wii U common key not found: set WIIU_COMMON_KEY or put common.key / keys.txt under game/ "
+    sys.exit("Wii U common key not found: set WIIU_COMMON_KEY or put common= in game/keys.txt "
              "(dump it from your own console)")
 
 class Wud:
@@ -154,22 +153,28 @@ class FST:
                 blk += chunk_sectors
 
 def open_disc(path):
-    key, key_src = game_keys.find_disc_key(path)
-    if not key:
-        side = game_keys.sidecar_key_path(path)
+    cands = game_keys.disc_key_candidates(path)
+    if not cands:
         sys.exit(
-            "disc key not found: expected %s, game/<id>.key, or a disc= line in game/keys.txt "
-            "(16 raw bytes or 32 hex digits)" % side
+            "disc key not found: add a title-id or disc= line in game/keys.txt "
+            "(32 hex digits; Cemu keys.txt format)"
         )
-    key_label = key_src or "disc key"
     wud = Wud(path)
     if struct.unpack(">I", wud.read(SECTOR * 2, 4))[0] != 0xCC549EB9:
         raise ValueError("not a Wii U disc image")
-    pt = aes_dec(key, bytes(16), wud.read(SECTOR * 3, SECTOR))
-    magic, bsize, = struct.unpack_from(">II", pt, 0)
-    if magic != 0xCCA6E67B:
-        raise ValueError("partition table decryption failed: %s does not match this image (it must be "
-                         "this disc's key, 16 raw bytes or one line of 32 hex digits)" % key_label)
+    header = wud.read(SECTOR * 3, SECTOR)
+    key = pt = None
+    for cand, _src in cands:
+        trial = aes_dec(cand, bytes(16), header)
+        magic, = struct.unpack_from(">I", trial, 0)
+        if magic == 0xCCA6E67B:
+            key, pt = cand, trial
+            break
+    if pt is None:
+        raise ValueError(
+            "partition table decryption failed: no key in game/keys.txt matches this image"
+        )
+    bsize, = struct.unpack_from(">I", pt, 4)
     nparts, = struct.unpack_from(">I", pt, 0x1C)
     parts = []
     for i in range(nparts):

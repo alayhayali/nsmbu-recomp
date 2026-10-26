@@ -117,8 +117,6 @@ class Recompiler:
             if self.build.body_differs(canon):
                 fate = game_builds.differing_hook(site, same, addr in self.entries, self.build.mods)
                 if fate == "skip":
-                    print("warning: %s: skipping site %08X on %s (changed code; mods unsupported on this build)"
-                          % (where, canon, self.build.name), file=sys.stderr)
                     continue
                 if fate == "refuse":
                     raise SystemExit('%s: %08X is inside a function the %s build compiled differently; the '
@@ -132,15 +130,11 @@ class Recompiler:
                               where, self.build.name, canon, addr), file=sys.stderr)
             if not self.p.in_text(addr):
                 if not self.build.mods:
-                    print("warning: %s: skipping %08X on %s (outside code; mods unsupported on this build)"
-                          % (where, canon, self.build.name), file=sys.stderr)
                     continue
                 raise SystemExit("%s: %08X (%s build: %08X) is outside the game's code" % (
                     where, canon, self.build.name, addr))
             if not site and addr not in self.entries:
                 if not self.build.mods:
-                    print("warning: %s: skipping %08X on %s (not a function start there; mods unsupported)"
-                          % (where, canon, self.build.name), file=sys.stderr)
                     continue
                 raise SystemExit("%s: %08X (%s build: %08X) is not the start of a function there" % (
                     where, canon, self.build.name, addr))

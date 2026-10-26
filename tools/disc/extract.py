@@ -48,21 +48,26 @@ def check_update(game):
 
 def main():
     game = game_dump.game_root()
-    image = gv.image_path(game)
+    root = gv.game_root()
+    image = gv.image_path(game, root)
     if not image:
-        sys.exit("put a disc image in game/ and run nsmbu game, or place game.wux in the active dump (%s)" % game)
+        sys.exit(
+            "no disc image for the active dump (%s); put "
+            "`New Super Mario Bros. U (USA).wux` or `(Europe).wux` under game/ with keys.txt"
+            % game
+        )
 
-    disc, disc_src = game_keys.find_disc_key(image)
-    common, common_src = game_keys.find_common_key(image)
+    disc, disc_src = game_keys.find_disc_key(image, root)
+    common, common_src = game_keys.find_common_key(image, root)
     if not disc:
         sys.exit(
-            "disc key not found for %s; add a sidecar .key, game/<id>.key, or disc= in game/keys.txt"
-            % image
+            "disc key not found for %s; add a title-id or disc= line in game/keys.txt" % image
         )
     if not common:
         sys.exit(
-            "Wii U common key not found; set WIIU_COMMON_KEY or put common.key / keys.txt under game/"
+            "Wii U common key not found; set WIIU_COMMON_KEY or put common= in game/keys.txt"
         )
+    print("disc image: %s" % os.path.relpath(image, root))
     print("disc key: %s" % (disc_src or "?"))
     print("common key: %s" % (common_src or "?"))
 

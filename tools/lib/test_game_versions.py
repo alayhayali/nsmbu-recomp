@@ -32,15 +32,15 @@ class GameVersions(unittest.TestCase):
             self.assertEqual(gv.active_dir(tmp), os.path.join(tmp, "eu"))
             self.assertEqual(gv.read_active(tmp), "eu")
 
-    def test_list_dumps_includes_wux_only(self):
+    def test_list_dumps_includes_root_wux(self):
         with tempfile.TemporaryDirectory() as tmp:
-            folder = os.path.join(tmp, "eu")
+            folder = os.path.join(tmp, "eu-base")
             os.makedirs(folder)
-            with open(os.path.join(folder, "game.wux"), "wb") as f:
+            with open(os.path.join(tmp, "New Super Mario Bros. U (Europe).wux"), "wb") as f:
                 f.write(b"disc")
-            self.assertEqual(gv.list_dumps(tmp), ["eu"])
+            self.assertEqual(gv.list_dumps(tmp), ["eu-base"])
             self.assertEqual(gv.list_versions(tmp), [])
-            info = gv.describe_version(tmp, "eu")
+            info = gv.describe_version(tmp, "eu-base")
             self.assertFalse(info["extracted"])
             self.assertTrue(info["has_wux"])
 

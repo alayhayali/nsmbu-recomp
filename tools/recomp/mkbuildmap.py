@@ -309,6 +309,7 @@ def derive(canon, other):
         # whole USA function as changed so instruction hooks are refused.
         mapped = code(canon.entries[i])
         differing.append([canon.entries[i], canon.ends[i] - canon.entries[i], mapped, 0])
+    differing.sort(key=lambda row: row[0])
 
     return {
         "code_bounds": [canon.p.text_lo, canon.p.text_hi],

@@ -12,7 +12,7 @@ import builds
 
 RESERVED = frozenset({
     "code", "content", "meta", "update", "active", "readme.md",
-    "downloads", "keys.txt", "common.key", "game.key",
+    "downloads", "keys.txt",
 })
 LEGACY_NAMES = ("code", "content", "meta", "update", "game.wux", "game.wud", "game.key", "common.key")
 
@@ -60,8 +60,19 @@ def rpx_path(folder):
     return os.path.join(folder, "code", "red-pro2.rpx")
 
 
-def image_path(folder):
-    """game.wux or game.wud inside a version folder, or None."""
+def image_path(folder, game=None):
+    """Disc image for this version folder: a root game/*.wux matched by region, or None.
+
+    A leftover game.wux inside the version folder is still accepted until cleaned up.
+    """
+    import game_keys
+
+    if game is None:
+        game = os.path.dirname(os.path.abspath(folder))
+    version_id = os.path.basename(os.path.abspath(folder))
+    root_image = game_keys.image_for_version(game, version_id)
+    if root_image:
+        return root_image
     for name in ("game.wux", "game.wud"):
         path = os.path.join(folder, name)
         if os.path.isfile(path):
@@ -73,11 +84,11 @@ def is_version_dir(path):
     return os.path.isdir(path) and os.path.isfile(rpx_path(path))
 
 
-def is_dump_dir(path):
-    """A version folder with an extracted RPX and/or a disc image ready to extract."""
+def is_dump_dir(path, game=None):
+    """A version folder with an extracted RPX and/or a matching disc image ready to extract."""
     if not os.path.isdir(path):
         return False
-    return os.path.isfile(rpx_path(path)) or image_path(path) is not None
+    return os.path.isfile(rpx_path(path)) or image_path(path, game) is not None
 
 
 def flat_layout(game):
@@ -88,11 +99,13 @@ def flat_layout(game):
 
 def list_versions(game):
     """Extracted dumps only (have code/red-pro2.rpx)."""
+    import game_keys
+
     if not os.path.isdir(game):
         return []
     found = []
     for name in sorted(os.listdir(game)):
-        if name.lower() in RESERVED:
+        if name.lower() in RESERVED or game_keys.is_image_name(name):
             continue
         path = version_dir(game, name)
         if is_version_dir(path):
@@ -101,15 +114,17 @@ def list_versions(game):
 
 
 def list_dumps(game):
-    """Version folders with an RPX and/or game.wux (includes not-yet-extracted dumps)."""
+    """Version folders with an RPX and/or a matching root disc image."""
+    import game_keys
+
     if not os.path.isdir(game):
         return []
     found = []
     for name in sorted(os.listdir(game)):
-        if name.lower() in RESERVED:
+        if name.lower() in RESERVED or game_keys.is_image_name(name):
             continue
         path = version_dir(game, name)
-        if is_dump_dir(path):
+        if is_dump_dir(path, game):
             found.append(name)
     return found
 
@@ -119,7 +134,7 @@ def describe_version(game, version_id):
 
     path = version_dir(game, version_id)
     rpx = rpx_path(path)
-    image = image_path(path)
+    image = image_path(path, game)
     has_rpx = os.path.isfile(rpx)
     build = builds.identify(rpx) if has_rpx else None
     if build:
