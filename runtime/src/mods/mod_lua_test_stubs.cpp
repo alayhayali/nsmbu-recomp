@@ -1,4 +1,5 @@
 #include "core/runtime.h"
+#include "core/soft_restart.h"
 #include "input/input.h"
 
 void log_msg(const char*, ...) {}
@@ -33,4 +34,9 @@ __attribute__((weak)) uint32_t host_alloc(uint32_t size, uint32_t align) {
 namespace input {
 __attribute__((weak)) bool pro_controller() { return false; }
 __attribute__((weak)) PadState read() { return PadState{}; }
+}
+
+namespace soft_restart {
+__attribute__((weak)) bool pending() { return false; }
+__attribute__((weak)) void request(const char*) {}
 }

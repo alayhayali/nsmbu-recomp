@@ -15,6 +15,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- The mod package test builds with the soft-restart Lua call.
 - 144 and 165 fps keep the rate you select when a frame runs past its time slot.
   A late frame was starting the schedule over, so each following frame waited a full slot and the picture settled well below the selection (about 105 fps with 165 fps selected).
   The display refresh rate is taken from the monitor's mode list when the desktop does not report one.
