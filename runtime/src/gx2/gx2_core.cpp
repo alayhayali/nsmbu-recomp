@@ -794,8 +794,7 @@ static bool g_presented_since_wake = false;
 static std::chrono::nanoseconds capped_vsync_wait_period(uint64_t granule) {
     if (interp::mode() == 1) {
         const int fps = interp::output_fps();
-        if (fps > 0 && fps % 60 != 0)
-            return std::chrono::nanoseconds(1'000'000'000LL / fps);
+        if (fps > 0) return std::chrono::nanoseconds(interp::pacing::present_period_ns(fps));
     }
     return std::chrono::nanoseconds(uint64_t(vsync_period_ns()) * granule / kTicksPerVsync);
 }
@@ -839,14 +838,7 @@ static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void
     }
     const auto target = g_capped_vsync_last_wake + period;
     if (now >= target) {
-        if (interp::pacing::output_slot_ns(interp::output_fps()) > 0 && period.count() > 0) {
-            const int64_t last = std::chrono::duration_cast<std::chrono::nanoseconds>(g_capped_vsync_last_wake.time_since_epoch()).count();
-            const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
-            const int64_t absorbed = interp::pacing::absorb_late_wake(last, now_ns, period.count());
-            g_capped_vsync_last_wake = std::chrono::steady_clock::time_point(std::chrono::nanoseconds(absorbed));
-        } else {
-            g_capped_vsync_last_wake = now;
-        }
+        g_capped_vsync_last_wake = now;
         capped_vsync_note_wake(granule);
         return;
     }

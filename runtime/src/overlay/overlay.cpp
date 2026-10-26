@@ -694,10 +694,10 @@ void tab_graphics() {
             else { interp::set_fps(r); interp::set_mode(1); }
         });
     }
-    help("60 fps is the game rate. 120, 144, 165 and 240 fps add in-between frames for the steps in between.\n"
-         "The game logic still runs at 60 steps a second.\n"
-         "The display shows at most its refresh rate. Hotkeys: 6 = 60 fps, 7 = cycle rates,\n"
-         "9 = toggle 60 fps and the last non-60 rate.");
+    help("60 fps is the game rate. 120, 144, 165 and 240 are present caps: more draws between\n"
+         "fixed 60 Hz logic steps, blended from wall-clock time left in the open step.\n"
+         "The display shows at most its refresh rate. Hotkeys: 6 = 60 fps, 7 = cycle caps,\n"
+         "9 = toggle 60 fps and the last non-60 cap.");
 
     if (const int hz = interp::display_hz(); hz > 0) {
         const int out = interp::output_fps();

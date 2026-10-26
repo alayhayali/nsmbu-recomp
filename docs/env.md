@@ -36,4 +36,6 @@ The host test `env` in `runtime/test/env_test.cpp` covers `.name()`, a read afte
 
 `NSMBU_INTERP_MODELS` opts out of per-model pose blending when frame interpolation is on.
 Unset or any non-zero value keeps model interpolation enabled; set `0` to disable it.
-Other interpolation variables (`NSMBU_INTERP`, `NSMBU_INTERP_FPS`, `NSMBU_INTERP_PACED`, and the rest in `env.h`) are listed only in `env.h` unless a feature doc describes them.
+`NSMBU_INTERP_FPS` is a present cap (snapped to the rate ladder); guest logic stays at 60 steps/s.
+`NSMBU_INTERP=0` means 60 presents and 60 logic with blend `t=1`.
+Other interpolation variables (`NSMBU_INTERP_PACED`, and the rest in `env.h`) are listed only in `env.h` unless a feature doc describes them.

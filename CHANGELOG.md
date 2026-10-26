@@ -7,6 +7,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Changed
+
+- High frame rates use a present cap with a wall-clock accumulator: logic stays at 60 steps/s, and blend time comes from the open step instead of a per-rate frame ladder.
+
 ## [0.7.0] - 2026-10-26
 
 ### Added

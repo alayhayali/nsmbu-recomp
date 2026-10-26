@@ -130,6 +130,9 @@ uint64_t g_present_i = 0;
 float g_blend_t = 1.f;
 
 bool g_exact_step = false;
+int64_t g_acc_ns = 0;
+bool g_wake_valid = false;
+std::chrono::steady_clock::time_point g_last_wake{};
 
 constexpr uint32_t kRendererBox = 0x10;
 constexpr uint32_t kProjection = 0x20;
@@ -230,21 +233,11 @@ void remember_area() {
 
 int in_between() {
     if (!interp_on()) return 0;
-    return std::max(0, g_step_n);
+    return std::max(0, output_fps() / 60 - 1);
 }
 int frames_per_step() {
     if (!interp_on()) return 1;
-    return std::max(0, g_frame_n);
-}
-
-static void schedule_present() {
-    const int rate = output_fps();
-    if (!enabled() || rate <= 0 || rate % 60 == 0) {
-        g_blend_t = !enabled() || g_frame_n <= 1 ? 1.f : pacing::pass_fraction(g_hold ? g_phase : 0, g_step_n, g_exact_step);
-        return;
-    }
-    g_present_i++;
-    g_blend_t = g_exact_step || g_logic_steps == 0 ? 1.f : pacing::even_fraction(g_present_i, g_logic_steps, rate);
+    return std::max(1, output_fps() / 60);
 }
 
 float pass_t() {
@@ -252,7 +245,7 @@ float pass_t() {
     return g_blend_t;
 }
 
-bool record_pass() { return g_hold && g_phase >= g_step_n; }
+bool record_pass() { return false; }
 
 void cam_trace(const char* what, const float* prev, const float* cur, const float* drawn) {
     static int left = env::INTERP_CAM_TRACE.integer_or(0);
@@ -566,11 +559,37 @@ static const bool g_models_on = [] {
     return !e || atoi(e) != 0;
 }();
 
+static void model_record_after_logic(Cpu* c) {
+    using namespace interp;
+    const uint32_t mdl = c->r[3];
+    uint32_t skel, count, arr;
+    if (!model_skeleton(mdl, skel, count, arr)) return;
+    const uint32_t words = 12 * count;
+    std::vector<uint32_t> cur;
+    model_read(arr, words, cur);
+    if (!model_pose_sane(cur.data(), count)) return;
+    ModelPose& p = g_models[skel];
+    p.mdl = mdl;
+    p.mtx = arr;
+    p.joints = count;
+    p.pass = g_record_passes > 0 ? g_record_passes - 1 : 0;
+    p.pose = std::move(cur);
+    p.subst_pass = ~0ull;
+    p.exact.clear();
+    p.mid.clear();
+    trace_model("record", mdl, skel, count, p.pass, p.pose.data());
+}
+
 extern "C" void hook_024F30DC(Cpu* c) {
     using namespace interp;
-    if (g_models_on && enabled() && course_play_active() && !g_exact_step)
-        model_calc_gpu(c);
-    else
+    if (g_models_on && enabled() && course_play_active()) {
+        if (g_hold && !g_exact_step)
+            model_calc_gpu(c);
+        else {
+            f_024F30DC_orig(c);
+            if (!g_hold) model_record_after_logic(c);
+        }
+    } else
         f_024F30DC_orig(c);
 }
 
@@ -591,6 +610,8 @@ void ss_reset() {
     g_logic_steps = 0;
     g_executed_steps.store(0, std::memory_order_relaxed);
     g_present_i = 0;
+    g_acc_ns = 0;
+    g_wake_valid = false;
 }
 
 static const char* const g_env_paced = env::INTERP_PACED();
@@ -622,136 +643,24 @@ static std::atomic<float> g_paced_share{-1};
 float paced_drawn_share() { return paced() && interp_on() ? g_paced_share.load(std::memory_order_relaxed) : -1; }
 
 using pace_clock = std::chrono::steady_clock;
-static pace_clock::time_point g_last_logic{}, g_work_start{};
-static int64_t g_step_work = 0;
+static uint64_t g_paced_holds = 0, g_paced_steps = 0, g_paced_presents = 0;
 
-static pace_clock::duration g_logic_avg = std::chrono::milliseconds(8), g_hold_avg = std::chrono::milliseconds(8);
-static pace_clock::time_point g_last_hold{};
-constexpr auto kProbeAfter = std::chrono::seconds(10);
-
-static pace_clock::duration vsync_tick() {
-    const int out = std::max(30, output_fps());
-    return std::chrono::nanoseconds(16'683'333LL * 60 / out);
-}
-
-static bool g_wait_step = false;
-static uint64_t g_paced_possible = 0, g_paced_holds = 0, g_paced_steps = 0, g_paced_planned = 0;
-constexpr auto kPacedStep = std::chrono::nanoseconds(16'666'667);
-
-constexpr auto kPacedBudget = std::chrono::nanoseconds(kPacedStep + std::chrono::milliseconds(2));
-
-static void paced_pass_start() {
-    static bool previousRecord = false;
-    if (!paced() || !interp_on()) { g_exact_step = false; previousRecord = false; return; }
-    if (!g_hold_next) g_exact_step = !previousRecord;
-    previousRecord = g_hold_next && g_phase + 1 >= g_step_n;
-    if (g_hold_next) return;
-    const auto now = pace_clock::now();
-    if (g_wait_step && now < g_last_logic + kPacedStep) {
-        threads::park_sleep_until(g_last_logic + kPacedStep);
-    }
-    g_wait_step = false;
-    g_last_logic = pace_clock::now();
-}
-
-static void work_begin() { g_work_start = pace_clock::now(); }
-
-static void work_end() {
-    if (g_work_start == pace_clock::time_point{}) return;
-    const int64_t sample = std::chrono::duration_cast<std::chrono::nanoseconds>(pace_clock::now() - g_work_start).count();
-    g_work_start = {};
-    g_step_work += sample;
-    if (!paced() || !interp_on()) return;
-    pace_clock::duration& avg = g_hold ? g_hold_avg : g_logic_avg;
-    avg = pace_clock::duration(pacing::update_average(avg.count(), sample));
-}
-
-static int g_step_holds = 0;
-static int g_full_frames = 1;
-static uint64_t g_plan_steps = 0;
-static int plan_step() {
-    g_step_holds = 0;
-    const int frames = interp_on() ? pacing::frames_for_step(output_fps(), g_plan_steps++) : 1;
-    if (frames <= 0) return -1;
-    g_full_frames = frames;
-    int n = frames - 1;
-    if (n > 0 && paced() && interp_on() && !pacing::fixed_output_slot(output_fps())) {
-        const int64_t slot = pacing::output_slot_ns(output_fps());
-        const int64_t logic = pacing::pass_budget_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(g_logic_avg).count(), slot);
-        const int64_t hold = pacing::pass_budget_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(g_hold_avg).count(), slot);
-        const int64_t budget = kPacedBudget.count();
-        n = pacing::plan_in_between(n, budget, logic, hold);
-        if (pacing::next_pass(0, n, logic, hold, budget) != pacing::Next::kHold) n = 0;
-        g_paced_planned += n;
-    } else if (n > 0 && paced() && interp_on()) {
-        g_paced_planned += n;
-    }
-    return n;
-}
-
-static void paced_step_done(int holds) {
-    const int n = frames_per_step();
-    g_paced_holds += holds;
-    g_paced_possible += n;
-    g_paced_steps++;
-    static unsigned recentHolds = 0, recentPossible = 0, recentN = 0;
-    recentHolds += holds;
-    recentPossible += n;
+static void note_present_share(bool hold) {
+    g_paced_presents++;
+    if (hold) g_paced_holds++;
+    else g_paced_steps++;
+    static unsigned recentHolds = 0, recentPresents = 0, recentN = 0;
+    recentHolds += hold ? 1 : 0;
+    recentPresents++;
     if (++recentN == 60) {
-        g_paced_share.store(recentHolds / float(std::max(1u, recentPossible)), std::memory_order_relaxed);
-        recentHolds = recentPossible = recentN = 0;
+        g_paced_share.store(recentHolds / float(std::max(1u, recentPresents)), std::memory_order_relaxed);
+        recentHolds = recentPresents = recentN = 0;
     }
-    if (g_paced_steps >= 300) {
-        if (n > 1)
-            LOG("[interp] paced: %.0f%% of in-between frames drawn (in-between pass %.1f ms; %.2f of %d planned per step)",
-                100.0 * g_paced_holds / double(std::max<uint64_t>(1, g_paced_possible)), std::chrono::duration<double, std::milli>(g_hold_avg).count(),
-                g_paced_planned / double(g_paced_steps), n);
-        else
-            LOG("[interp] paced: %.0f%% of in-between frames drawn (in-between pass %.1f ms)",
-                100.0 * g_paced_holds / double(std::max<uint64_t>(1, g_paced_possible)), std::chrono::duration<double, std::milli>(g_hold_avg).count());
-        g_paced_possible = g_paced_holds = g_paced_steps = g_paced_planned = 0;
-    }
-}
-
-static void after_pass(int phase) {
-    const bool pacing = paced() && interp_on();
-    if (phase > 0) g_step_holds++;
-    if (phase >= g_step_n) {
-        g_hold_next = false;
-        if (pacing) {
-            paced_step_done(g_step_holds);
-            if (pacing::pad_logic_step(output_fps(), g_step_n, g_step_holds + 1, g_full_frames)) g_wait_step = true;
-        }
-        return;
-    }
-    if (!pacing) { g_hold_next = true; g_wait_step = false; return; }
-    if (pacing::fixed_output_slot(output_fps())) {
-        g_hold_next = true;
-        g_last_hold = pace_clock::now();
-        return;
-    }
-    if (phase > 0) g_last_hold = pace_clock::now();
-    const auto now = pace_clock::now();
-    const bool probe = phase == 0 && now - g_last_hold >= kProbeAfter;
-    const int64_t slot = pacing::output_slot_ns(output_fps());
-    const int64_t pass = pacing::pass_budget_ns(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(probe ? vsync_tick() : g_hold_avg).count(), slot);
-    const int64_t elapsed = slot > 0 && phase == 0 ? std::max(g_step_work, slot) : g_step_work;
-    switch (pacing::next_pass(phase, g_step_n, elapsed, pass, kPacedBudget.count())) {
-    case pacing::Next::kHold:
-        g_hold_next = true;
-        g_last_hold = now;
-        break;
-    case pacing::Next::kRecord:
-        g_hold_next = true;
-        g_phase = g_step_n - 1;
-        g_last_hold = now;
-        break;
-    default:
-        g_hold_next = false;
-        g_wait_step = true;
-        paced_step_done(g_step_holds);
-        break;
+    if (g_paced_presents >= 300) {
+        LOG("[interp] present cap %s: %.0f%% holds (%.2f presents per logic)", mode_name(),
+            100.0 * g_paced_holds / double(std::max<uint64_t>(1, g_paced_presents)),
+            g_paced_presents / double(std::max<uint64_t>(1, g_paced_steps)));
+        g_paced_holds = g_paced_steps = g_paced_presents = 0;
     }
 }
 }
@@ -806,52 +715,72 @@ extern "C" void hook_029C52CC(Cpu* c) {
             g_step_n = 1;
             g_frame_n = 1;
             g_granule.store(4, std::memory_order_relaxed);
-            g_step_work = 0;
             g_pass_valid = false;
+            g_acc_ns = 0;
+            g_wake_valid = false;
+            g_blend_t = 1.f;
             f_029C52CC_orig(c);
             return;
         }
     }
     const uint32_t self = c->r[3];
-    if (g_pass_valid) after_pass(g_hold ? g_phase : 0);
     g_pass_valid = true;
     g_passes++;
-    paced_pass_start();
-    if (g_hold_next) {
-        g_phase++;
+    g_present_i++;
+    g_frame_n = frames_per_step();
+    g_step_n = std::max(0, g_frame_n - 1);
+    g_granule.store(pacing::present_granule(output_fps()), std::memory_order_relaxed);
+
+    const auto now = pace_clock::now();
+    int64_t dt = 0;
+    if (g_wake_valid) dt = std::chrono::duration_cast<std::chrono::nanoseconds>(now - g_last_wake).count();
+    g_last_wake = now;
+    g_wake_valid = true;
+
+    const bool interpolate = interp_on() && output_fps() > 60;
+    pacing::WakePlan plan = pacing::advance_accumulator(g_acc_ns, dt, interpolate, 1);
+    if (interpolate && plan.logic_steps == 0 && g_logic_steps == 0) {
+        plan.logic_steps = 1;
+        plan.t = 1.f;
+        plan.acc_ns = 0;
+    }
+    g_acc_ns = plan.acc_ns;
+    g_blend_t = interpolate ? plan.t : 1.f;
+    g_exact_step = !interpolate;
+
+    if (interpolate && plan.logic_steps == 0) {
+        g_phase = std::min(g_phase + 1, std::max(1, g_step_n));
         g_hold = true;
         g_logic_pass = false;
-        g_granule.store(pacing::granule_quarter(g_frame_n, g_phase), std::memory_order_relaxed);
-        schedule_present();
-        if (record_pass()) g_record_passes++;
+        g_hold_next = true;
+        note_present_share(true);
         apply_hold_camera(c);
         c->r[3] = self;
-        work_begin();
-        f_029C5104(c);
-        work_end();
+        {
+            PassTimer timer(1);
+            f_029C5104(c);
+        }
         return;
     }
+
     g_hold = false;
     g_logic_pass = true;
+    g_hold_next = false;
     g_phase = 0;
-    g_step_work = 0;
-    g_step_n = plan_step();
-    g_frame_n = std::max(0, g_step_n + 1);
-    const int shown = g_step_n > 0 ? std::max(1, g_frame_n) : 1;
-    g_granule.store(pacing::granule_quarter(shown, 0), std::memory_order_relaxed);
     g_logic_steps++;
-    schedule_present();
+    g_record_passes++;
+    g_exact_step = !interpolate;
+    c->r[3] = self;
     {
         PassTimer timer(0);
-        work_begin();
         f_029C52CC_orig(c);
-        work_end();
     }
+    note_present_share(false);
     model_stats_report();
     static uint64_t n = 0, t0 = timebase::now(), f0 = 0;
     if (++n % 300 == 0) {
         uint64_t t = timebase::now();
-        LOG("[interp] %.1f logic steps/s (%s, %.2f frames per step)%s", 300.0 * timebase::kTicksPerSec / (double)(t - t0), mode_name(),
+        LOG("[interp] %.1f logic steps/s (%s, %.2f presents per logic)%s", 300.0 * timebase::kTicksPerSec / (double)(t - t0), mode_name(),
             (g_passes - f0) / 300.0, pass_cpu_report().c_str());
         t0 = t;
         f0 = g_passes;
@@ -860,7 +789,6 @@ extern "C" void hook_029C52CC(Cpu* c) {
 
 extern "C" void hook_029C4FE4(Cpu* c) {
     using namespace interp;
-    if (enabled() && !g_hold && g_frame_n <= 0) return;
     if (enabled() && g_hold && !course_play_active()) return;
     f_029C4FE4_orig(c);
     if (!g_models_on || !enabled() || !course_play_active() || g_exact_step || !model_subst_pending()) return;

@@ -1,6 +1,7 @@
 import type { PlayCase } from "../helpers.ts";
 import { courseEnter } from "./course-enter.ts";
 import { courseEnter120 } from "./course-enter-120.ts";
+import { logicRate120 } from "./logic-rate-120.ts";
 import { mapShadow120 } from "./map-shadow-120.ts";
 import { openedCourse } from "./opened-course.ts";
 import { openingCinematic } from "./opening-cinematic.ts";
@@ -19,4 +20,5 @@ export const CASES: PlayCase[] = [
     courseEnter,
     courseEnter120,
     mapShadow120,
+    logicRate120,
 ];
