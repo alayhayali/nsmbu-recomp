@@ -16,6 +16,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Android setup job runner (`ondevice_setup.py`): one locked worker per job that resumes from checkpoints, honours pause requests, reads disc and common keys from file descriptors into memory only, and leaves a library ready to activate; the installer reads key bytes without a file.
 - Android Gradle build takes the Python, toolchain and extractor packages, ABI and version as properties, signs releases from `NSMBU_KEYSTORE_*`, and refuses release builds whose Python bundle holds debug fixtures.
 - Android setup has no shader head-start stage: the Vulkan renderer keeps its own per-device pipeline cache, so the APK carries no shader template or Yaz0 decoder.
+- Android setup screen and foreground service: choose an extracted folder, a Cemu `.wua` or a `.wud`/`.wux` disc image with its keys and an optional 1.3.0 update folder, then watch, pause and resume setup; heat and battery pauses, recovery after reboot or app update, and the app icon opens setup until a game is ready.
 
 ## [0.7.0] - 2026-10-26
 

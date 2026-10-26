@@ -11,6 +11,14 @@ TESTS = ROOT / "tools/android"
 SUITES = {
     "org.nsmbrecomp.nsmbu.ResourceVerifierTest": ["ResourceVerifier.java"],
     "org.nsmbrecomp.nsmbu.ResourceCacheCleanupTest": ["ResourceVerifier.java", "ResourceCacheCleanup.java"],
+    "org.nsmbrecomp.nsmbu.AndroidUserDirectoriesTest": ["AndroidUserDirectories.java"],
+    "org.nsmbrecomp.nsmbu.SetupFolderCheckTest": ["SetupFolderCheck.java"],
+    "org.nsmbrecomp.nsmbu.SetupJobCleanupTest": ["SetupJobCleanup.java"],
+    "org.nsmbrecomp.nsmbu.SetupPickerTest": ["SetupPicker.java"],
+    "SetupKeyRecoveryPolicyTest": ["SetupKeyRecoveryPolicy.java"],
+    "SetupPolicyTest": ["SetupPolicy.java"],
+    "SetupPresentationTest": ["SetupPresentation.java"],
+    "SetupRecoveryPolicyTest": ["SetupRecoveryPolicy.java"],
 }
 
 

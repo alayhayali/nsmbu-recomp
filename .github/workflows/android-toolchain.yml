@@ -11,7 +11,7 @@ on:
       - android/python/**
       - android/app/build.gradle
       - tools/release/guard.py
-      - android/app/src/main/java/org/nsmbrecomp/nsmbu/**
+      - android/app/src/main/**
       - .github/workflows/android-toolchain.yml
       - .github/actions/android-compiler/**
   push:
@@ -24,7 +24,7 @@ on:
       - android/python/**
       - android/app/build.gradle
       - tools/release/guard.py
-      - android/app/src/main/java/org/nsmbrecomp/nsmbu/**
+      - android/app/src/main/**
       - .github/workflows/android-toolchain.yml
       - .github/actions/android-compiler/**
 
