@@ -1,5 +1,61 @@
 # Android device checks (rhemfur)
 
+Each check below is pending until a device result is recorded.
+Record the device, Android version, GPU, driver and APK version with each result.
+
+## On-device setup
+
+- Install the release APK on an arm64 phone with no earlier NSMBU install.
+  The app icon opens setup and **Play** stays disabled.
+- Set up from an extracted game folder, a Cemu `.wua` archive, and a `.wud`/`.wux` image with a Cemu `keys.txt`.
+  Each setup reaches **Play**, and the game boots to the title screen.
+- Set up a `.wud`/`.wux` image with separate disc and common key files, and once with a wrong key.
+  The wrong key is named before extraction starts.
+- Add the 1.3.0 update folder to an image job.
+  Setup completes, and the game boots with the update applied.
+- Pause setup during compile, leave the app, and resume.
+  Completed objects are reused, and the progress text says so.
+- Reboot the device during compile.
+  Setup offers to continue, and the URI grant still opens the chosen input.
+- Heat the device or run it below the low-battery limit during setup.
+  Setup pauses by itself and continues when the device is ready.
+- Choose a different game after a successful setup.
+  The previous build stays playable until the new one is activated.
+- Install the next release over the current one.
+  Saves and settings stay, and setup rebuilds only when its fingerprint changed.
+- Record the setup time, peak free-space use and peak memory for a full dump.
+
+## Phone runtime
+
+- Back opens and closes Settings, and a controller's Home button opens them too.
+- Full screen covers the cutout area in both landscape directions.
+- **Share log** in setup shares `nsmbu.log` and `nsmbu-previous.log` after a run.
+- Kill the game from the system (low memory or `adb shell am kill`).
+  The next start offers a report with the Android exit reason.
+- Export a save from the launcher shortcut while the game runs.
+  The stop does not make a crash report.
+- The system Files app shows the app's root, refuses writes in `game`, and hides key files.
+- On a fan-cooled handheld, the log says `heat guard: handheld (fan)`.
+  On a phone, it says `heat guard: phone`.
+- At 120 fps, heat the device until the log says `60 fps paused: thermal headroom`, then let it cool until it resumes.
+
+## Touch controls
+
+- Play World 1-1 with touch controls only, including jumps, runs and the D-pad.
+- Switch the face-button layout in Settings and check that the drawn A still jumps.
+- Connect a Bluetooth controller.
+  The touch buttons and the view button hide, and a corner touch reveals them for a few seconds.
+- Hold the show/hide button, move and resize a control, rotate the device, and restart the app.
+  The layout stays.
+- With **Phone vibration** on **Touch controls**, take damage while playing by touch.
+  The phone vibrates, and controller input stops it.
+
+## Release APK
+
+- `apksigner verify --print-certs` reports one signer with the release certificate.
+- The APK has no `lib/*/libmain.so`, and `tools/release/guard.py` passes on it.
+- The `android-x86_64` APK installs and completes setup on an x86_64 emulator or Chromebook.
+
 ## Vulkan barrier capture
 
 Android performance gain is **pending device results**. Emulator display checks cannot establish

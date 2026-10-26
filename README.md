@@ -83,6 +83,8 @@ Start **NSMBU**:
 | Linux, x86-64, glibc 2.35 or newer, Vulkan | `nsmbu-launcher`  |
 | Linux, arm64, glibc 2.35 or newer, Vulkan | `nsmbu-launcher`   |
 
+On Android, install the APK instead and follow [New Super Mario Bros. U on Android](docs/android.md).
+
 The first start opens the installer.
 Each later start launches the game.
 
