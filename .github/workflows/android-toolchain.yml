@@ -9,6 +9,8 @@ on:
       - tools/release/package.py
       - tools/recomp/**
       - android/python/**
+      - android/app/build.gradle
+      - tools/release/guard.py
       - android/app/src/main/java/org/nsmbrecomp/nsmbu/**
       - .github/workflows/android-toolchain.yml
       - .github/actions/android-compiler/**
@@ -20,6 +22,8 @@ on:
       - tools/release/package.py
       - tools/recomp/**
       - android/python/**
+      - android/app/build.gradle
+      - tools/release/guard.py
       - android/app/src/main/java/org/nsmbrecomp/nsmbu/**
       - .github/workflows/android-toolchain.yml
       - .github/actions/android-compiler/**

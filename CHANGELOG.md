@@ -14,6 +14,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Embedded CPython for Android setup: `libnsmbupython` bridge with the `nsmbu_native` process runner, the NSMBU setup sources bundle, and verified resource caches.
 - Android setup adapter: durable, pausable extract (folder, archive, disc image, optional update folder), translate, compile and link checkpoints around the unchanged installer; the release guard rejects Android debug fixtures.
 - Android setup job runner (`ondevice_setup.py`): one locked worker per job that resumes from checkpoints, honours pause requests, reads disc and common keys from file descriptors into memory only, and leaves a library ready to activate; the installer reads key bytes without a file.
+- Android Gradle build takes the Python, toolchain and extractor packages, ABI and version as properties, signs releases from `NSMBU_KEYSTORE_*`, and refuses release builds whose Python bundle holds debug fixtures.
 
 ## [0.7.0] - 2026-10-26
 
