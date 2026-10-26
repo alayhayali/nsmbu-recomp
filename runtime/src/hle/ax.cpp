@@ -585,6 +585,31 @@ void ax_ss_load(ss::Reader& r) {
     audio::flush();
 }
 
+void ax_stop_for_reboot() {
+    g_running = false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+}
+
+void ax_reset_for_reboot() {
+    g_running = false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    std::lock_guard<std::mutex> lk(g_ax_mutex);
+    for (auto& v : g_voices) v = Voice{};
+    g_vpb_base = 0;
+    memset(g_app_frame_cb, 0, sizeof g_app_frame_cb);
+    memset(g_final_mix_cb, 0, sizeof g_final_mix_cb);
+    memset(g_aux_cb, 0, sizeof g_aux_cb);
+    memset(g_aux_user, 0, sizeof g_aux_user);
+    memset(g_upsample_stage, 0, sizeof g_upsample_stage);
+    g_aux_return[0] = g_aux_return[1] = g_aux_return[2] = 0x8000;
+    g_drc = DrcState{{}, {}, {}, {0x8000, 0x8000, 0x8000}};
+    memset(g_up_hist, 0, sizeof g_up_hist);
+    memset(g_drc_up_hist, 0, sizeof g_drc_up_hist);
+    memset(g_post_hist, 0, sizeof g_post_hist);
+    memset(g_drc_aux_idle, 0, sizeof g_drc_aux_idle);
+    audio::flush();
+}
+
 HLE(snd_core, AXInit) {
     {
         std::lock_guard<std::mutex> lk(g_ax_mutex);

@@ -20,6 +20,7 @@ struct View {
 };
 
 void initialize();
+void reinitialize();
 void set_open_pack(std::string pack);
 std::string open_pack_value();
 bool supported();

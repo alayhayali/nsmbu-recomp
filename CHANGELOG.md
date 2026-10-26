@@ -7,8 +7,15 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Added
+
+- Settings can restart the game in the same window when language or content mods need it.
+  Confirm Restart now; progress since your last save is lost.
+  Switching Metal and Vulkan still relaunches the app.
+
 ### Changed
 
+- Settings tabs: Controls is first; Saves sits between Audio and Mods; Language drops the About blurb; Debug is capitalized.
 - Settings → Language lists only the text languages on the installed disc.
   A USA dump shows English, French, and Spanish; a European dump adds the other European languages.
 - Rename `runtime/tools` to `runtime/test`.

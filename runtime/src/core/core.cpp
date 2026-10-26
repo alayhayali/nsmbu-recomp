@@ -153,6 +153,13 @@ __attribute__((noinline)) uint32_t runtime_alloc(uint32_t size, uint32_t align) 
 static std::atomic<uint32_t> g_host_top{kHostStart};
 uint32_t host_alloc(uint32_t size, uint32_t align) { return bump(g_host_top, size, align, kFixedStart); }
 
+void reset_allocators() {
+    g_runtime_top.store(kRuntimeStart);
+    g_host_top.store(kHostStart);
+    std::lock_guard<std::mutex> lk(g_alloc_log_m);
+    g_alloc_log.clear();
+}
+
 uint32_t runtime_top() { return g_runtime_top.load(); }
 void raise_runtime_top(uint32_t top) {
     uint32_t cur = g_runtime_top.load();

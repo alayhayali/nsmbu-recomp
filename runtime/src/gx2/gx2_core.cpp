@@ -26,6 +26,7 @@
 #include "core/runtime.h"
 #include "agent/agent_ctl.h"
 #include "save/savestate.h"
+#include "core/soft_restart.h"
 #include "mods/sdk/nsmbu.h"
 #include "guest_addr.h"
 #include "gfx/aspect.h"
@@ -1039,6 +1040,7 @@ HLE(gx2, GX2SwapScanBuffers) {
         if (ms > slow_ms) LOG("[gx2] slow swap %llu: %.1f ms", (unsigned long long)g_swap_count, ms);
     }
     ss::service(c);
+    soft_restart::prepare();
     if (g_swap_count % 300 == 1) {
         static auto last = std::chrono::steady_clock::now();
         auto now = std::chrono::steady_clock::now();
@@ -1179,6 +1181,23 @@ void gx2_ss_drain() {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     LOG("[savestate] flips still pending after 300 ms");
+}
+
+void gx2_reset_for_reboot() {
+    std::lock_guard<std::recursive_mutex> lk(g_exec_mutex);
+    memset(g_regs, 0, sizeof g_regs);
+    g_register_blocks = {};
+    g_contexts.clear();
+    g_shadow = nullptr;
+    g_shader_state_gen++;
+    {
+        std::lock_guard<std::mutex> fl(g_flip_mutex);
+        g_pending_flips.clear();
+        g_count_offset = -(int64_t)g_swap_count;
+    }
+    reset_uncapped_guest_pace();
+    capped_vsync_reset_pace();
+    render::ss_reset();
 }
 
 void gx2_ss_save(ss::Writer& w) {

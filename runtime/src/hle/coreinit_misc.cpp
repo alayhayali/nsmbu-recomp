@@ -14,6 +14,7 @@
 #include <unordered_map>
 
 #include "core/runtime.h"
+#include "core/soft_restart.h"
 
 #include "core/env.h"
 struct GuestArgs {
@@ -98,32 +99,45 @@ static void report(const std::string& s) {
     LOG("[game] %s", t.c_str());
 }
 
-static uint32_t console_language() {
-    static const uint32_t lang = [] {
-        const char* why = "NSMBU_LANGUAGE";
-        std::string saved;
-        const char* e = env::LANGUAGE();
-        if ((!e || !*e) && hostui::get("language", saved)) {
-            e = saved.c_str();
-            why = "saved setting";
-        }
-        long v = 1;
-        if (e && *e) {
-            char* end = nullptr;
-            v = strtol(e, &end, 10);
-            if (*end || v < 0 || v >= game_lang::kLanguages) {
-                LOG("[config] language %s (%s) is not a language code 0..11; using English", e, why);
-                v = 1;
-            } else {
-                LOG("[config] console language %ld (%s)", v, why);
-            }
-        }
+static uint32_t g_console_language = 1;
+static bool g_console_language_ready = false;
 
-        const game_lang::Start s = game_lang::choose((int)v);
-        game_lang::begin(s);
-        return (uint32_t)s.language;
-    }();
-    return lang;
+static uint32_t read_console_language() {
+    const char* why = "NSMBU_LANGUAGE";
+    std::string saved;
+    const char* e = env::LANGUAGE();
+    if ((!e || !*e) && hostui::get("language", saved)) {
+        e = saved.c_str();
+        why = "saved setting";
+    }
+    long v = 1;
+    if (e && *e) {
+        char* end = nullptr;
+        v = strtol(e, &end, 10);
+        if (*end || v < 0 || v >= game_lang::kLanguages) {
+            LOG("[config] language %s (%s) is not a language code 0..11; using English", e, why);
+            v = 1;
+        } else {
+            LOG("[config] console language %ld (%s)", v, why);
+        }
+    }
+    const game_lang::Start s = game_lang::choose((int)v);
+    game_lang::begin(s);
+    return (uint32_t)s.language;
+}
+
+static uint32_t console_language() {
+    if (!g_console_language_ready) {
+        g_console_language = read_console_language();
+        g_console_language_ready = true;
+    }
+    return g_console_language;
+}
+
+void console_language_reset() {
+    g_console_language_ready = false;
+    g_console_language = read_console_language();
+    g_console_language_ready = true;
 }
 
 HLE(coreinit, OSReport) {
@@ -283,9 +297,21 @@ HLE(coreinit, IMIsDimEnabled) { if (arg(c, 0)) st32(arg(c, 0), 0); ret(c, 0); }
 HLE(coreinit, ENVGetEnvironmentVariable) { if (arg(c, 1) && arg(c, 2)) st8(arg(c, 1), 0); ret(c, 1); }
 HLE(coreinit, __gh_set_errno) {}
 
-HLE(coreinit, exit) { LOG("[game] exit(%d)", (int)arg(c, 0)); std::exit((int)arg(c, 0)); }
-HLE(coreinit, _Exit) { LOG("[game] _Exit(%d)", (int)arg(c, 0)); std::_Exit((int)arg(c, 0)); }
-HLE(coreinit, __PPCExit) { LOG("[game] __PPCExit"); std::exit(0); }
+HLE(coreinit, exit) {
+    LOG("[game] exit(%d)", (int)arg(c, 0));
+    if (soft_restart::process_exit_blocked()) threads::kill_all_for_reboot();
+    std::exit((int)arg(c, 0));
+}
+HLE(coreinit, _Exit) {
+    LOG("[game] _Exit(%d)", (int)arg(c, 0));
+    if (soft_restart::process_exit_blocked()) threads::kill_all_for_reboot();
+    std::_Exit((int)arg(c, 0));
+}
+HLE(coreinit, __PPCExit) {
+    LOG("[game] __PPCExit");
+    if (soft_restart::process_exit_blocked()) threads::kill_all_for_reboot();
+    std::exit(0);
+}
 
 HLE(coreinit, OSGetMainCoreId) { ret(c, 1); }
 HLE(coreinit, OSEnforceInorderIO) { __atomic_thread_fence(__ATOMIC_SEQ_CST); }

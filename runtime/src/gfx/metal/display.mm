@@ -21,6 +21,7 @@
 namespace gfx { uint64_t shader_warm_activity(); }
 #include "gfx/renderer.h"
 #include "core/runtime.h"
+#include "core/soft_restart.h"
 #include "hooks/interp.h"
 #ifdef NSMBU_HAS_VULKAN
 #include "gfx/vulkan/api.h"
@@ -607,6 +608,7 @@ void run_appkit_loop() {
         fflush(stderr);
         std::_Exit(0);
     }];
+    [NSTimer scheduledTimerWithTimeInterval:0.05 repeats:YES block:^(NSTimer*) { soft_restart::run_if_ready(); }];
     // test runs: NSMBU_EXIT_AT_FRAME=n quits (orderly) once the renderer reached frame n
     if (env::SHADER_WARM() && *env::SHADER_WARM() && strcmp(env::SHADER_WARM(), "0"))
         [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer* t) {

@@ -37,6 +37,7 @@ void import_legacy(const std::filesystem::path& stage,const std::string& source_
 struct Selection {std::string id;Pack pack;json::Value config;};
 void validate(const std::vector<Selection>& selections);
 void activate(const std::vector<Selection>& selections);
+void deactivate();
 void set_vulkan(bool available);
 bool vulkan();
 bool has_shaders();

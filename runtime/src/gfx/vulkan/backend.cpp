@@ -25,6 +25,7 @@
 #include "input/input.h"
 #include "mods/mods.h"
 #include "agent/agent_ctl.h"
+#include "core/soft_restart.h"
 #include "overlay/hostui.h"
 #include "overlay/overlay.h"
 #ifdef NSMBU_SDL_HOST
@@ -2615,6 +2616,7 @@ void run_main_loop() {
     input::update();
     agent_ctl::service();
     ::hostui::run_posted();
+    soft_restart::run_if_ready();
     test_drc_key();
     test_fullscreen_key();
     if (const int m = gfx::display_test_mode(frame_count()); m >= 0)

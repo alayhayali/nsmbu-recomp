@@ -379,10 +379,20 @@ static std::mutex g_frz_m;
 static std::condition_variable g_frz_cv;
 static bool g_frozen = false;
 static HostThread* g_frz_owner = nullptr;
+static std::atomic<bool> g_reboot_kill{false};
 
 static void park_gate(HostThread* t) {
     std::unique_lock<std::mutex> l(g_frz_m);
-    while (g_frozen && t != g_frz_owner) g_frz_cv.wait(l);
+    while (g_frozen && t != g_frz_owner) {
+        if (g_reboot_kill.load()) break;
+        g_frz_cv.wait(l);
+    }
+    if (g_reboot_kill.load()) {
+        l.unlock();
+        t->wst.store(kRunning);
+        if (t->service) return;
+        throw GuestExit{0};
+    }
     t->wst.store(kRunning);
 }
 
@@ -670,6 +680,7 @@ void run_main(const LoadedModule& m, int argc, uint32_t argv) {
     WaitForSingleObject(ht->pt,INFINITE); CloseHandle(ht->pt); ht->pt=nullptr;
 #else
     pthread_join(ht->pt, nullptr);
+    ht->pt = {};
 #endif
 }
 
@@ -1243,6 +1254,66 @@ void thaw() {
     HostThread* me = t_self;
     block_end();
     if (me) me->wst.store(kRunning);
+}
+
+bool reboot_killing() { return g_reboot_kill.load(); }
+
+[[noreturn]] void kill_all_for_reboot() {
+    g_reboot_kill.store(true);
+    {
+        std::lock_guard<std::mutex> l(g_frz_m);
+        g_frozen = false;
+        g_frz_owner = nullptr;
+    }
+    g_frz_cv.notify_all();
+    block_end();
+    throw GuestExit{0};
+}
+
+void reset_for_reboot() {
+    std::vector<HostThread*> leftover;
+    {
+        std::lock_guard<std::mutex> lk(g_threads_mutex);
+        for (auto& [g, t] : g_threads) {
+            (void)g;
+            leftover.push_back(t);
+        }
+        g_threads.clear();
+    }
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    for (HostThread* t : leftover) {
+        if (!t) continue;
+        while (!t->exited && std::chrono::steady_clock::now() < deadline)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+#ifdef _WIN32
+        if (t->pt) {
+            if (t->exited) {
+                WaitForSingleObject(t->pt, 0);
+                CloseHandle(t->pt);
+            } else {
+                TerminateThread(t->pt, 0);
+                CloseHandle(t->pt);
+            }
+            t->pt = nullptr;
+        }
+#else
+        if (t->pt) {
+            if (t->exited) pthread_join(t->pt, nullptr);
+            else pthread_detach(t->pt);
+            t->pt = {};
+        }
+#endif
+        if (t->exited) delete t;
+    }
+    g_reboot_kill.store(false);
+    {
+        std::lock_guard<std::mutex> l(g_frz_m);
+        g_frozen = false;
+        g_frz_owner = nullptr;
+    }
+    g_entry_parks = 0;
+    t_self = nullptr;
+    t_cpu = nullptr;
 }
 }
 

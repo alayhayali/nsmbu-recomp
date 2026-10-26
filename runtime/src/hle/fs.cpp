@@ -408,6 +408,21 @@ void fs_ss_save(ss::Writer& w) {
     }
 }
 
+void fs_reset_for_reboot() {
+    std::lock_guard<std::mutex> lk(g_fs_mutex);
+    for (auto& [h, f] : g_files) {
+        (void)h;
+        fclose(f.f);
+    }
+    g_files.clear();
+    for (auto& [h, d] : g_dirs) {
+        (void)h;
+        closedir(d.d);
+    }
+    g_dirs.clear();
+    g_next_handle = 1;
+}
+
 void fs_ss_load(ss::Reader& r) {
     std::lock_guard<std::mutex> lk(g_fs_mutex);
     uint32_t next = r.u32();

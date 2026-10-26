@@ -229,6 +229,7 @@ Files index(const fs::path& directory){
     require(!out.empty(),"Content mod contains no files");return out;
 }
 void activate(Files files){require(!present.load(),"Content overrides already activated");active=std::move(files);present.store(!active.empty(),std::memory_order_release);}
+void deactivate(){active.clear();present.store(false,std::memory_order_release);}
 std::string replacement(const std::string& guest,const std::string& mode){
     if(!present.load(std::memory_order_acquire))return {};
     if(mode!="r"&&mode!="rb")return {};

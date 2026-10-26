@@ -16,5 +16,6 @@ json::Value synthesize_cemu_content(const std::filesystem::path& pack,const std:
 Files index(const std::filesystem::path& directory);
 
 void activate(Files files);
+void deactivate();
 std::string replacement(const std::string& guest, const std::string& mode="rb");
 }

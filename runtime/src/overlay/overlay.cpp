@@ -29,6 +29,7 @@
 #include "gfx/aspect.h"
 #include "crash/crashrec.h"
 #include "text/game_languages.h"
+#include "core/soft_restart.h"
 #include "../gfx/renderer.h"
 #ifdef __ANDROID__
 #include "../gfx/vulkan/android_driver.h"
@@ -129,13 +130,13 @@ ImGuiKey imgui_key(int code) {
     }
 }
 
-enum Tab { kSaves, kGraphics, kDisplay, kAudio, kMods, kControls, kAbout, kDebug, kTabs };
-const char* const kTabNames[kTabs] = {"Saves", "Graphics", "Display", "Audio", "Mods", "Controls", "Language / About", "debug"};
-const char* const kTabIds[kTabs] = {"saves", "graphics", "display", "audio", "mods", "controls", "about", "debug"};
+enum Tab { kControls, kGraphics, kDisplay, kAudio, kSaves, kMods, kAbout, kDebug, kTabs };
+const char* const kTabNames[kTabs] = {"Controls", "Graphics", "Display", "Audio", "Saves", "Mods", "Language", "Debug"};
+const char* const kTabIds[kTabs] = {"controls", "graphics", "display", "audio", "saves", "mods", "about", "debug"};
 
 struct Ui {
     bool init = false;
-    int tab = kSaves, select_tab = -1;
+    int tab = kControls, select_tab = -1;
     double last_time = 0;
 
     float values[input_map::kPadCount] = {};
@@ -160,6 +161,8 @@ struct Ui {
 
     int language = -1;
     int language_at_start = -1;
+    bool restart_confirm = false;
+    std::string restart_why;
     bool linearized = false;
     bool just_opened = false;
     bool list_view = false;
@@ -599,7 +602,8 @@ void tab_graphics() {
         ImGui::NewLine();
         if (!render::fallback_reason().empty()) note("This start: %s", render::fallback_reason().c_str());
         if (render::restart_pending()) {
-            note("The game uses %s after a restart. Progress since your last save is lost.", render::api_name(render::preferred()));
+            note("The game uses %s after a restart. This relaunches the app. Progress since your last save is lost.",
+                 render::api_name(render::preferred()));
             if (ImGui::Button("Restart now")) hostui::post([] { render::restart(); });
         }
     }
@@ -851,6 +855,10 @@ void tab_display() {
     }
 }
 
+void ask_soft_restart(const char* why);
+void soft_restart_button(const char* why);
+void soft_restart_confirm();
+
 void package_controls() {
     using namespace mods::packages;
     static std::string error;
@@ -947,10 +955,18 @@ void package_controls() {
                     wrapped_tooltip(option.description.c_str());
                 ImGui::PopID();
             }
-            if(mod.restart_required) note("Changes apply on the next game start. Active files stay loaded until exit.");
+            if (mod.restart_required)
+                note("Content and graphics packs apply after a restart. Active files stay loaded until then.");
             ImGui::TreePop();
         }
         ImGui::PopID();
+    }
+    bool any_restart = false;
+    for (const auto& mod : installed)
+        if (mod.pending_restart) any_restart = true;
+    if (any_restart) {
+        warn("A content or graphics pack change needs a restart.");
+        soft_restart_button("Apply mod changes.");
     }
 }
 
@@ -1300,6 +1316,40 @@ void choose_language(int language) {
     hostui::post([language] { hostui::set("language", std::to_string(language)); });
 }
 
+void ask_soft_restart(const char* why) {
+    U.restart_why = why && *why ? why : "settings";
+    U.restart_confirm = true;
+    ImGui::OpenPopup("Restart the game?###soft_restart");
+}
+
+void soft_restart_confirm() {
+    if (!U.restart_confirm) return;
+    ImGui::OpenPopup("Restart the game?###soft_restart");
+    ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (!ImGui::BeginPopupModal("Restart the game?###soft_restart", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ImGui::TextWrapped("%s Progress since your last save is lost.", U.restart_why.c_str());
+    if (ImGui::Button("Restart now", ImVec2(140, 0))) {
+        soft_restart::request(U.restart_why.c_str());
+        U.restart_confirm = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(140, 0))) {
+        U.restart_confirm = false;
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
+void soft_restart_button(const char* why) {
+    if (soft_restart::pending()) {
+        note("Restarting…");
+        return;
+    }
+    if (ImGui::Button("Restart now")) ask_soft_restart(why);
+}
+
 void tab_debug() {
     heading("Course debug");
     bool v;
@@ -1337,6 +1387,7 @@ void tab_about() {
     char* end = nullptr;
     const long env_value = env_set ? strtol(env, &end, 10) : 1;
     const int env_language = env_set && !*end && env_value >= 0 && env_value < game_lang::kLanguages ? (int)env_value : 1;
+    if (soft_restart::take_ui_refresh()) U.language = -1;
     if (U.language < 0) {
         U.language = game_lang::usable(saved_language());
         const game_lang::Start now = game_lang::current();
@@ -1346,7 +1397,7 @@ void tab_about() {
             U.language_at_start = s.language;
         }
     }
-    heading("Console language (applies on the next start)");
+    heading("Console language (applies after a restart)");
     note("The game picks its text language from the console language. Only languages on this disc are listed.");
     ImGui::BeginDisabled(env_set);
     int col = 0;
@@ -1360,24 +1411,10 @@ void tab_about() {
     if (env_set) {
         note("NSMBU_LANGUAGE=%s is set for this start and takes precedence.", env);
     } else if (U.language != U.language_at_start) {
-        warn("%s is saved. Restart the game to apply it: the game reads the console language only when it starts.",
+        warn("%s is saved. Restart to apply it: the game reads the console language only when it starts.",
              game_lang::name(U.language));
+        soft_restart_button("Apply the console language.");
     }
-    heading("About");
-    ImGui::Text("%s - native port (%s host, %s renderer)", app_title::kName, hostui::name(),
-                render::api_name(render::active()));
-#ifdef __APPLE__
-    note("Settings overlay: ` or F12, Cmd+, or Settings... in the app menu, or hold Select / "
-         "press Home on a controller. Esc, ` / F12 or B closes. "
-#else
-    note("Settings overlay: ` or F12, or hold Select / press Home on a controller. Esc, ` / F12 or B closes. "
-#endif
-         "L / R switch tabs on a controller. The game keeps running and sees no input while this menu is open.");
-    note("When the game asks for text (your name), a text window appears over the game: type on the keyboard "
-         "(Enter = OK, Esc = Cancel), click the on-screen keys, or use a controller: D-pad / left stick choose a key, "
-         "A types it, B deletes, X adds a space, Y is Shift, L / R switch between letters, accents and symbols, "
-         "Start confirms.");
-    note("Built with Dear ImGui %s (MIT License, Omar Cornut and contributors).", IMGUI_VERSION);
 }
 
 static void lag_row(const char* name, double ms, double frameMs, const ImVec4& color) {
@@ -1484,12 +1521,12 @@ void settings_window() {
                     U.tab = i;
                     ImGui::BeginChild("page", ImVec2(0, 0), ImGuiChildFlags_NavFlattened);
                     switch (i) {
-                    case kSaves: tab_saves(); break;
+                    case kControls: tab_controls(); break;
                     case kGraphics: tab_graphics(); break;
                     case kDisplay: tab_display(); break;
                     case kAudio: tab_audio(); break;
+                    case kSaves: tab_saves(); break;
                     case kMods: tab_mods(); break;
-                    case kControls: tab_controls(); break;
                     case kAbout: tab_about(); break;
                     case kDebug: tab_debug(); break;
                     }
@@ -1500,6 +1537,7 @@ void settings_window() {
             U.select_tab = -1;
             ImGui::EndTabBar();
         }
+        soft_restart_confirm();
     }
     ImGui::End();
 
