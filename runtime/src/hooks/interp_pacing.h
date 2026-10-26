@@ -85,6 +85,12 @@ inline int64_t output_slot_ns(int fps) {
     return 1000000000LL / valid_fps(fps);
 }
 
+inline bool pad_logic_step(int fps, int step_n, int shown_frames, int full_frames) {
+    if (step_n <= 0) return true;
+    if (logic_wait_matches_presents(fps)) return step_n > 1;
+    return full_frames > 1 && shown_frames < full_frames;
+}
+
 inline int64_t pass_budget_ns(int64_t work_ns, int64_t slot_ns) {
     if (slot_ns <= 0) return work_ns;
     return std::max(work_ns, slot_ns);

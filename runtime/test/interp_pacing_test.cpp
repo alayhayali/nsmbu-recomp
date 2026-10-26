@@ -126,6 +126,14 @@ static void test_cap() {
     CHECK(logic_wait_matches_presents(240));
     CHECK(!logic_wait_matches_presents(144));
     CHECK(!logic_wait_matches_presents(165));
+    CHECK(pad_logic_step(120, 0, 1, 2));
+    CHECK(pad_logic_step(120, 3, 4, 4));
+    CHECK(!pad_logic_step(120, 1, 2, 2));
+    CHECK(!pad_logic_step(165, 2, 3, 3));
+    CHECK(!pad_logic_step(165, 1, 2, 2));
+    CHECK(pad_logic_step(165, 1, 2, 3));
+    CHECK(pad_logic_step(165, 2, 2, 3));
+    CHECK(pad_logic_step(144, 0, 1, 3));
     CHECK(output_slot_ns(165) == 1000000000LL / 165);
     CHECK(output_slot_ns(144) == 1000000000LL / 144);
     CHECK(output_slot_ns(120) == 0);

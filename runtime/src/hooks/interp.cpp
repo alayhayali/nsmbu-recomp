@@ -675,13 +675,15 @@ static int plan_step() {
     if (frames <= 0) return -1;
     g_full_frames = frames;
     int n = frames - 1;
-    if (n > 0 && paced() && interp_on()) {
+    if (n > 0 && paced() && interp_on() && !pacing::fixed_output_slot(output_fps())) {
         const int64_t slot = pacing::output_slot_ns(output_fps());
         const int64_t logic = pacing::pass_budget_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(g_logic_avg).count(), slot);
         const int64_t hold = pacing::pass_budget_ns(std::chrono::duration_cast<std::chrono::nanoseconds>(g_hold_avg).count(), slot);
         const int64_t budget = kPacedBudget.count();
         n = pacing::plan_in_between(n, budget, logic, hold);
         if (pacing::next_pass(0, n, logic, hold, budget) != pacing::Next::kHold) n = 0;
+        g_paced_planned += n;
+    } else if (n > 0 && paced() && interp_on()) {
         g_paced_planned += n;
     }
     return n;
@@ -718,14 +720,16 @@ static void after_pass(int phase) {
         g_hold_next = false;
         if (pacing) {
             paced_step_done(g_step_holds);
-            if (g_step_n <= 0 ||
-                (in_between() > 1 && (pacing::logic_wait_matches_presents(output_fps()) ||
-                                      (g_full_frames > 1 && g_frame_n < g_full_frames))))
-                g_wait_step = true;
+            if (pacing::pad_logic_step(output_fps(), g_step_n, g_step_holds + 1, g_full_frames)) g_wait_step = true;
         }
         return;
     }
     if (!pacing) { g_hold_next = true; g_wait_step = false; return; }
+    if (pacing::fixed_output_slot(output_fps())) {
+        g_hold_next = true;
+        g_last_hold = pace_clock::now();
+        return;
+    }
     if (phase > 0) g_last_hold = pace_clock::now();
     const auto now = pace_clock::now();
     const bool probe = phase == 0 && now - g_last_hold >= kProbeAfter;
