@@ -1,3 +1,4 @@
+#include "gfx/aspect_view.h"
 #include "gfx/render_mips.h"
 #include "mods/cemu_pack.h"
 #include <tuple>
@@ -82,6 +83,7 @@ static void latch_aspect() {
 
 static bool screen_shaped(const Surface* s) {
     if (s->fmt.compressed || s->mips > 1 || s->slices > 1 || s->width < 32) return false;
+    if (aspect::view::gamepad_target(s->width, s->height)) return false;
     float r = (float)s->width * 9.0f / ((float)s->height * 16.0f);
     return r > 0.97f && r < 1.03f;
 }

@@ -1,4 +1,5 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { AgentClient } from "../agent/client.ts";
 import { parseButtonBits } from "../agent/buttons.ts";
@@ -93,7 +94,9 @@ export class Session {
         if (process.platform === "win32") {
             return `\\\\.\\pipe\\nsmbu-playtest-${this.name}`;
         }
-        return join(this.workDir, "ctl.sock");
+        const preferred = join(this.workDir, "ctl.sock");
+        if (preferred.length < 108) return preferred;
+        return join(tmpdir(), "nsmbu-playtest", this.name, "ctl.sock");
     }
 
     private pidPath(): string {
@@ -185,6 +188,7 @@ export class Session {
         await this.ensureOwnIdle();
         mkdirSync(this.workDir, { recursive: true });
         mkdirSync(dirname(this.logPath), { recursive: true });
+        mkdirSync(dirname(this.sockPath()), { recursive: true });
         const sock = this.sockPath();
         const args = ["--save", this.saveDir];
         if (this.openPack) args.push(this.openPack);
@@ -243,6 +247,11 @@ export class Session {
         const r = await withTimeout(this.live().request({ cmd: "eval", code, timeout: timeoutMs }), timeoutMs + 5000, "eval");
         if (!r.ok) throw new Error(r.error ?? "eval failed");
         return (r.output ?? "").trim();
+    }
+
+    async screenshot(path: string): Promise<void> {
+        const r = await withTimeout(this.live().request({ cmd: "screenshot", path }), 20_000, "screenshot");
+        if (!r.ok) throw new Error(r.error ?? "screenshot failed");
     }
 
     async press(button: string, frames = 20, tap = false): Promise<void> {

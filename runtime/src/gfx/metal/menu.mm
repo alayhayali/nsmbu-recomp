@@ -91,6 +91,7 @@ static void load_prefs() {
     if (saved(@"fps60", {env::INTERP, env::INTERP_FPS})) interp::set_mode([pref(@"fps60") intValue]);
     if (saved(@"fps60Paced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(60, [pref(@"fps60Paced") boolValue]);
     if (saved(@"fpsHighPaced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(120, [pref(@"fpsHighPaced") boolValue]);
+    if (saved(@"aspect", {env::ASPECT})) aspect::apply_choice([pref(@"aspect") UTF8String]);
 #ifdef NSMBU_HAS_VULKAN
     if (saved(@"vkPresentMode", {env::VK_PRESENT_MODE})) gfxvk::set_present_mode([pref(@"vkPresentMode") intValue]);
 #endif
@@ -102,6 +103,11 @@ static void save_prefs() {
     if (!env_set({env::FXAA})) set_pref(@"fxaa", @(render::fxaa()));
     if (!env_set({env::INTERP, env::INTERP_FPS})) set_pref(@"fps60", @(interp::mode()));
     if (!env_set({env::INTERP_FPS})) set_pref(@"interpFps", @(interp::fps()));
+    if (!env_set({env::ASPECT})) {
+        char aspect[32];
+        aspect::choice_text(aspect, sizeof aspect);
+        set_pref(@"aspect", @(aspect));
+    }
     if (!env_set({env::INTERP_PACED})) {
         set_pref(@"fps60Paced", @(interp::paced_interpolation_at(60)));
         set_pref(@"fpsHighPaced", @(interp::paced_interpolation_at(120)));
@@ -241,11 +247,9 @@ static NsmbuStateMenu* g_state_menu;
 - (void)toggleDrcWindow:(NSMenuItem*)item { gfx::show_drc_window(!gfx::drc_window_shown()); }
 - (void)toggleFxaa:(NSMenuItem*)item { render::set_fxaa(!render::fxaa()); update_title(); }
 - (void)setRes:(NSMenuItem*)item { set_res(kResScales[item.tag]); update_title(); }
-- (void)setAspect:(NSMenuItem*)item { aspect::set_mode((int)item.tag); update_title(); }
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
     if (item.action == @selector(setRes:))
         item.state = fabsf(kResScales[item.tag] - current_res_scale()) < 0.01f ? NSControlStateValueOn : NSControlStateValueOff;
-    if (item.action == @selector(setAspect:)) item.state = item.tag == aspect::mode() ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(setRenderer:)) {
         render::Api a = (render::Api)item.tag;
         item.state = a == render::preferred() ? NSControlStateValueOn : NSControlStateValueOff;
@@ -334,14 +338,6 @@ void install_menu(NSWindow* tv) {
     add(g, @"    1.5x (1920x1080)", @selector(setRes:), @"R", 1);
     add(g, @"    2x (2560x1440)", @selector(setRes:), @"R", 2);
     add(g, @"    3x (3840x2160)", @selector(setRes:), @"R", 3);
-    [g addItem:[NSMenuItem separatorItem]];
-    [g addItemWithTitle:@"Aspect ratio" action:nil keyEquivalent:@""].enabled = NO;
-    add(g, @"    16:9 (original)", @selector(setAspect:), @"", aspect::kOriginal);
-    add(g, @"    Match window", @selector(setAspect:), @"", aspect::kWindow).toolTip =
-        @"The picture takes the shape of the TV window (or the screen in full screen): wider shows more to the sides";
-    add(g, @"    16:10", @selector(setAspect:), @"", aspect::k16x10);
-    add(g, @"    21:9", @selector(setAspect:), @"", aspect::k21x9);
-    add(g, @"    32:9", @selector(setAspect:), @"", aspect::k32x9);
     [g addItem:[NSMenuItem separatorItem]];
     add(g, @"16x anisotropic filtering (N)", @selector(toggleAniso:), @"N");
     add(g, @"Edge smoothing, FXAA (8)", @selector(toggleFxaa:), @"8");

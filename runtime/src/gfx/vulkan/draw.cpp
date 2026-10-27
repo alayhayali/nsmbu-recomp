@@ -1,5 +1,6 @@
 #include "gfx/aspect.h"
 #include "gfx/aspect_panes.h"
+#include "gfx/aspect_view.h"
 #include "gfx/renderer.h"
 
 #include "Cafe/HW/Latte/Core/FetchShader.h"
@@ -37,8 +38,54 @@ namespace gfxvk {
 namespace {
 
 bool preparation_stats_enabled() {
-  static const bool enabled=env::VK_STATS()!=nullptr;
-  return enabled;
+    static const bool enabled=env::VK_STATS()!=nullptr;
+    return enabled;
+}
+
+bool shader_fullscreen_quad(const uint32_t* regs, const LatteDecompilerShader* dec, float width, float height) {
+    if (!dec) return false;
+    const auto* alu = reinterpret_cast<const float*>(regs + mmSQ_ALU_CONSTANT0_0 + 0x400);
+    uint32_t ustart = 0;
+    if (!dec->list_remappedUniformEntries_register.empty())
+        ustart = dec->list_remappedUniformEntries_register.front().indexOffset / 4;
+    else if (dec->uniform.loc_uniformRegister < 0 || dec->uniform.count_uniformRegister == 0)
+        return false;
+    if (ustart + 4 > 0x400) return false;
+    uint32_t n = std::min<uint32_t>(32, 0x400 - ustart);
+    return aspect::view::fullscreen_quad(alu + ustart, n, width, height);
+}
+
+bool shader_screen_ortho(const uint32_t* regs, const LatteDecompilerShader* dec, float width, float height) {
+    if (!dec) return false;
+    const auto* alu = reinterpret_cast<const float*>(regs + mmSQ_ALU_CONSTANT0_0 + 0x400);
+    uint32_t begin[64], end[64];
+    size_t n = 0;
+    auto add = [&](uint32_t start, uint32_t stop) {
+        if (n < 64 && stop > start) {
+            begin[n] = start;
+            end[n] = stop;
+            ++n;
+        }
+    };
+    if (dec->list_remappedUniformEntries_register.empty()) {
+        if (dec->uniform.loc_uniformRegister >= 0 && dec->uniform.count_uniformRegister > 0)
+            add(0, uint32_t(dec->uniform.count_uniformRegister) * 4);
+    } else {
+        for (const auto& entry : dec->list_remappedUniformEntries_register) {
+            uint32_t start = entry.indexOffset / 4;
+            if (start < 0x400) add(start, start + 4);
+        }
+    }
+    if (aspect::view::screen_ortho_ranges(alu, begin, end, n, width, height)) return true;
+    for (const auto& group : dec->list_remappedUniformEntries_bufferGroups) {
+        uint32_t addr = regs[mmSQ_VTX_UNIFORM_BLOCK_START + group.kcacheBankIdOffset / 4];
+        if (!addr) continue;
+        n = 0;
+        for (const auto& entry : group.entries) add(entry.indexOffset / 4, entry.indexOffset / 4 + 4);
+        const auto* bytes = reinterpret_cast<const float*>(mem::ptr(addr));
+        if (bytes && aspect::view::screen_ortho_ranges(bytes, begin, end, n, width, height)) return true;
+    }
+    return false;
 }
 VkImageView null_texture_view(E_DIM dim, bool depth) {
   struct Slot {
@@ -1693,7 +1740,10 @@ StageResources bind_stage(const uint32_t *r, vk::Shader *sh,
   auto& supportUniforms = supportScratch[sh->vertex ? 0 : 1];
   if (m.uniformVarsBufferBindingPoint >= 0) {
     const size_t capacity=preparation_stats_enabled()?supportUniforms.capacity():0;
-    vk::pack_uniforms_into(r, *sh, supportUniforms, sx, sy);
+    float ortho_kx = 1.0f, ortho_ky = 1.0f;
+    if (aspect::edge_hud())
+      target_aspect_factors(r[mmCB_COLOR0_TILE] & 0xFFFF, r[mmCB_COLOR0_FRAG], ortho_kx, ortho_ky);
+    vk::pack_uniforms_into(r, *sh, supportUniforms, sx, sy, ortho_kx, ortho_ky);
     if(preparation_stats_enabled()) {
       ++R.cpuPreparation.packCalls;
       R.cpuPreparation.packBytes+=supportUniforms.size();
@@ -2203,10 +2253,15 @@ void draw(const uint32_t *r, uint32_t prim, uint32_t count, uint32_t indexType,
         zo = f32(r[REGADDR::PA_CL_VPORT_ZOFFSET]);
   LATTE_PA_CL_CLIP_CNTL clip;
   std::memcpy(&clip, r + REGADDR::PA_CL_CLIP_CNTL, 4);
-  VkViewport vp{(xo - xs) * sx,
-                (yo - ys) * sy,
-                xs * 2 * sx,
-                ys * 2 * sy,
+  bool wide_target = target->ax != 1.0f || target->ay != 1.0f;
+  bool screen_ortho = shader_screen_ortho(r, vs->dec, float(target->width), float(target->height));
+  bool window_space = vs && vs->dec && vs->dec->uniform.loc_windowSpaceToClipSpaceTransform >= 0;
+  bool full_quad = screen_ortho && shader_fullscreen_quad(r, vs->dec, float(target->width), float(target->height));
+  bool center_ortho = aspect::view::center_framebuffer_draw(wide_target, screen_ortho || window_space,
+                                                             aspect::cover_draw() || full_quad || aspect::edge_hud());
+  auto placed = aspect::view::place_ortho(xo, xs, yo, ys, float(width), float(height), float(target->width),
+                                           float(target->height), sx, sy, target->ax, target->ay, center_ortho);
+  VkViewport vp{placed.x, placed.y, placed.w, placed.h,
                 clip.get_DX_CLIP_SPACE_DEF() ? zo : zo - zs,
                 zo + zs};
 
@@ -2225,13 +2280,10 @@ void draw(const uint32_t *r, uint32_t prim, uint32_t count, uint32_t indexType,
   }
   uint32_t tl = r[REGADDR::PA_SC_GENERIC_SCISSOR_TL],
            br = r[REGADDR::PA_SC_GENERIC_SCISSOR_BR];
-  auto clamp = [](uint32_t v, float k, uint32_t limit) {
-    return uint32_t(std::clamp(double(v) * k, 0.0, double(limit)));
-  };
-  uint32_t x = clamp(tl & 0x7fff, sx, width),
-           y = clamp((tl >> 16) & 0x7fff, sy, height),
-           ex = clamp(br & 0x7fff, sx, width),
-           ey = clamp((br >> 16) & 0x7fff, sy, height);
+  uint32_t x = aspect::view::cover_min(placed.pad_x + float(tl & 0x7fff) * placed.scale_x, width),
+           y = aspect::view::cover_min(placed.pad_y + float((tl >> 16) & 0x7fff) * placed.scale_y, height),
+           ex = aspect::view::cover_max(placed.pad_x + float(br & 0x7fff) * placed.scale_x, width),
+           ey = aspect::view::cover_max(placed.pad_y + float((br >> 16) & 0x7fff) * placed.scale_y, height);
   float ax, ay;
   if (aspect::content_clip() && target_aspect_factors(r[mmCB_COLOR0_TILE] & 0xFFFF, r[mmCB_COLOR0_FRAG], ax, ay))
     aspect::panes::clip(width, height, ax, ay, x, y, ex, ey);
