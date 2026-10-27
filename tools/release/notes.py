@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Release notes: a short install summary and the matching CHANGELOG.md version.
 
-usage: notes.py README.md VERSION > notes.md
+usage: notes.py README.md VERSION [--devel COMMIT] > notes.md
 
 VERSION is the tag (v0.1) or the changelog heading (0.1).
 The notes take the matching "## [0.1]" / "## 0.1" block from CHANGELOG.md next to the README.
+
+--devel: notes for the rolling development pre-release; VERSION is the published version
+(v0.1-devel.1a2b3c4d) and the changes are the "## [Unreleased]" block, the ones not released yet.
 """
 import os
 import re
@@ -27,7 +30,13 @@ def changelog_version(readme, version):
 
 def main():
     readme, version = sys.argv[1:3]
-    new = changelog_version(readme, version)
+    devel = sys.argv[4] if len(sys.argv) > 4 and sys.argv[3] == "--devel" else None
+    new = changelog_version(readme, "Unreleased" if devel else version)
+    if devel:
+        print("""**Development build of main @ %s: not a release.** It has the changes below that are not
+released yet, and has had less testing than a release. Use it to try a fix, and include the commit
+(%s) when you report a problem. The latest release is on the Releases page.
+""" % (devel[:7], devel[:7]))
     print("""**New Super Mario Bros. U, native PC port, %s**
 
 The Wii U game rebuilt as a native program for Windows, macOS and Linux. The download has no game
@@ -35,7 +44,7 @@ files, no game code and no keys: the installer builds the game on your machine f
 
 | System | Start |
 | --- | --- |
-| Windows 10/11, x86-64, Vulkan | `NSMBU.exe` |
+| Windows 10/11, x86-64 (`windows-x86_64`) or ARM64 (`windows-arm64`), Vulkan | `NSMBU.exe` |
 | macOS 14+, Apple Silicon | `NSMBU.app` |
 | Linux, x86-64 or arm64, glibc 2.35+, Vulkan | `nsmbu-launcher` |
 

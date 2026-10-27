@@ -95,8 +95,8 @@ Done when the version branch is merged into `main`, local verify passed on `main
 
 | Job | Role |
 | --- | --- |
-| version | Sets `VERSION` from the tag |
-| macos / windows / linux-x86_64 / linux-aarch64 | Build, package, unit tests |
+| version | Sets `VERSION` from the tag; on the nightly schedule starts a development build when `main` moved since the `devel-build` tag |
+| macos / windows-x86_64 / windows-arm64 / linux-x86_64 / linux-aarch64 | Build, package, unit tests |
 | publish | Upload zips / AppImage and `gh release create` |
 
 Any failed package job skips publish.

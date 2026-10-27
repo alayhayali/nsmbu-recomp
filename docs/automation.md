@@ -66,7 +66,7 @@ The repo `nsmbu/save` stays unread by the game.
 
 | Variable | Value | Role |
 | --- | --- | --- |
-| `NSMBU_USER_DIR` | `nsmbu/` (or `user/` if that is the only userdata folder) | Settings and logs stay in the repo userdata tree |
+| `NSMBU_USER_DIR` | `.tmp/<name>/user` unless already set | Settings and controls are copied from the repo userdata tree; the shader cache starts empty |
 | `NSMBU_HIDDEN_WINDOWS` | `1` | Keeps game windows off screen |
 | `NSMBU_NO_HOST_INPUT` | `1` | Ignores keyboard, mouse, and gamepad; scripted input only |
 | `NSMBU_VK_PRESENT_MODE` | `immediate` | Uncapped present for faster boots |
@@ -133,6 +133,34 @@ tools/run/scripted-run.sh w11
 Frame 7000 is the course.
 The picture is the big tree, the bricks, and Mario on the ground.
 A world-map boot that stops before that last A is in `.agents/skills/shortcuts/SKILL.md`.
+
+### Compare two scripted runs
+
+`tools/gametest/run_scenario.sh OUT [VAR=value ...]` is the compare path.
+It boots hidden and muted on a copy of the save, with the user folder, the shader cache, and the states under `OUT`.
+It waits for the first logic step of scene `ALIGN` (default `Title`; others are `Map` and `CourseTask`), then records `STEPS` more logic steps (default 300).
+A boot that never reaches the scene is retried (`BOOT_TRIES`, default 3) and its log stays next to `OUT` as `OUT.bootfailN.log`.
+
+`OUT/status.txt` has one line per logic step: step, scene, map, course, pack, and player x, y, z.
+`-` marks a value the game does not have yet.
+The runtime writes it when `NSMBU_TEST_STATUS_TRACE` is set.
+
+`tools/gametest/compare.py RUN_A RUN_B --scene CourseTask` aligns both runs on the log line `[test] align at logic step N scene=NAME`, rebases the step numbers, and diffs the lines.
+It prints the first differing step.
+The exit status is 0 for identical runs, 1 for a difference, and 2 when a run never reached the scene.
+
+```
+ALIGN=CourseTask tools/gametest/run_scenario.sh .tmp/runs/a NSMBU_PRESS='1800-1820:8000'
+ALIGN=CourseTask tools/gametest/run_scenario.sh .tmp/runs/b NSMBU_PRESS='1800-1820:8000'
+python3 tools/gametest/compare.py .tmp/runs/a .tmp/runs/b --scene CourseTask
+```
+
+With `NSMBU_TEST_FIXED_SEED=1` (the runner default) `NSMBU_PRESS`, `NSMBU_KEYS`, `NSMBU_STICK`, `NSMBU_RSTICK`, and `NSMBU_DUMP_FRAMES` count from the align scene.
+The TV frame of that logic step counts as frame 1800.
+Frames before it stay raw TV frames, so keep boot presses below 1800.
+Dumped files are named with the rebased frame.
+`NSMBU_EXIT_AT_FRAME` stays on raw TV frames.
+The switch changes no guest state; it only rebases those frame numbers.
 
 ### Mute
 

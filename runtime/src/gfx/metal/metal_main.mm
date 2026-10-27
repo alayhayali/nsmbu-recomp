@@ -18,6 +18,7 @@
 #include "core/runtime.h"
 #include "input/input.h"
 #include "perf_metrics.h"
+#include "test/script_frame.h"
 
 namespace gfx {
 Renderer R;
@@ -498,7 +499,8 @@ void swap() {
     if (log_this_frame()) LOG("[frame] end %llu", (unsigned long long)R.frame);
     R.frame++;
     latch_res_scale();
-    if (g_dump_frames.count(R.frame)) dump_tv(R.frame);
+    const uint64_t scripted_frame = script_frame::frame(R.frame);
+    if (g_dump_frames.count(scripted_frame)) dump_tv(scripted_frame);
     service_tv_dumps();
     const char* capture_begin_frame();
     static std::string pendingCapture;

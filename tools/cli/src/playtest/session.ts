@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { AgentClient } from "../agent/client.ts";
 import { parseButtonBits } from "../agent/buttons.ts";
@@ -74,6 +74,7 @@ export class Session {
     readonly name: string;
     readonly workDir: string;
     readonly saveDir: string;
+    readonly userDir: string;
     readonly logPath: string;
     private client: AgentClient | null = null;
     private pid: number | null = null;
@@ -86,6 +87,7 @@ export class Session {
         this.name = name;
         this.workDir = join(repo, ".tmp", "playtest", name);
         this.saveDir = join(this.workDir, "save");
+        this.userDir = join(this.workDir, "user");
         this.logPath = join(this.workDir, "nsmbu.log");
     }
 
@@ -165,11 +167,17 @@ export class Session {
         if (opts.save !== "keep") {
             rmSync(this.workDir, { recursive: true, force: true });
             mkdirSync(this.saveDir, { recursive: true });
+            mkdirSync(this.userDir, { recursive: true });
             if (opts.save === "repo") {
                 cpSync(join(this.repo, "nsmbu", "save"), this.saveDir, { recursive: true });
+                for (const file of ["settings.ini", "controls.json"]) {
+                    const from = join(this.repo, "nsmbu", file);
+                    if (existsSync(from)) cpSync(from, join(this.userDir, file));
+                }
             }
         } else {
             mkdirSync(this.saveDir, { recursive: true });
+            mkdirSync(this.userDir, { recursive: true });
         }
         this.openPack = opts.open;
         this.env = opts.env ?? {};
@@ -191,6 +199,7 @@ export class Session {
         const extraEnv: Record<string, string> = {
             NSMBU_LOG_FILE: this.logPath,
             NSMBU_AGENT_SOCK: sock,
+            NSMBU_USER_DIR: this.userDir,
             NSMBU_HIDDEN_WINDOWS: "1",
             NSMBU_NO_HOST_INPUT: "1",
             NSMBU_NO_AUDIO: "1",

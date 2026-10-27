@@ -17,10 +17,15 @@ if [ ! -d "$save_src" ]; then
 fi
 run="$root/.tmp/$name"
 rm -rf "$run"
-mkdir -p "$run/save"
+mkdir -p "$run/save" "$run/user"
 cp -a "$save_src/." "$run/save/"
+for file in settings.ini controls.json; do
+    if [ -f "$user/$file" ]; then
+        cp "$user/$file" "$run/user/$file"
+    fi
+done
 cd "$run"
-export NSMBU_USER_DIR="${NSMBU_USER_DIR:-$user}"
+export NSMBU_USER_DIR="${NSMBU_USER_DIR:-$run/user}"
 export NSMBU_HIDDEN_WINDOWS=1
 export NSMBU_NO_HOST_INPUT=1
 export NSMBU_VK_PRESENT_MODE=immediate

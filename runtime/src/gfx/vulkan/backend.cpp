@@ -68,6 +68,7 @@ namespace gx2 { void checkpoint_vulkan_caches(); }
 namespace render { bool shader_warm_tick(uint64_t activity); }
 #include "hooks/interp.h"
 #include "hooks/interp_pacing.h"
+#include "test/script_frame.h"
 #include "gfx/renderer.h"
 
 namespace gfxvk {
@@ -1412,11 +1413,12 @@ static void frame_dumps(uint64_t frame) {
       }
     return f;
   }();
-  if (std::find(frames.begin(), frames.end(), frame) != frames.end()) {
-    dump_scan(R.tv, "frame_" + std::to_string(frame) + ".png");
-    dump_scan(R.drc, "frame_" + std::to_string(frame) + "_drc.png");
+  const uint64_t dumpFrame = script_frame::frame(frame);
+  if (std::find(frames.begin(), frames.end(), dumpFrame) != frames.end()) {
+    dump_scan(R.tv, "frame_" + std::to_string(dumpFrame) + ".png");
+    dump_scan(R.drc, "frame_" + std::to_string(dumpFrame) + "_drc.png");
     if (env::DUMP_PRESENT())
-      request_present_dump("frame_" + std::to_string(frame) + "_present.png");
+      request_present_dump("frame_" + std::to_string(dumpFrame) + "_present.png");
   }
 
   static const std::vector<uint64_t> loadFrames = [] {
