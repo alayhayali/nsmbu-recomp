@@ -31,7 +31,6 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include "core/env.h"
 extern "C" uint64_t g_shader_state_gen;
 using namespace Latte;
@@ -41,6 +40,19 @@ namespace {
 bool preparation_stats_enabled() {
     static const bool enabled=env::VK_STATS()!=nullptr;
     return enabled;
+}
+
+bool shader_fullscreen_quad(const uint32_t* regs, const LatteDecompilerShader* dec, float width, float height) {
+    if (!dec) return false;
+    const auto* alu = reinterpret_cast<const float*>(regs + mmSQ_ALU_CONSTANT0_0 + 0x400);
+    uint32_t ustart = 0;
+    if (!dec->list_remappedUniformEntries_register.empty())
+        ustart = dec->list_remappedUniformEntries_register.front().indexOffset / 4;
+    else if (dec->uniform.loc_uniformRegister < 0 || dec->uniform.count_uniformRegister == 0)
+        return false;
+    if (ustart + 4 > 0x400) return false;
+    uint32_t n = std::min<uint32_t>(32, 0x400 - ustart);
+    return aspect::view::fullscreen_quad(alu + ustart, n, width, height);
 }
 
 bool shader_screen_ortho(const uint32_t* regs, const LatteDecompilerShader* dec, float width, float height) {
@@ -2241,38 +2253,9 @@ void draw(const uint32_t *r, uint32_t prim, uint32_t count, uint32_t indexType,
   bool wide_target = target->ax != 1.0f || target->ay != 1.0f;
   bool screen_ortho = shader_screen_ortho(r, vs->dec, float(target->width), float(target->height));
   bool window_space = vs && vs->dec && vs->dec->uniform.loc_windowSpaceToClipSpaceTransform >= 0;
-  bool center_ortho = aspect::view::center_framebuffer_draw(wide_target, screen_ortho || window_space, aspect::cover_draw());
-  static const uint64_t aspect_ui_trace_frame = env::ASPECT_TRACE_FRAME.u64_or(0);
-  if (aspect_ui_trace_frame && aspect::game_frame() == aspect_ui_trace_frame && wide_target &&
-      target->width == 1280 && target->height == 720 && vs && vs->dec) {
-    static uint64_t aspect_ui_trace_at = 0;
-    static int aspect_ui_trace_lines = 0;
-    static std::unordered_set<uint32_t> aspect_ui_trace_vs;
-    uint64_t gf = aspect::game_frame();
-    if (gf != aspect_ui_trace_at) {
-      aspect_ui_trace_at = gf;
-      aspect_ui_trace_lines = 0;
-      aspect_ui_trace_vs.clear();
-    }
-    uint32_t vs_pc = r[mmSQ_PGM_START_VS] << 8;
-    if (aspect_ui_trace_lines < 64 && aspect_ui_trace_vs.insert(vs_pc).second) {
-      const auto* alu = reinterpret_cast<const float*>(r + mmSQ_ALU_CONSTANT0_0 + 0x400);
-      uint32_t ustart = 0;
-      if (vs->dec->list_remappedUniformEntries_register.empty()) {
-        if (vs->dec->uniform.loc_uniformRegister < 0 || vs->dec->uniform.count_uniformRegister == 0)
-          ustart = 0x400;
-      } else {
-        ustart = vs->dec->list_remappedUniformEntries_register.front().indexOffset / 4;
-      }
-      float u0[8] = {};
-      if (ustart + 8 <= 0x400) std::memcpy(u0, alu + ustart, sizeof u0);
-      std::fprintf(stderr,
-                   "[aspect-ui] vs=%08X center=%d cover=%d screen_ortho=%d window=%d u=%g,%g,%g,%g,%g,%g,%g,%g\n", vs_pc,
-                   center_ortho ? 1 : 0, aspect::cover_draw() ? 1 : 0, screen_ortho ? 1 : 0, window_space ? 1 : 0, u0[0], u0[1], u0[2], u0[3],
-                   u0[4], u0[5], u0[6], u0[7]);
-      ++aspect_ui_trace_lines;
-    }
-  }
+  bool full_quad = screen_ortho && shader_fullscreen_quad(r, vs->dec, float(target->width), float(target->height));
+  bool center_ortho = aspect::view::center_framebuffer_draw(wide_target, screen_ortho || window_space,
+                                                             aspect::cover_draw() || full_quad);
   auto placed = aspect::view::place_ortho(xo, xs, yo, ys, float(width), float(height), float(target->width),
                                            float(target->height), sx, sy, target->ax, target->ay, center_ortho);
   VkViewport vp{placed.x, placed.y, placed.w, placed.h,

@@ -71,13 +71,37 @@ inline Persp expand_perspective(float fovy, float aspect, float requested) {
     return p;
 }
 
+inline bool fullscreen_quad(const float* values, size_t count, float width, float height) {
+    if (!values || count < 4 || !(width >= 32.0f && height >= 32.0f)) return false;
+    bool wide = false;
+    bool inset = false;
+    auto rect = [](float w, float h, float x, float y) {
+        if (!(w > 32.0f && h > 16.0f && w < 4000.0f && h < 2000.0f)) return false;
+        if (std::fabs(x) > 2500.0f || std::fabs(y) > 2500.0f) return false;
+        if (w <= 255.0f && h <= 255.0f && x >= 0.0f && y >= 0.0f && x <= 255.0f && y <= 255.0f) return false;
+        return true;
+    };
+    for (size_t i = 0; i + 3 < count; i += 4) {
+        if (!rect(values[i], values[i + 1], values[i + 2], values[i + 3])) continue;
+        if (values[i] >= width * 0.85f && values[i + 1] >= 64.0f) wide = true;
+        else inset = true;
+    }
+    if (count >= 6 && std::fabs(values[0] - width) < 8.0f && std::fabs(values[1]) < 1.0f && std::fabs(values[4]) < 1.0f &&
+        std::fabs(values[5] - height) < 8.0f)
+        wide = true;
+    return wide && !inset;
+}
+
 inline bool screen_ortho_scale(const float* values, size_t count, float width, float height) {
     if (!values || !(width >= 32.0f && height >= 32.0f) || count < 8) return false;
     float sx = 2.0f / width, sy = 2.0f / height;
-    float tx = 0.02f * sx, ty = 0.02f * sy;
+    float tx = 0.02f * sx;
     for (size_t i = 0; i + 6 < count; ++i) {
-        if (std::fabs(values[i] - sx) > tx || std::fabs(values[i + 1]) > tx) continue;
-        if (std::fabs(values[i + 4]) <= tx && std::fabs(values[i + 5] - sy) <= ty) return true;
+        if (std::fabs(values[i + 1]) > tx || std::fabs(values[i + 4]) > tx) continue;
+        float zx = values[i] / sx;
+        float zy = std::fabs(values[i + 5]) / sy;
+        if (zx < 0.2f || zx > 5.0f) continue;
+        if (std::fabs(zx - zy) <= 0.02f * zx) return true;
     }
     return false;
 }

@@ -1394,6 +1394,19 @@ void report_skips() {
     g_stat_full_checks = g_stat_uploads = g_stat_invalidates = g_stat_invalidated_surfaces = g_stat_hashed_bytes = 0;
 }
 
+static bool shader_fullscreen_quad(const uint32_t* regs, const LatteDecompilerShader* dec, float width, float height) {
+    if (!dec) return false;
+    const auto* alu = reinterpret_cast<const float*>(regs + mmSQ_ALU_CONSTANT0_0 + 0x400);
+    uint32_t ustart = 0;
+    if (!dec->list_remappedUniformEntries_register.empty())
+        ustart = dec->list_remappedUniformEntries_register.front().indexOffset / 4;
+    else if (dec->uniform.loc_uniformRegister < 0 || dec->uniform.count_uniformRegister == 0)
+        return false;
+    if (ustart + 4 > 0x400) return false;
+    uint32_t n = ustart + 32 <= 0x400 ? 32 : 0x400 - ustart;
+    return aspect::view::fullscreen_quad(alu + ustart, n, width, height);
+}
+
 static bool shader_screen_ortho(const uint32_t* regs, const LatteDecompilerShader* dec, float width, float height) {
     if (!dec) return false;
     const auto* alu = reinterpret_cast<const float*>(regs + mmSQ_ALU_CONSTANT0_0 + 0x400);
@@ -1568,7 +1581,9 @@ void draw(const uint32_t* regs, uint32_t prim, uint32_t count, uint32_t indexTyp
     bool wide_target = target && (target->ax != 1.0f || target->ay != 1.0f);
     bool screen_ortho = target && shader_screen_ortho(regs, vs->dec, float(target->width), float(target->height));
     bool window_space = vs && vs->dec && vs->dec->uniform.loc_windowSpaceToClipSpaceTransform >= 0;
-    bool center_ortho = aspect::view::center_framebuffer_draw(wide_target, screen_ortho || window_space, aspect::cover_draw());
+    bool full_quad = screen_ortho && target && shader_fullscreen_quad(regs, vs->dec, float(target->width), float(target->height));
+    bool center_ortho = aspect::view::center_framebuffer_draw(wide_target, screen_ortho || window_space,
+                                                               aspect::cover_draw() || full_quad);
     static const uint64_t aspect_ui_trace_frame = env::ASPECT_TRACE_FRAME.u64_or(0);
     if (aspect_ui_trace_frame && aspect::game_frame() == aspect_ui_trace_frame && wide_target && target &&
         target->width == 1280 && target->height == 720 && vs && vs->dec) {

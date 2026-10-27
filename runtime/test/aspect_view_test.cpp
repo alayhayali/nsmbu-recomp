@@ -65,6 +65,26 @@ int main() {
     check(screen_ortho_scale(matrix, 8, 1280, 720));
     matrix[0] = 2.0f / (1280.0f * (wide / kBase));
     check(!screen_ortho_scale(matrix, 8, 1280, 720));
+    float zoom = 1.07f;
+    matrix[0] = 2.0f / 1280.0f * zoom;
+    matrix[5] = -2.0f / 720.0f * zoom;
+    check(screen_ortho_scale(matrix, 8, 1280, 720));
+    matrix[5] = 2.0f / 720.0f;
+    check(!screen_ortho_scale(matrix, 8, 1280, 720));
+    matrix[0] = 1.358f;
+    matrix[5] = 2.414f;
+    check(!screen_ortho_scale(matrix, 8, 1280, 720));
+
+    float background[] = {1316, 740, -658, 370, 255, 255, 255, 40};
+    check(fullscreen_quad(background, 8, 1280, 720));
+    float band[] = {1280, 120, -640, 120, 255, 255, 255, 0};
+    check(fullscreen_quad(band, 8, 1280, 720));
+    float plate[] = {1280, 0, 0, 0, 0, 720, 0, 0, 0, 0, 1, 0};
+    check(fullscreen_quad(plate, 12, 1280, 720));
+    float sprite[] = {1280, 720, -640, 360, 160, 121, -80, 60.5f, 255, 255, 255, 255};
+    check(!fullscreen_quad(sprite, 12, 1280, 720));
+    float card[] = {800, 338, -400, 169, 255, 255, 255, 255};
+    check(!fullscreen_quad(card, 8, 1280, 720));
 
     float rows[16] = {};
     rows[0] = 2.0f / 1280.0f;
@@ -73,6 +93,8 @@ int main() {
     uint32_t span_end[4] = {4, 8, 12, 16};
     check(screen_ortho_ranges(rows, span_begin, span_end, 4, 1280, 720));
     check(!screen_ortho_ranges(rows, span_begin, span_end, 1, 1280, 720));
+    rows[5] = -2.0f / 720.0f;
+    check(screen_ortho_ranges(rows, span_begin, span_end, 4, 1280, 720));
 
     float ax = wide / kBase;
     float extent = 1280.0f * ax;
