@@ -11,6 +11,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - A later release tag reuses the Linux compiler cache, so that build compiles less.
 
+### Fixed
+
+- Ultrawide keeps Mario at the same horizontal place on screen as 16:9.
+
 ## [0.7.2] - 2026-10-27
 
 ### Fixed

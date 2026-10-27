@@ -40,5 +40,16 @@ int main() {
     check(!aspect::scroll::should_widen(base_w, base_h, 1.0f));
     check(!aspect::scroll::should_widen(200.0f, 448.0f, kx));
 
+    const float frac = 0.42f;
+    const float span_l = -400.0f;
+    const float span_r = 400.0f;
+    const float player = span_l + frac * (span_r - span_l);
+    Edges kept = widen(span_l, span_r, player, kx);
+    float kept_w = kept.right - kept.left;
+    check(kept_w > 0.0f);
+    check(same((player - kept.left) / kept_w, frac));
+    float old_mid = (span_l + span_r) * 0.5f;
+    check(same((kept.left + kept.right) * 0.5f, player + (old_mid - player) * kx));
+
     return 0;
 }
