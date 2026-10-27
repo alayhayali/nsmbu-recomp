@@ -7,14 +7,6 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
-### Changed
-
-- Each ctest runs with its own `NSMBU_USER_DIR` under `test-users/`, so tests no longer write the `nsmbu/` folder.
-  A new `user_folder_isolation` test checks that a saved `controls.json` lands there and not in the home folder.
-- Each `nsmbu test` case runs with its own user folder (`.tmp/playtest/<name>/user`) for settings, controls, and the shader cache.
-  Cases that use the repo save also get a copy of `settings.ini` and `controls.json`.
-- `tools/run/scripted-run.sh` now uses its own user folder under the run folder (`.tmp/<name>/user`) unless `NSMBU_USER_DIR` is set.
-
 ### Added
 
 - `tools/gametest/run_scenario.sh` and `compare.py` compare two scripted runs.
@@ -32,6 +24,21 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - The Windows executables declare `longPathAware`.
 - The Linux AppImage pins the type2 runtime by SHA-256 (`appimage.py` `RUNTIME`, passed to appimagetool with `--runtime-file`) and ships its license texts, which `guard.py` checks.
   `appimage.py --extract-runtime` recovers the runtime from a built AppImage, and the release workflow checks that the AppImage reports the pinned runtime commit.
+- `nsmbu installer --no-open` packages the installer and returns without opening setup.
+
+### Changed
+
+- Each ctest runs with its own `NSMBU_USER_DIR` under `test-users/`, so tests no longer write the `nsmbu/` folder.
+  A new `user_folder_isolation` test checks that a saved `controls.json` lands there and not in the home folder.
+- Each `nsmbu test` case runs with its own user folder (`.tmp/playtest/<name>/user`) for settings, controls, and the shader cache.
+  Cases that use the repo save also get a copy of `settings.ini` and `controls.json`.
+- `tools/run/scripted-run.sh` now uses its own user folder under the run folder (`.tmp/<name>/user`) unless `NSMBU_USER_DIR` is set.
+- Recompiling an unchanged game no longer rewrites every generated C file, so a normal rebuild skips guest code that did not change.
+- Hooked game functions and instruction-level hook sites keep plain register form in the recompiled C (the runtime hook can read and write the Cpu mid-function).
+
+### Fixed
+
+- Install and recomp tools find generated code and hook lists when the install path contains square brackets.
 
 ## [0.7.0] - 2026-10-26
 

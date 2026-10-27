@@ -132,6 +132,7 @@ jobs:
           ctest --test-dir build/rel --output-on-failure
           python3 tools/installer/test_setup.py
           python3 tools/recomp/test_builds.py
+          python3 tools/recomp/test_output.py
 
       - name: Package
         run: |
@@ -261,6 +262,7 @@ jobs:
           ctest --test-dir build/rel --output-on-failure
           python3 tools/installer/test_setup.py
           python3 tools/recomp/test_builds.py
+          python3 tools/recomp/test_output.py
 
       - name: Package
         run: |

@@ -1300,7 +1300,7 @@ def recompile(game_dir, gen_dir):
     if rc != 0:
         tail = "\n".join(out_lines[-25:])
         raise SetupError("translating the game code failed (exit code %d):\n%s" % (rc, tail))
-    n = len(glob.glob(os.path.join(gen_dir, "code_*.c")))
+    n = len(glob.glob(os.path.join(glob.escape(gen_dir), "code_*.c")))
     if n == 0:
         raise SetupError("the recompiler wrote no code")
     pr.done("%d source files" % n)
@@ -1341,7 +1341,7 @@ def fwd(p):
 
 def compile_gamecode(tc, manifest, gen_dir, obj_dir, jobs, cancel=None, progress=None):
     os.makedirs(obj_dir, exist_ok=True)
-    srcs = sorted(glob.glob(os.path.join(gen_dir, "code_*.c")))
+    srcs = sorted(glob.glob(os.path.join(glob.escape(gen_dir), "code_*.c")))
     srcs += [os.path.join(gen_dir, f) for f in ("table.c", "imports.c")]
     srcs.sort(key=lambda s: -os.path.getsize(s))
     m = {"sdk": fwd(os.path.join(PKG, "sdk")), "gen": fwd(gen_dir)}

@@ -53,13 +53,17 @@ The tag is the tip of `main`.
 
    That boots the course-open and opening-cinematic cases from `docs/automation.md`.
 
-   Then build a release-shaped installer package and open setup:
+   Then build a release-shaped installer package and stop when it is ready:
 
    ```bash
-   nsmbu installer
+   nsmbu installer --no-open
    ```
 
-   That builds the Linux release package at `build/installer` (the folder the zip would contain) and opens `nsmbu-launcher --setup`.
+   That builds the Linux release package at `build/installer` (the folder the zip would contain).
+   The command returns after the package is ready.
+
+   Opening the setup window is a separate human smoke step, only when someone is at the machine.
+   Run `nsmbu-launcher --setup`, or `nsmbu installer` without `--no-open`.
    Smoke the setup window: welcome or home actions, Keys paste fields when a disc image is in play, and that controls fit without clipping.
    Quit the window when done.
    Stop the release if any command fails or the setup smoke looks wrong.

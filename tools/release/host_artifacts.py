@@ -400,6 +400,7 @@ def main():
 
     ap = argparse.ArgumentParser(description="Build the Linux installer package at build/installer.")
     ap.add_argument("--version", help="release version string (default: v* tag on HEAD or dev-<git sha>)")
+    ap.add_argument("--no-open", action="store_true", help="stop after the package is ready")
     a = ap.parse_args()
 
     version = a.version if a.version else default_version()
@@ -445,6 +446,9 @@ def main():
     installer_abs = os.path.abspath(INSTALLER_DIR)
     log("package ready: " + installer_abs)
     print(installer_abs)
+
+    if a.no_open:
+        return
 
     launcher = os.path.join(INSTALLER_DIR, "nsmbu-launcher")
     log("opening setup")
