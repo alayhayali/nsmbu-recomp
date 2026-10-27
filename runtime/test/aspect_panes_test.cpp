@@ -38,6 +38,17 @@ int main() {
     }
     check(parked_hud(700,0) && parked_hud(0,400) && !parked_hud(640,360));
     check(!projected_root_name("W_Cursor_00") && !projected_root_name("N_FloorCenter_00") && projected_root_name("N_EnemyHP_00"));
+    check(edge_anchor("N_L_00") && edge_anchor("N_R_00") && edge_anchor("P_ArrowL_00") && edge_anchor("N_Coin_00"));
+    check(!edge_anchor("N_Arrow_00") && !edge_anchor("W_Frame_00") && !edge_anchor("T_100_00") && !edge_anchor("N_Btn_00"));
+    float wide = (64.f / 27.f) / (16.f / 9.f);
+    auto left = transform(Role::Hud, -600, 0, 1, 1, wide, 1);
+    check(left.x == -600 - 640 * (wide - 1) && left.y == 0);
+    auto stay = transform(Role::Content, -600, 0, 1, 1, wide, 1);
+    check(stay.x == -600 && stay.y == 0);
+    auto arrow = transform(Role::Hud, -550, 0, 1, 1, wide, 1);
+    check(arrow.x == -550 - 640 * (wide - 1));
+    auto child = transform(Role::Content, 0, 299, 1, 1, wide, 1);
+    check(child.x == 0 && child.y == 299);
     check(!fill("P_BG_00",false,0,0,1280,720));
     check(!fill("P_BG_00",true,1280,0,1280,720));
     check(!fill("P_BG_00",true,0,0,300,200));

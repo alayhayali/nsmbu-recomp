@@ -110,6 +110,15 @@ int main() {
     check(cover_max(720.0f, 720) == 720);
     check(cover_min(10.0f, 720) == 10);
 
+    float guest[8] = {2.0f / 1280.0f, 0, 0, 0, 0, 2.0f / 720.0f, -1, 1};
+    scale_guest_ortho(guest, 8, 1280, 720, ax, 1);
+    check(same(guest[0], 2.0f / (1280.0f * ax)));
+    check(same(guest[5], 2.0f / 720.0f));
+    float divided[8] = {2.0f / (1280.0f * ax), 0, 0, 0, 0, -2.0f / 720.0f, 0, 0};
+    scale_guest_ortho(divided, 8, 1280, 720, ax, 1);
+    check(same(divided[0], 2.0f / (1280.0f * ax)));
+    check(same(divided[5], -2.0f / 720.0f));
+
     check(center_framebuffer_draw(true, true, false));
     check(!center_framebuffer_draw(true, true, true));
     check(!center_framebuffer_draw(false, true, false));

@@ -985,6 +985,14 @@ static void bind_stage(id<MTLRenderCommandEncoder> enc, const uint32_t* regs, Sh
             at(dec->uniform.loc_fragCoordScale)[0] = 1.0f / g_target_kx;
             at(dec->uniform.loc_fragCoordScale)[1] = 1.0f / g_target_ky;
         }
+        if (aspect::edge_hud()) {
+            float hkx = 1.0f, hky = 1.0f;
+            if (target_aspect_factors(regs[mmCB_COLOR0_TILE] & 0xFFFF, regs[mmCB_COLOR0_FRAG], hkx, hky)) {
+                float vw = std::fabs(2.0f * gx2::bitsf(regs[REGADDR::PA_CL_VPORT_XSCALE]));
+                float vh = std::fabs(2.0f * gx2::bitsf(regs[REGADDR::PA_CL_VPORT_YSCALE]));
+                aspect::view::scale_guest_ortho(f, buf.size() / sizeof(float), vw, vh, hkx, hky);
+            }
+        }
         for (auto& e : dec->uniform.list_ufTexRescale) {
 
             bool ok = e.texUnit < 18;
@@ -1583,7 +1591,7 @@ void draw(const uint32_t* regs, uint32_t prim, uint32_t count, uint32_t indexTyp
     bool window_space = vs && vs->dec && vs->dec->uniform.loc_windowSpaceToClipSpaceTransform >= 0;
     bool full_quad = screen_ortho && target && shader_fullscreen_quad(regs, vs->dec, float(target->width), float(target->height));
     bool center_ortho = aspect::view::center_framebuffer_draw(wide_target, screen_ortho || window_space,
-                                                               aspect::cover_draw() || full_quad);
+                                                               aspect::cover_draw() || full_quad || aspect::edge_hud());
     static const uint64_t aspect_ui_trace_frame = env::ASPECT_TRACE_FRAME.u64_or(0);
     if (aspect_ui_trace_frame && aspect::game_frame() == aspect_ui_trace_frame && wide_target && target &&
         target->width == 1280 && target->height == 720 && vs && vs->dec) {

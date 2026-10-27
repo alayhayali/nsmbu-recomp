@@ -1740,7 +1740,10 @@ StageResources bind_stage(const uint32_t *r, vk::Shader *sh,
   auto& supportUniforms = supportScratch[sh->vertex ? 0 : 1];
   if (m.uniformVarsBufferBindingPoint >= 0) {
     const size_t capacity=preparation_stats_enabled()?supportUniforms.capacity():0;
-    vk::pack_uniforms_into(r, *sh, supportUniforms, sx, sy);
+    float ortho_kx = 1.0f, ortho_ky = 1.0f;
+    if (aspect::edge_hud())
+      target_aspect_factors(r[mmCB_COLOR0_TILE] & 0xFFFF, r[mmCB_COLOR0_FRAG], ortho_kx, ortho_ky);
+    vk::pack_uniforms_into(r, *sh, supportUniforms, sx, sy, ortho_kx, ortho_ky);
     if(preparation_stats_enabled()) {
       ++R.cpuPreparation.packCalls;
       R.cpuPreparation.packBytes+=supportUniforms.size();
@@ -2255,7 +2258,7 @@ void draw(const uint32_t *r, uint32_t prim, uint32_t count, uint32_t indexType,
   bool window_space = vs && vs->dec && vs->dec->uniform.loc_windowSpaceToClipSpaceTransform >= 0;
   bool full_quad = screen_ortho && shader_fullscreen_quad(r, vs->dec, float(target->width), float(target->height));
   bool center_ortho = aspect::view::center_framebuffer_draw(wide_target, screen_ortho || window_space,
-                                                             aspect::cover_draw() || full_quad);
+                                                             aspect::cover_draw() || full_quad || aspect::edge_hud());
   auto placed = aspect::view::place_ortho(xo, xs, yo, ys, float(width), float(height), float(target->width),
                                            float(target->height), sx, sy, target->ax, target->ay, center_ortho);
   VkViewport vp{placed.x, placed.y, placed.w, placed.h,

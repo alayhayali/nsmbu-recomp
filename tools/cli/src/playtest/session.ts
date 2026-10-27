@@ -245,6 +245,11 @@ export class Session {
         return (r.output ?? "").trim();
     }
 
+    async screenshot(path: string): Promise<void> {
+        const r = await withTimeout(this.live().request({ cmd: "screenshot", path }), 20_000, "screenshot");
+        if (!r.ok) throw new Error(r.error ?? "screenshot failed");
+    }
+
     async press(button: string, frames = 20): Promise<void> {
         const r = await withTimeout(
             this.live().request({ cmd: "press", bits: parseButtonBits(button), frames }),

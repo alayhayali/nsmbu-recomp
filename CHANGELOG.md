@@ -27,6 +27,9 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- Widescreen HUD sits on the screen edges.
+  World-map Menu, Map View, and Items, and the course HUD, keep the 16:9 margin.
+  Centered menus stay in the 16:9 frame.
 - 21:9 fades cover the wide picture.
   Fader draws use the full target, so a fade is black in the side strips.
 - 21:9 file-select plates fill the wide picture.
@@ -73,7 +76,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ### Changed
 
 - Wider and taller aspect ratios show more of the scene instead of stretching the picture.
-  The HUD stays in its original frame.
+  Edge HUD keeps the same margin from the screen sides that it has at 16:9.
+  Centered menus stay in the 16:9 frame.
 - Settings tabs: Controls is first; Saves sits between Audio and Mods; Language drops the About blurb; Debug is capitalized.
 - Settings → Language lists only the text languages on the installed disc.
   A USA dump shows English, French, and Spanish; a European dump adds the other European languages.

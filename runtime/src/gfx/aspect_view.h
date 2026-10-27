@@ -146,6 +146,20 @@ inline bool center_framebuffer_draw(bool wide_target, bool screen_ortho, bool co
     return wide_target && screen_ortho && !cover;
 }
 
+inline void scale_guest_ortho(float* values, size_t count, float guest_w, float guest_h, float kx, float ky) {
+    if (!values || count == 0 || !(guest_w >= 32.0f && guest_h >= 32.0f)) return;
+    if (kx == 1.0f && ky == 1.0f) return;
+    float sx = 2.0f / guest_w, sy = 2.0f / guest_h;
+    float ax = 2.0f / (guest_w * kx), ay = 2.0f / (guest_h * ky);
+    float tx = 0.02f * sx, ty = 0.02f * sy;
+    for (size_t i = 0; i < count; ++i) {
+        float v = values[i];
+        float a = std::fabs(v);
+        if (std::fabs(a - sx) <= tx && std::fabs(a - ax) > tx) values[i] = v / kx;
+        else if (std::fabs(a - sy) <= ty && std::fabs(a - ay) > ty) values[i] = v / ky;
+    }
+}
+
 inline OrthoPlace place_ortho(float xo, float xs, float yo, float ys, float extent_w, float extent_h, float logical_w,
                                float logical_h, float sx, float sy, float ax, float ay, bool center) {
     float scale_x = center && ax > 0.0f ? sx / ax : sx;
