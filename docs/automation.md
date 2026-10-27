@@ -132,7 +132,7 @@ tools/run/scripted-run.sh w11
 
 Frame 7000 is the course.
 The picture is the big tree, the bricks, and Mario on the ground.
-A world-map boot that stops before that last A is in `.agents/skills/shortcuts/SKILL.md`.
+A world-map boot that stops before that last A is in [shortcuts.md](shortcuts.md).
 
 ### Mute
 

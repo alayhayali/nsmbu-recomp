@@ -1,6 +1,6 @@
 ---
 name: nsmbu
-description: "Playtests (`nsmbu test`), case helpers, status, scripted boots, NSMBU_* env vars, and swapping the active game dump (usa/eu). Use when adding or running a playtest, reproducing a game bug as a case, switching region or version under game/, reading nsmbu status, measuring a Release replay, running nsmbu scripted, or adding, renaming, or reading an NSMBU_* variable."
+description: "Playtests (`nsmbu test`), case helpers, status, scripted boots, warm `nsmbu build`, NSMBU_* env vars, and swapping the active game dump (usa/eu). Use when adding or running a playtest, reproducing a game bug as a case, switching region or version under game/, reading nsmbu status, measuring a Release replay, running nsmbu scripted, speeding a hidden boot or a warm build, or adding, renaming, or reading an NSMBU_* variable."
 ---
 
 # nsmbu
@@ -11,7 +11,7 @@ Run `nsmbu --help` for the command list.
 ## Docs
 
 Read `docs/automation.md` for playtests, `nsmbu scripted`, and replay inputs.
-World-map boots and other reused `NSMBU_PRESS` timelines are in the `shortcuts` skill.
+World-map boots and other reused `NSMBU_PRESS` timelines are in `docs/shortcuts.md`.
 Add a new shortcut there when a command is worth running again.
 Read `docs/cli.md` for install, build/launch, and the short live control commands.
 Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable.
@@ -35,6 +35,31 @@ Add `--recomp` to refresh `build/gen` from that dump's RPX.
 `--recomp` is slow; reuse `build/gen` unless `tools/recomp/recomp.py` changed, you switch game version (e.g. USA ↔ Europe), or `hooks.txt` / `hooks_*.txt` changed.
 Runtime-only edits need `nsmbu build` only.
 Then `nsmbu build` (and playtests / `nsmbu open`) use that dump.
+
+## Warm build
+
+`tools/build/build.py` runs `cmake -S` before every `cmake --build`.
+The SDL configure summary is that second configure, not the compile.
+A warm build, same compilers and flags, should run `cmake --build` only.
+Print the SDL summary when the cache is created.
+
+Every build also regenerates `build/debug/generated/nsmbu_guest_stubs.c` and relinks.
+The line `0 hooks` in that step is normal.
+Hooks live in `build/gen`.
+Regenerate the stubs only when `hooks.txt`, `hooks_*.txt`, or `tools/recomp/recomp.py` changed.
+A runtime-only edit compiles the changed `.cpp` and links.
+
+## Hidden boot
+
+Launch `build/debug/nsmbu --game game/usa-1.3.0`.
+`--game game` has no `red-pro2.rpx` and exits at once.
+`nsmbu scripted` and `tools/run/scripted-run.sh` pass that `game/` path.
+Copy `nsmbu/save` into `.tmp/<name>/save` and set `NSMBU_USER_DIR` to `nsmbu/`.
+`NSMBU_LOG_FILE` does not capture `fprintf` from the render thread.
+That text stays on the terminal.
+Title and file-select press lists are in `docs/shortcuts.md`.
+Enter `FileSelect` directly when the check is the menu.
+Do not play the title for 1000 frames to reach it.
 
 Issue playtests that use `Scene` open / apply-save need a `*-1.3.0` (or combo) dump.
 Use `*-base` only to check boot and title-version messaging, mods and those Scene paths are unsupported there.

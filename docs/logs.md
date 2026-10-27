@@ -60,6 +60,12 @@ If the data folder is not writable, it falls back to:
 
 ## Source and developer overrides
 
+In a source checkout the current run log is `nsmbu/logs/nsmbu.log`.
+The previous run is `nsmbu/logs/nsmbu-previous.log`.
+Crash dumps in that folder are `crash-YYYYMMDD-HHMMSS.log`.
+Issue attachments download into `.tmp/issues/`.
+Guest `lr` / `ctr` / call-chain mapping is in the `guest` skill.
+
 `NSMBU_USER_DIR` (set by the `nsmbu` CLI to `<repo>/nsmbu`) moves settings and the logs folder with it.
 `portable.txt` next to the game binary wins over `NSMBU_USER_DIR` and keeps logs under that release's `nsmbu/logs`.
 Profile and replay tools may set `NSMBU_LOG_FILE` to a path under `.tmp/` (see [performance.md](performance.md) and [automation.md](automation.md)).

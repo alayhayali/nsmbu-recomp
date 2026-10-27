@@ -1,12 +1,8 @@
----
-name: build
-description: "Build, compile, nsmbu build, nsmbu launch, nsmbu run --release, ctest, host tests, stubgen, missing RPX, non-1.3.0 RPX wrong addresses, example mods symlinks, NSMBU_NO_EXAMPLE_MODS, nsmbu userdata, portable layout, pre-push, CI test_setup and test_builds. Use when building, launching, testing, or debugging link/recomp/stub or local mods/userdata paths."
----
-
 # Build, launch, test, userdata
 
 Install the CLI once: `cd tools/cli && npm link` (Node 24+).
-See `.agents/skills/nsmbu/SKILL.md` and `docs/cli.md`.
+Playtests and dump switches are in the `nsmbu` skill.
+Command list and install notes are in [cli.md](cli.md).
 
 ## Compile
 
@@ -21,6 +17,12 @@ When that RPX is absent, the build fills `build/gen` with `tools/recomp/stubgen.
 An RPX from a disc that lacks the 1.3.0 update has different addresses.
 
 Those addresses miss `references/headers` and `tools/recomp/headers_names.txt`.
+
+A warm `nsmbu build` still runs `cmake -S` and regenerates guest stubs.
+Configure only when the cache or compiler flags are missing.
+Regenerate guest stubs only when `hooks.txt`, `hooks_*.txt`, or the recomp inputs changed.
+The `0 hooks` line from stub generation is normal.
+Hooks live in `build/gen`.
 
 ## Launch
 
@@ -51,7 +53,7 @@ python3 tools/recomp/test_builds.py
 
 `.git-hooks/pre-push` runs a full local `ctest` before a push.
 
-Profiling follows `.agents/skills/perf/SKILL.md`.
+Profiling follows [perf.md](perf.md).
 
 ## Local userdata
 

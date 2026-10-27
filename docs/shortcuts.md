@@ -1,14 +1,9 @@
----
-name: shortcuts
-description: "Reusable NSMBU boot commands and NSMBU_* timelines. Use when entering the world map, scripting NSMBU_PRESS, launching the binary for a profile, or saving a command that should be reused."
----
-
-# Shortcuts
+# Boot shortcuts
 
 Append a shortcut here when a boot, pad timeline, or profile command works a second time.
 Each entry is the command, the log line that shows it worked, and what a later press would do.
-Full variable lists stay in `docs/env.md` and `docs/automation.md`.
-Course replay benchmarks stay in the `perf` skill.
+Full variable lists stay in [env.md](env.md) and [automation.md](automation.md).
+Course replay benchmarks stay in [perf.md](perf.md).
 
 ## World map
 
@@ -23,7 +18,7 @@ Without either one, settings and the shader cache come from `~/.config/nsmbu`.
 Pulses are 20 TV frames.
 A button that is already down when a dialog opens does not press again.
 On a 165 Hz debug boot from `nsmbu/save` (file 0 on the Acorn Plains map), 200 frames between pulses is enough.
-The slower 800-frame list in `docs/automation.md` is for walking into a course.
+The slower 800-frame list in [automation.md](automation.md) is for walking into a course.
 
 ```bash
 NSMBU_USER_DIR="$PWD/nsmbu" \
@@ -39,7 +34,7 @@ File select appears around frame 600.
 Course select is up before frame 3000.
 A settled debug map is about 165 swaps/s, acquire 1.00 per frame, about 60 hold frames out of 120, and about 82 logic steps/s.
 Another A after that scene enters the course.
-The stick and final A in the `docs/automation.md` example do that on purpose.
+The stick and final A in the [automation.md](automation.md) example do that on purpose.
 
 `NSMBU_STATE_LOAD_AT` at TV frame 700 does not reach this save.
 The guest thread in the state is not alive yet, and a portable load of `slot1.nsstate` fails its checksum against the current save.
@@ -58,12 +53,40 @@ Combine bits with a sum.
 Positive x is right.
 Positive y is up.
 
+## Title and file select
+
+Same save and hidden-window setup as the world-map boot.
+`--game` is `game/usa-1.3.0`.
+`NSMBU_ASPECT=21:9` makes the TV target 1707×720.
+`NSMBU_DUMP_FRAMES` writes `frame_<n>.png` in the working directory.
+`NSMBU_VK_PRESENT_MODE=immediate`, `NSMBU_HIDDEN_WINDOWS=1`, `NSMBU_NO_HOST_INPUT=1`, `NSMBU_NO_AUDIO=1`, and `NSMBU_RES_SCALE=1` keep the boot short.
+
+The controller screen is up by frame 200.
+The title picture is up by frame 480.
+“Press 2!” is on screen from about frame 760 through 920.
+One A at frames 860–880 (`8000`) opens the file select by frame 1000.
+
+```bash
+NSMBU_USER_DIR="$PWD/nsmbu" \
+NSMBU_HIDDEN_WINDOWS=1 NSMBU_NO_HOST_INPUT=1 NSMBU_VK_PRESENT_MODE=immediate \
+NSMBU_NO_AUDIO=1 NSMBU_RES_SCALE=1 NSMBU_ASPECT=21:9 \
+NSMBU_PRESS='860-880:8000' \
+NSMBU_DUMP_FRAMES=1000 NSMBU_EXIT_AT_FRAME=1040 \
+./build/debug/nsmbu --game "$PWD/game/usa-1.3.0" --save "$PWD/.tmp/file-select/save"
+```
+
+Copy `nsmbu/save` into `.tmp/file-select/save` first.
+Done when `frame_1000.png` is the file-select menu.
+A menu check should enter `FileSelect` directly instead of waiting out this title.
+
 ## Other boots
 
 - `nsmbu scripted <name>` copies `nsmbu/save` into `.tmp/<name>/save` and writes `frame_<n>.png` there.
   Set `NSMBU_EXIT_AT_FRAME` and, when a picture is required, `NSMBU_DUMP_FRAMES`.
+  It passes `--game game/`, which has no rpx, so the process exits before the first frame.
+  Use the direct `build/debug/nsmbu --game game/usa-1.3.0` command above.
 - `nsmbu replay --release 1-1` is the course benchmark.
-  The `perf` skill owns that baseline.
+  The baseline is in [perf.md](perf.md).
 - `nsmbu status` is the live scene line.
   `scene=CourseSelect` with `map=1` is the world map.
 - `NSMBU_LOG_FILE=0` skips the log file.

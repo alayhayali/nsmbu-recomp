@@ -146,7 +146,7 @@ No change to the replay file format or `NSMBU_PRESS` start-only tables except co
 
 ## Docs and agent skills
 
-`CONTRIBUTING.md`, `docs/nsmbu/port.md`, `docs/automation.md`, `AGENTS.md`, and `.agents/skills/build/SKILL.md` use `nsmbu …` for CLI invocations.
+`CONTRIBUTING.md`, `docs/nsmbu/port.md`, `docs/automation.md`, `AGENTS.md`, and [build.md](build.md) use `nsmbu …` for CLI invocations.
 `.agents/skills/nsmbu/SKILL.md` steers agents to playtest cases first, with live look commands for short checks.
 Complex input stays on `record` / `replay`.
 
