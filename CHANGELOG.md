@@ -7,10 +7,12 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
-### Added
+## [0.7.2] - 2026-10-27
 
-- Decompiled `SndAudioMgr::startSound` / `startSystemSe`, `CourseSelectLayerMgr::createLayers`, and `ReflectionRenderObjLayer::render_` in `vendor/decomp/src`.
-  The frame-loop, map-shadow, and soft-restart notes answer their open claims: the draw-context lock and unlock, the task-manager `afterCalc`, the eleven-node `DualScreenMethodTreeMgr` layout, the TV `"DepthShadow"` creation sites, and the `0x1017C814` `SndAudioMgr` method table.
+### Fixed
+
+- On 21:9, enemies, blocks, bushes, and other course scenery no longer pop in at the old 16:9 edge.
+  The title parade stays centered.
 
 ## [0.7.1] - 2026-10-27
 
@@ -265,7 +267,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - The TV and GamePad present together on one vsync.
 
-[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.3...v0.7.0
 [0.6.3]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.2...v0.6.3

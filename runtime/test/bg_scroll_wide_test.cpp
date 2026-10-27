@@ -33,5 +33,12 @@ int main() {
     Edges narrow = widen(-400.0f, 400.0f, 0.0f, 0.75f);
     check(narrow.left == -400.0f && narrow.right == 400.0f && narrow.width == 800.0f);
 
+    const float base_w = 796.444458f;
+    const float base_h = 448.0f;
+    check(aspect::scroll::should_widen(base_w, base_h, kx));
+    check(!aspect::scroll::should_widen(base_w * kx, base_h, kx));
+    check(!aspect::scroll::should_widen(base_w, base_h, 1.0f));
+    check(!aspect::scroll::should_widen(200.0f, 448.0f, kx));
+
     return 0;
 }
