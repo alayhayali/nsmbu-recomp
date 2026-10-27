@@ -52,6 +52,23 @@ Repro and regression work is a case, not a live control chat.
 
 1. Reuse or extend helpers in `tools/cli/src/playtest/helpers.ts` (`reachMap`, `loadPack`, `leaveCourse`, `enterCourse`, `quickSaveHere`, and the other exports).
 2. Map round-trips use `leaveCourse` / `enterCourse`; do not build a case on `Scene.leave_course` alone.
+   - `leaveCourse` is the pause-menu Quit path.
+   - `Scene.leave_course` returns to the world map with the camera stuck off the path.
+   - Keep `Scene.leave_course` only for the direct-open path in `opened-course`, which already calls it on purpose.
+   - The repo save starts on node `W1M0`.
+   - `A` on `W1M0` does not enter a course.
+   - The first course node is `W101`, one stick-right away.
+   - The only unlocked neighbour of `W101` is back to `W1M0`.
+   - The world map reports `scene=CourseSelect` with `map=1`.
+   - On the map means `map=1`, including `CourseSelect`.
+   - Treating on-the-map as only `scene=Map` makes a successful leave look like a failure.
+   - The next `A` then walks back into the course.
+   - Agent `press` frame counts are logic steps.
+   - A multi-step `Down` on the pause menu repeats and lands on Change Controller.
+   - Menu cursor moves (`Down`, `Right`, `Up`) need a one-sample tap (`press(button, 1, true)`).
+   - `Plus` and `A` still need a short hold.
+   - Idling in `1-1` long enough for a late portable-save frame lets the Goomba kill Mario and drop the player on the map.
+   - A course portable save should `open` the course and fire the save soon after play starts.
 3. Add a `PlayCase` under `tools/cli/src/playtest/cases/` and register it in `cases/index.ts`.
 4. Run `nsmbu test [name]`.
    `nsmbu test --list` prints the names (only `--list` is a valid flag).
