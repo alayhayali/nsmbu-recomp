@@ -7,6 +7,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Fixed
+
+- Playtests still connect when the checkout path is too long for a Unix socket.
+
 ## [0.7.1] - 2026-10-27
 
 ### Changed

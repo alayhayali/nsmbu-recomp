@@ -193,6 +193,7 @@ export const widescreenMapUi: PlayCase = {
         let edges: { left: number; right: number } | null = null;
         let img = { w: 0, h: 0, rgb: new Uint8Array() };
         let limit = 0;
+        let labelsOk = false;
         for (let i = 0; i < 12; i++) {
             await session.advance(60, 20);
             await session.screenshot(path);
@@ -208,7 +209,16 @@ export const widescreenMapUi: PlayCase = {
             }
             edges = buttonEdges(img);
             limit = img.w * 0.12;
-            if (edges && edges.left <= limit && img.w - edges.right <= limit) break;
+            if (!edges || edges.left > limit || img.w - edges.right > limit) continue;
+            const view = pillSpan(img, Math.floor(img.h * 0.7), Math.floor(img.h * 0.98), "left");
+            const items = pillSpan(img, Math.floor(img.h * 0.7), Math.floor(img.h * 0.98), "right");
+            const menu = pillSpan(img, Math.floor(img.h * 0.02), Math.floor(img.h * 0.18), "right");
+            labelsOk = !!(
+                view && labelInside(img, view, "left") &&
+                items && labelInside(img, items, "right") &&
+                menu && labelInside(img, menu, "right")
+            );
+            if (labelsOk) break;
         }
         if (!edges) throw new Error(`map buttons not found in ${path}`);
         if (edges.left > limit || img.w - edges.right > limit) {
@@ -216,12 +226,7 @@ export const widescreenMapUi: PlayCase = {
                 `map buttons inset at 21:9: left ${edges.left}px right ${img.w - edges.right}px of ${img.w} (limit ${Math.round(limit)})`,
             );
         }
-        const view = pillSpan(img, Math.floor(img.h * 0.7), Math.floor(img.h * 0.98), "left");
-        const items = pillSpan(img, Math.floor(img.h * 0.7), Math.floor(img.h * 0.98), "right");
-        const menu = pillSpan(img, Math.floor(img.h * 0.02), Math.floor(img.h * 0.18), "right");
-        if (!view || !labelInside(img, view, "left")) throw new Error(`Map View label is outside its button in ${path}`);
-        if (!items || !labelInside(img, items, "right")) throw new Error(`Items label is outside its button in ${path}`);
-        if (!menu || !labelInside(img, menu, "right")) throw new Error(`Menu label is outside its button in ${path}`);
+        if (!labelsOk) throw new Error(`map button labels are outside their buttons in ${path}`);
         const name = worldNameInset(img);
         if (name != null && name < img.w * 0.012) {
             throw new Error(`world name is clipped at the left edge (${name}px of ${img.w}) in ${path}`);
