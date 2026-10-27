@@ -39,6 +39,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ### Fixed
 
 - Install and recomp tools find generated code and hook lists when the install path contains square brackets.
+- Setup save import lets you choose **Copy saves and settings from another NSMBU folder** when no earlier per-user install is detected.
 
 ## [0.7.0] - 2026-10-26
 
