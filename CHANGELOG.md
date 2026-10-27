@@ -14,7 +14,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
   `NSMBU_TEST_ALIGN_SCENE` names the scene, and `NSMBU_TEST_FIXED_SEED=1` counts scripted presses, sticks, keys, and frame dumps from that scene.
   A boot that misses the scene is retried and its log is kept.
 - Linux and Windows CI run the benchmark tooling tests, new `tools/test_shaderprep.py` shader preparation tests, and the compare tool tests.
-  CI runs on every branch push; tag pushes do not start it.
+  CI runs on every branch push only (no separate `pull_request` run); tag pushes do not start it.
 - Windows on ARM64 release: `NSMBU-<version>-windows-arm64.zip`, built and tested on a `windows-11-arm` runner with llvm-mingw `aarch64-w64-mingw32` and the embeddable `python.windows-arm64`.
   `guard.py` checks its Python files against `tools/release/python-windows-arm64-files.json`.
 - Rolling development build: a nightly check of `main` publishes the `devel-build` pre-release (`<last release>-devel.<sha>`, never marked latest) when `main` moved since the last one.

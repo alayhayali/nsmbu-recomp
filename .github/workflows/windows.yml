@@ -7,7 +7,6 @@ on:
   push:
     # Tag pushes do not start this workflow; a release tag points at a commit CI already tested.
     branches: ["**"]
-  pull_request:
 
 jobs:
   build:
