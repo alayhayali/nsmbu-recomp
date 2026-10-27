@@ -1,5 +1,6 @@
 #include "gfx/aspect.h"
 #include "gfx/aspect_panes.h"
+#include "gfx/aspect_view.h"
 #include "gfx/renderer.h"
 #include <chrono>
 #include "core/env.h"
@@ -1393,6 +1394,39 @@ void report_skips() {
     g_stat_full_checks = g_stat_uploads = g_stat_invalidates = g_stat_invalidated_surfaces = g_stat_hashed_bytes = 0;
 }
 
+static bool shader_screen_ortho(const uint32_t* regs, const LatteDecompilerShader* dec, float width, float height) {
+    if (!dec) return false;
+    const auto* alu = reinterpret_cast<const float*>(regs + mmSQ_ALU_CONSTANT0_0 + 0x400);
+    uint32_t begin[64], end[64];
+    size_t n = 0;
+    auto add = [&](uint32_t start, uint32_t stop) {
+        if (n < 64 && stop > start) {
+            begin[n] = start;
+            end[n] = stop;
+            ++n;
+        }
+    };
+    if (dec->list_remappedUniformEntries_register.empty()) {
+        if (dec->uniform.loc_uniformRegister >= 0 && dec->uniform.count_uniformRegister > 0)
+            add(0, uint32_t(dec->uniform.count_uniformRegister) * 4);
+    } else {
+        for (const auto& entry : dec->list_remappedUniformEntries_register) {
+            uint32_t start = entry.indexOffset / 4;
+            if (start < 0x400) add(start, start + 4);
+        }
+    }
+    if (aspect::view::screen_ortho_ranges(alu, begin, end, n, width, height)) return true;
+    for (const auto& group : dec->list_remappedUniformEntries_bufferGroups) {
+        uint32_t addr = regs[mmSQ_VTX_UNIFORM_BLOCK_START + group.kcacheBankIdOffset / 4];
+        if (!addr) continue;
+        n = 0;
+        for (const auto& entry : group.entries) add(entry.indexOffset / 4, entry.indexOffset / 4 + 4);
+        const auto* bytes = reinterpret_cast<const float*>(mem::ptr(addr));
+        if (bytes && aspect::view::screen_ortho_ranges(bytes, begin, end, n, width, height)) return true;
+    }
+    return false;
+}
+
 void draw(const uint32_t* regs, uint32_t prim, uint32_t count, uint32_t indexType, uint32_t indexAddr, uint32_t baseVertex,
           uint32_t instances) {
     static bool cacheLoaded = (cache_load(), true);
@@ -1457,10 +1491,11 @@ void draw(const uint32_t* regs, uint32_t prim, uint32_t count, uint32_t indexTyp
 
     uint32_t w = 0, h = 0;
     float kx = 1.0f, ky = 1.0f;
+    Surface* target = nullptr;
     for (auto* c : colors)
-        if (c) { w = (uint32_t)c->tex.width; h = (uint32_t)c->tex.height; kx = c->sx; ky = c->sy; break; }
+        if (c) { target = c; w = (uint32_t)c->tex.width; h = (uint32_t)c->tex.height; kx = c->sx; ky = c->sy; break; }
     if (depth && w && (depth->tex.width < w || depth->tex.height < h)) { depth = nullptr; g_skip[SK_DROPPED_DEPTH]++; }
-    if (!w && depth) { w = (uint32_t)depth->tex.width; h = (uint32_t)depth->tex.height; kx = depth->sx; ky = depth->sy; }
+    if (!w && depth) { target = depth; w = (uint32_t)depth->tex.width; h = (uint32_t)depth->tex.height; kx = depth->sx; ky = depth->sy; }
     for (auto& c : colors)
         if (c && (c->tex.width != w || c->tex.height != h)) { c = nullptr; g_skip[SK_DROPPED_COLOR]++; }
     if (!w) { g_skip[SK_NO_TARGET]++; return; }
@@ -1530,14 +1565,60 @@ void draw(const uint32_t* regs, uint32_t prim, uint32_t count, uint32_t indexTyp
     float ys = gx2::bitsf(regs[REGADDR::PA_CL_VPORT_YSCALE]), yo = gx2::bitsf(regs[REGADDR::PA_CL_VPORT_YOFFSET]);
     float zs = gx2::bitsf(regs[REGADDR::PA_CL_VPORT_ZSCALE]), zo = gx2::bitsf(regs[REGADDR::PA_CL_VPORT_ZOFFSET]);
     bool halfZ = clipCntl.get_DX_CLIP_SPACE_DEF();
-    MTLViewport vp{xo - xs, yo + ys, xs * 2.0f, ys * -2.0f, halfZ ? zo : zo - zs, zs + zo};
-    vp.originX *= kx; vp.originY *= ky; vp.width *= kx; vp.height *= ky;
+    bool wide_target = target && (target->ax != 1.0f || target->ay != 1.0f);
+    bool screen_ortho = target && shader_screen_ortho(regs, vs->dec, float(target->width), float(target->height));
+    bool window_space = vs && vs->dec && vs->dec->uniform.loc_windowSpaceToClipSpaceTransform >= 0;
+    bool center_ortho = aspect::view::center_framebuffer_draw(wide_target, screen_ortho || window_space, aspect::cover_draw());
+    static const uint64_t aspect_ui_trace_frame = env::ASPECT_TRACE_FRAME.u64_or(0);
+    if (aspect_ui_trace_frame && aspect::game_frame() == aspect_ui_trace_frame && wide_target && target &&
+        target->width == 1280 && target->height == 720 && vs && vs->dec) {
+        static uint64_t aspect_ui_trace_at = 0;
+        static int aspect_ui_trace_lines = 0;
+        static std::set<uint32_t> aspect_ui_trace_vs;
+        uint64_t gf = aspect::game_frame();
+        if (gf != aspect_ui_trace_at) {
+            aspect_ui_trace_at = gf;
+            aspect_ui_trace_lines = 0;
+            aspect_ui_trace_vs.clear();
+        }
+        uint32_t vs_pc = regs[mmSQ_PGM_START_VS] << 8;
+        if (aspect_ui_trace_lines < 64 && aspect_ui_trace_vs.insert(vs_pc).second) {
+            const auto* alu = reinterpret_cast<const float*>(regs + mmSQ_ALU_CONSTANT0_0 + 0x400);
+            uint32_t ustart = 0;
+            if (vs->dec->list_remappedUniformEntries_register.empty()) {
+                if (vs->dec->uniform.loc_uniformRegister < 0 || vs->dec->uniform.count_uniformRegister == 0)
+                    ustart = 0x400;
+            } else {
+                ustart = vs->dec->list_remappedUniformEntries_register.front().indexOffset / 4;
+            }
+            float u0[8] = {};
+            if (ustart + 8 <= 0x400) memcpy(u0, alu + ustart, sizeof u0);
+            fprintf(stderr,
+                    "[aspect-ui] vs=%08X center=%d cover=%d screen_ortho=%d window=%d u=%g,%g,%g,%g,%g,%g,%g,%g\n", vs_pc,
+                    center_ortho ? 1 : 0, aspect::cover_draw() ? 1 : 0, screen_ortho ? 1 : 0, window_space ? 1 : 0, u0[0], u0[1], u0[2],
+                    u0[3], u0[4], u0[5], u0[6], u0[7]);
+            ++aspect_ui_trace_lines;
+        }
+    }
+    float scale_x = kx, scale_y = ky, pad_x = 0.0f, pad_y = 0.0f;
+    if (center_ortho) {
+        scale_x = target->ax > 0.0f ? target->sx / target->ax : target->sx;
+        scale_y = target->ay > 0.0f ? target->sy / target->ay : target->sy;
+        pad_x = (float(w) - float(target->width) * scale_x) * 0.5f;
+        pad_y = (float(h) - float(target->height) * scale_y) * 0.5f;
+    }
+    MTLViewport vp{pad_x + (xo - xs) * scale_x, pad_y + (yo + ys) * scale_y, xs * 2.0f * scale_x, ys * -2.0f * scale_y,
+                   halfZ ? zo : zo - zs, zs + zo};
     [enc setViewport:vp];
     uint32_t tl = regs[REGADDR::PA_SC_GENERIC_SCISSOR_TL], br = regs[REGADDR::PA_SC_GENERIC_SCISSOR_BR];
-    auto lo = [](uint32_t v, float k, uint32_t lim) { return std::min<uint32_t>((uint32_t)std::floor(v * k + 0.01f), lim); };
-    auto hi = [](uint32_t v, float k, uint32_t lim) { return std::min<uint32_t>((uint32_t)std::ceil(v * k - 0.01f), lim); };
-    uint32_t sx = lo(tl & 0x7FFF, kx, w), sy = lo((tl >> 16) & 0x7FFF, ky, h);
-    uint32_t ex = hi(br & 0x7FFF, kx, w), ey = hi((br >> 16) & 0x7FFF, ky, h);
+    auto lo = [](uint32_t v, float k, float pad, uint32_t lim) {
+        return std::min<uint32_t>((uint32_t)std::floor(pad + v * k + 0.01f), lim);
+    };
+    auto hi = [](uint32_t v, float k, float pad, uint32_t lim) {
+        return std::min<uint32_t>((uint32_t)std::ceil(pad + v * k - 0.01f), lim);
+    };
+    uint32_t sx = lo(tl & 0x7FFF, scale_x, pad_x, w), sy = lo((tl >> 16) & 0x7FFF, scale_y, pad_y, h);
+    uint32_t ex = hi(br & 0x7FFF, scale_x, pad_x, w), ey = hi((br >> 16) & 0x7FFF, scale_y, pad_y, h);
     float ax, ay;
     if (aspect::content_clip() && target_aspect_factors(regs[mmCB_COLOR0_TILE] & 0xFFFF, regs[mmCB_COLOR0_FRAG], ax, ay))
         aspect::panes::clip(w, h, ax, ay, sx, sy, ex, ey);

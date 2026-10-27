@@ -490,4 +490,7 @@ namespace aspect {
 thread_local bool g_content_clip = false;
 void set_content_clip(bool clip) { g_content_clip = clip; }
 bool content_clip() { return g_content_clip; }
+thread_local bool g_cover_draw = false;
+void set_cover_draw(bool cover) { g_cover_draw = cover; }
+bool cover_draw() { return g_cover_draw; }
 }

@@ -1,5 +1,6 @@
 #include "gfx/aspect.h"
 #include "gfx/aspect_panes.h"
+#include "gfx/aspect_view.h"
 #include "gfx/renderer.h"
 
 #include "Cafe/HW/Latte/Core/FetchShader.h"
@@ -30,6 +31,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include "core/env.h"
 extern "C" uint64_t g_shader_state_gen;
 using namespace Latte;
@@ -37,8 +39,41 @@ namespace gfxvk {
 namespace {
 
 bool preparation_stats_enabled() {
-  static const bool enabled=env::VK_STATS()!=nullptr;
-  return enabled;
+    static const bool enabled=env::VK_STATS()!=nullptr;
+    return enabled;
+}
+
+bool shader_screen_ortho(const uint32_t* regs, const LatteDecompilerShader* dec, float width, float height) {
+    if (!dec) return false;
+    const auto* alu = reinterpret_cast<const float*>(regs + mmSQ_ALU_CONSTANT0_0 + 0x400);
+    uint32_t begin[64], end[64];
+    size_t n = 0;
+    auto add = [&](uint32_t start, uint32_t stop) {
+        if (n < 64 && stop > start) {
+            begin[n] = start;
+            end[n] = stop;
+            ++n;
+        }
+    };
+    if (dec->list_remappedUniformEntries_register.empty()) {
+        if (dec->uniform.loc_uniformRegister >= 0 && dec->uniform.count_uniformRegister > 0)
+            add(0, uint32_t(dec->uniform.count_uniformRegister) * 4);
+    } else {
+        for (const auto& entry : dec->list_remappedUniformEntries_register) {
+            uint32_t start = entry.indexOffset / 4;
+            if (start < 0x400) add(start, start + 4);
+        }
+    }
+    if (aspect::view::screen_ortho_ranges(alu, begin, end, n, width, height)) return true;
+    for (const auto& group : dec->list_remappedUniformEntries_bufferGroups) {
+        uint32_t addr = regs[mmSQ_VTX_UNIFORM_BLOCK_START + group.kcacheBankIdOffset / 4];
+        if (!addr) continue;
+        n = 0;
+        for (const auto& entry : group.entries) add(entry.indexOffset / 4, entry.indexOffset / 4 + 4);
+        const auto* bytes = reinterpret_cast<const float*>(mem::ptr(addr));
+        if (bytes && aspect::view::screen_ortho_ranges(bytes, begin, end, n, width, height)) return true;
+    }
+    return false;
 }
 VkImageView null_texture_view(E_DIM dim, bool depth) {
   struct Slot {
@@ -2203,10 +2238,44 @@ void draw(const uint32_t *r, uint32_t prim, uint32_t count, uint32_t indexType,
         zo = f32(r[REGADDR::PA_CL_VPORT_ZOFFSET]);
   LATTE_PA_CL_CLIP_CNTL clip;
   std::memcpy(&clip, r + REGADDR::PA_CL_CLIP_CNTL, 4);
-  VkViewport vp{(xo - xs) * sx,
-                (yo - ys) * sy,
-                xs * 2 * sx,
-                ys * 2 * sy,
+  bool wide_target = target->ax != 1.0f || target->ay != 1.0f;
+  bool screen_ortho = shader_screen_ortho(r, vs->dec, float(target->width), float(target->height));
+  bool window_space = vs && vs->dec && vs->dec->uniform.loc_windowSpaceToClipSpaceTransform >= 0;
+  bool center_ortho = aspect::view::center_framebuffer_draw(wide_target, screen_ortho || window_space, aspect::cover_draw());
+  static const uint64_t aspect_ui_trace_frame = env::ASPECT_TRACE_FRAME.u64_or(0);
+  if (aspect_ui_trace_frame && aspect::game_frame() == aspect_ui_trace_frame && wide_target &&
+      target->width == 1280 && target->height == 720 && vs && vs->dec) {
+    static uint64_t aspect_ui_trace_at = 0;
+    static int aspect_ui_trace_lines = 0;
+    static std::unordered_set<uint32_t> aspect_ui_trace_vs;
+    uint64_t gf = aspect::game_frame();
+    if (gf != aspect_ui_trace_at) {
+      aspect_ui_trace_at = gf;
+      aspect_ui_trace_lines = 0;
+      aspect_ui_trace_vs.clear();
+    }
+    uint32_t vs_pc = r[mmSQ_PGM_START_VS] << 8;
+    if (aspect_ui_trace_lines < 64 && aspect_ui_trace_vs.insert(vs_pc).second) {
+      const auto* alu = reinterpret_cast<const float*>(r + mmSQ_ALU_CONSTANT0_0 + 0x400);
+      uint32_t ustart = 0;
+      if (vs->dec->list_remappedUniformEntries_register.empty()) {
+        if (vs->dec->uniform.loc_uniformRegister < 0 || vs->dec->uniform.count_uniformRegister == 0)
+          ustart = 0x400;
+      } else {
+        ustart = vs->dec->list_remappedUniformEntries_register.front().indexOffset / 4;
+      }
+      float u0[8] = {};
+      if (ustart + 8 <= 0x400) std::memcpy(u0, alu + ustart, sizeof u0);
+      std::fprintf(stderr,
+                   "[aspect-ui] vs=%08X center=%d cover=%d screen_ortho=%d window=%d u=%g,%g,%g,%g,%g,%g,%g,%g\n", vs_pc,
+                   center_ortho ? 1 : 0, aspect::cover_draw() ? 1 : 0, screen_ortho ? 1 : 0, window_space ? 1 : 0, u0[0], u0[1], u0[2], u0[3],
+                   u0[4], u0[5], u0[6], u0[7]);
+      ++aspect_ui_trace_lines;
+    }
+  }
+  auto placed = aspect::view::place_ortho(xo, xs, yo, ys, float(width), float(height), float(target->width),
+                                           float(target->height), sx, sy, target->ax, target->ay, center_ortho);
+  VkViewport vp{placed.x, placed.y, placed.w, placed.h,
                 clip.get_DX_CLIP_SPACE_DEF() ? zo : zo - zs,
                 zo + zs};
 
@@ -2225,13 +2294,10 @@ void draw(const uint32_t *r, uint32_t prim, uint32_t count, uint32_t indexType,
   }
   uint32_t tl = r[REGADDR::PA_SC_GENERIC_SCISSOR_TL],
            br = r[REGADDR::PA_SC_GENERIC_SCISSOR_BR];
-  auto clamp = [](uint32_t v, float k, uint32_t limit) {
-    return uint32_t(std::clamp(double(v) * k, 0.0, double(limit)));
-  };
-  uint32_t x = clamp(tl & 0x7fff, sx, width),
-           y = clamp((tl >> 16) & 0x7fff, sy, height),
-           ex = clamp(br & 0x7fff, sx, width),
-           ey = clamp((br >> 16) & 0x7fff, sy, height);
+  uint32_t x = aspect::view::cover_min(placed.pad_x + float(tl & 0x7fff) * placed.scale_x, width),
+           y = aspect::view::cover_min(placed.pad_y + float((tl >> 16) & 0x7fff) * placed.scale_y, height),
+           ex = aspect::view::cover_max(placed.pad_x + float(br & 0x7fff) * placed.scale_x, width),
+           ey = aspect::view::cover_max(placed.pad_y + float((br >> 16) & 0x7fff) * placed.scale_y, height);
   float ax, ay;
   if (aspect::content_clip() && target_aspect_factors(r[mmCB_COLOR0_TILE] & 0xFFFF, r[mmCB_COLOR0_FRAG], ax, ay))
     aspect::panes::clip(width, height, ax, ay, x, y, ex, ey);

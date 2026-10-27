@@ -19,5 +19,7 @@ bool tagged_projection();
 void layout_root_target(uint32_t root, bool tv);
 void set_content_clip(bool clip);
 bool content_clip();
+void set_cover_draw(bool cover);
+bool cover_draw();
 void ss_reset();
 }

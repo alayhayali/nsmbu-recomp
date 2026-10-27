@@ -9,6 +9,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Added
 
+- A plan for test isolation, scripted run compare, CI checks, and release packages taken from later Wind Waker HD work.
 - Decomp notes for the sead / ApplicationFramework frame loop, and a plan to drive present rate from wall-clock time while keeping 60 logic steps/s.
 - Settings → Saves shows a short preview of the real game save (files, world, lives, play time) and opens that saves folder (not save states) from the top of the tab.
 - The performance overlay shows average fps and logic steps/s, GPU/device, Game/Render CPU, and GPU interval.
@@ -26,6 +27,19 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- 21:9 fades cover the wide picture.
+  Fader draws use the full target, so a fade is black in the side strips.
+- 21:9 title UI stays at 16:9.
+  Shaders that write window pixels are centered in the wide picture.
+  World cameras still use the full width.
+- The 21:9 scroll window matches the camera.
+  Scenery that spawns from the screen edges is already in frame, including the title bush.
+- 21:9 no longer leaves a one-pixel column on the far right of the picture.
+  The wide target is 1707 pixels and the scissor was cut off at 1706, so the title sky showed through.
+- 21:9 world map no longer draws dark bars just outside the original 16:9 frame.
+  The screen overlay stays on that frame, and the wider map is still visible beside it.
+- 21:9 no longer widens the GamePad picture.
+  Targets at 854×480 and its smaller copies stay that size; the TV picture is still the one that grows.
 - 144 and 165 fps keep 60 logic steps/s.
   Pass timing treated each present slot as work, so the pacer skipped in-between frames; with one wait per present that left about two presents per step (~80 steps/s at 165 fps).
   Those rates now keep every planned present, and pad only when a step shows fewer frames than planned.
