@@ -75,21 +75,18 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(skipped, [])
         self.assertEqual(
             [(site, canon) for site, canon, *_ in entries],
-            [(False, 0x02ACD218), (False, 0x024D752C), (True, 0x022A79C4),
-             (False, 0x022A7760), (False, 0x02A06818), (False, 0x02A061AC), (False, 0x02A062EC),
-             (False, 0x02994164), (False, 0x029CBBB4), (False, 0x024BD86C),
-             (True, 0x024B8324), (False, 0x0226FBC4), (True, 0x0226FD14),
-             (True, 0x0226FECC), (True, 0x02270310), (True, 0x022703A4),
-             (True, 0x0227CCF4), (True, 0x0227E2A8),
-             (False, 0x0252F900), (False, 0x025CF020),
-             (False, 0x029C52CC), (False, 0x024FBF6C),
-             (False, 0x029C4FE4), (False, 0x024F30DC),
-             (False, 0x029D9E30), (True, 0x029D94C0), (True, 0x029D97B8),
-             (True, 0x029D9CB8), (True, 0x029D9E2C), (False, 0x029D8270),
-             (False, 0x029D8304), (False, 0x029D82D4), (False, 0x029D8394),
-             (False, 0x029872BC), (False, 0x029D8478), (False, 0x029D7648),
-             (False, 0x029D8C10), (True, 0x029D8C48), (True, 0x029D71A4),
-             (True, 0x02631BE4), (True, 0x0263ADD8), (True, 0x02641A4C)],
+            [(False, 0x02ACD218), (False, 0x024D752C), (True, 0x022A79C4), (False, 0x022A7760),
+             (False, 0x029A6170), (False, 0x029B85C8), (False, 0x02A06818), (False, 0x02A061AC),
+             (False, 0x02A062EC), (False, 0x02994164), (False, 0x029CBBB4), (False, 0x024BD86C),
+             (True, 0x024B8324), (False, 0x0226FBC4), (True, 0x0226FD14), (True, 0x0226FECC),
+             (True, 0x02270310), (True, 0x022703A4), (True, 0x0227CCF4), (True, 0x0227E2A8),
+             (False, 0x0252F900), (False, 0x025CF020), (False, 0x029C52CC), (False, 0x024FBF6C),
+             (False, 0x029C4FE4), (False, 0x024F30DC), (False, 0x029D9E30), (True, 0x029D94C0),
+             (True, 0x029D97B8), (True, 0x029D9CB8), (True, 0x029D9E2C), (False, 0x029D8270),
+             (False, 0x029D8304), (False, 0x029D82D4), (False, 0x029D8394), (False, 0x029872BC),
+             (False, 0x029D8478), (False, 0x029D7648), (False, 0x029D8C10), (True, 0x029D8C48),
+             (True, 0x029D71A4), (True, 0x02631BE4), (True, 0x0263ADD8), (True, 0x02641A4C),
+             (False, 0x02ABC054), (False, 0x02ABCAE8), (True, 0x02ABCB34), (True, 0x02ABCB38)],
         )
         for site, canon, native, where, _same in entries:
             self.assertEqual(canon, native, where)

@@ -32,6 +32,7 @@ enum Op : uint32_t {
     OP_LAYOUT_ROOT,
     OP_PEEK_Z,
     OP_LAYOUT_CONTENT,
+    OP_COVER_DRAW,
     OP_COUNT
 };
 

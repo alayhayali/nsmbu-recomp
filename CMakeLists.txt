@@ -581,6 +581,14 @@ set_tests_properties(script_frame_fixed_seed PROPERTIES ENVIRONMENT "NSMBU_TEST_
 add_test(NAME user_folder_isolation COMMAND ${CMAKE_COMMAND} -DPROBE=$<TARGET_FILE:user_folder_probe>
          -DWORK=${CMAKE_BINARY_DIR}/user_folder_isolation_work -P ${CMAKE_SOURCE_DIR}/runtime/tools/user_folder_isolation_test.cmake)
 
+add_executable(bg_scroll_wide_test runtime/test/bg_scroll_wide_test.cpp)
+target_include_directories(bg_scroll_wide_test PRIVATE runtime/src)
+add_test(NAME bg_scroll_wide COMMAND bg_scroll_wide_test)
+
+add_executable(aspect_ui_test runtime/test/aspect_ui_test.cpp)
+target_include_directories(aspect_ui_test PRIVATE runtime/src)
+add_test(NAME aspect_ui COMMAND aspect_ui_test)
+
 if(NSMBU_HAS_VULKAN)
   add_executable(barrier_state_test runtime/test/barrier_state_test.cpp)
   target_include_directories(barrier_state_test PRIVATE runtime/src)

@@ -664,6 +664,10 @@ static void execute_op(Op op, const uint32* p, uint32 n) {
     }
     case OP_LAYOUT_CONTENT:
         aspect::set_content_clip(n && p[0]);
+        aspect::set_edge_hud(n > 1 && p[1]);
+        break;
+    case OP_COVER_DRAW:
+        aspect::set_cover_draw(n && p[0]);
         break;
     case OP_LAYOUT_ROOT: {
         float kx, ky;

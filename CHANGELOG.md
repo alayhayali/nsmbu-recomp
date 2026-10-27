@@ -25,6 +25,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - The Linux AppImage pins the type2 runtime by SHA-256 (`appimage.py` `RUNTIME`, passed to appimagetool with `--runtime-file`) and ships its license texts, which `guard.py` checks.
   `appimage.py --extract-runtime` recovers the runtime from a built AppImage, and the release workflow checks that the AppImage reports the pinned runtime commit.
 - `nsmbu installer --no-open` packages the installer and returns without opening setup.
+- Decompiled `SndAudioMgr::startSound` / `startSystemSe`, `CourseSelectLayerMgr::createLayers`, and `ReflectionRenderObjLayer::render_` in `vendor/decomp/src`.
+  The frame-loop, map-shadow, and soft-restart notes answer their open claims: the draw-context lock and unlock, the task-manager `afterCalc`, the eleven-node `DualScreenMethodTreeMgr` layout, the TV `"DepthShadow"` creation sites, and the `0x1017C814` `SndAudioMgr` method table.
 
 ### Changed
 
@@ -41,7 +43,28 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Install and recomp tools find generated code and hook lists when the install path contains square brackets.
 - Setup save import lets you choose **Copy saves and settings from another NSMBU folder** when no earlier per-user install is detected.
 
-## [0.7.0] - 2026-10-26
+## [0.7.1] - 2026-10-27
+
+### Changed
+
+- Aspect ratio is under Settings → Display and is marked experimental.
+- Ultrawide layouts keep edge HUD on the screen with the same side margin as 16:9.
+  Centered menus and title UI stay in a 16:9 frame while the world view expands.
+
+### Fixed
+
+- The aspect ratio chosen in Settings is restored on the next launch.
+  A set `NSMBU_ASPECT` value still overrides the saved choice.
+- Setup lets you choose **Copy saves and settings from another NSMBU folder** when no earlier install is detected.
+- Install and setup work when the install path contains square brackets.
+- On 21:9, world-map Menu, Map View, and Items labels stay on their buttons instead of clipping at the screen edge.
+- On 21:9, title characters stay centered under the logo.
+- On 21:9, fades fill the wide picture.
+- On 21:9, file-select full-width art fills the frame; buttons and cards stay 16:9.
+- On 21:9, title-screen scenery at the edges no longer pops in late.
+- On 21:9, the title screen no longer shows a one-pixel bright column on the far right.
+- On 21:9, the world map no longer shows dark bars just outside the old 16:9 frame.
+- Ultrawide no longer stretches the GamePad picture; only the TV view grows.
 
 ### Added
 
@@ -273,7 +296,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - The TV and GamePad present together on one vsync.
 
-[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.3...v0.7.0
 [0.6.3]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.1...v0.6.2
