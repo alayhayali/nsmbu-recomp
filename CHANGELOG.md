@@ -16,6 +16,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - High frame rates use a present cap with a wall-clock accumulator: logic stays at 60 steps/s, and blend time comes from the open step instead of a per-rate frame ladder.
 - Recompiling an unchanged game no longer rewrites every generated C file, so a normal rebuild skips guest code that did not change.
 - Hooked game functions and instruction-level hook sites keep plain register form in the recompiled C (the runtime hook can read and write the Cpu mid-function).
+- A later release tag reuses the Linux compiler cache, so that build compiles less.
 
 ### Fixed
 

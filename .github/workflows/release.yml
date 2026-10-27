@@ -143,6 +143,16 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       ARCH: ${{ matrix.arch }}
       TOOLCHAIN: ${{ matrix.toolchain }}
+      # A fresh zig has an empty global cache, and the first compile then spends about a minute
+      # identifying the compiler. ccache keeps the object files. Both paths stay under the
+      # workspace so the cache key does not follow a random runner temp directory.
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_COMPRESS: "1"
+      CCACHE_MAXSIZE: 500M
+      CCACHE_COMPILERCHECK: content
+      CCACHE_SLOPPINESS: time_macros
+      ZIG_GLOBAL_CACHE_DIR: ${{ github.workspace }}/.zig-cache
     steps:
       - uses: actions/checkout@v4
 
@@ -155,7 +165,7 @@ jobs:
           # SDL3's documented Linux build dependencies (SDL3 docs/README-linux.md, Ubuntu 22.04+ set), so
           # the shipped SDL3 has every backend (X11, Wayland, PipeWire/PulseAudio/ALSA, input, IME);
           # libvulkan1 is only linked against (players use their own Vulkan loader)
-          sudo apt-get install -y build-essential cmake ninja-build pkg-config xz-utils libvulkan1 \
+          sudo apt-get install -y build-essential cmake ninja-build ccache pkg-config xz-utils libvulkan1 \
             libasound2-dev libpulse-dev libaudio-dev libfribidi-dev libjack-dev libsndio-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev \
             libxtst-dev libxkbcommon-dev libdrm-dev libgbm-dev libgl1-mesa-dev libgles2-mesa-dev \
@@ -163,26 +173,46 @@ jobs:
             libpipewire-0.3-dev libwayland-dev libdecor-0-dev liburing-dev wayland-protocols \
             mesa-vulkan-drivers xvfb
 
+      - name: Cache the zig compiler and ccache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .ccache
+            .zig-cache
+          key: release-linux-${{ matrix.arch }}-${{ env.TOOLCHAIN }}-${{ github.sha }}
+          restore-keys: |
+            release-linux-${{ matrix.arch }}-${{ env.TOOLCHAIN }}-
+
       - name: Pinned zig toolchain (tools/installer/toolchains.json)
         run: |
           read -r URL SUM DIR TARGET < <(python3 -c "
           import json, os; t=json.load(open('tools/installer/toolchains.json'))['toolchains'][os.environ['TOOLCHAIN']]
           print(t['url'], t['sha256'], t['dir'], t['target'])")
-          echo "ZIG_DIR=$RUNNER_TEMP/$DIR" >> "$GITHUB_ENV"
+          # A stable compiler path keeps the ccache key the same on the next tag.
+          ROOT="$HOME/zig-toolchain"
+          mkdir -p "$ROOT"
+          echo "ZIG_DIR=$ROOT/$DIR" >> "$GITHUB_ENV"
           curl -fsSL -o "$RUNNER_TEMP/zig.tar.xz" "$URL"
           echo "$SUM  $RUNNER_TEMP/zig.tar.xz" | sha256sum -c -
-          tar -xf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
-          ZIG="$RUNNER_TEMP/$DIR/zig"
-          mkdir -p "$RUNNER_TEMP/zbin"
-          printf '#!/bin/sh\nexec "%s" cc -target %s "$@"\n' "$ZIG" "$TARGET" > "$RUNNER_TEMP/zbin/zcc"
-          printf '#!/bin/sh\nexec "%s" c++ -target %s "$@"\n' "$ZIG" "$TARGET" > "$RUNNER_TEMP/zbin/zcxx"
-          printf '#!/bin/sh\nexec "%s" ar "$@"\n' "$ZIG" > "$RUNNER_TEMP/zbin/zar"
-          printf '#!/bin/sh\nexec "%s" ranlib "$@"\n' "$ZIG" > "$RUNNER_TEMP/zbin/zranlib"
-          chmod +x "$RUNNER_TEMP"/zbin/*
-          echo "ZBIN=$RUNNER_TEMP/zbin" >> "$GITHUB_ENV"
-          echo "ZIG_GLOBAL_CACHE_DIR=$RUNNER_TEMP/zig-cache" >> "$GITHUB_ENV"
+          tar -xf "$RUNNER_TEMP/zig.tar.xz" -C "$ROOT"
+          ZIG="$ROOT/$DIR/zig"
+          mkdir -p "$ROOT/bin"
+          printf '#!/bin/sh\nexec "%s" cc -target %s "$@"\n' "$ZIG" "$TARGET" > "$ROOT/bin/zcc"
+          printf '#!/bin/sh\nexec "%s" c++ -target %s "$@"\n' "$ZIG" "$TARGET" > "$ROOT/bin/zcxx"
+          printf '#!/bin/sh\nexec "%s" ar "$@"\n' "$ZIG" > "$ROOT/bin/zar"
+          printf '#!/bin/sh\nexec "%s" ranlib "$@"\n' "$ZIG" > "$ROOT/bin/zranlib"
+          chmod +x "$ROOT"/bin/*
+          echo "ZBIN=$ROOT/bin" >> "$GITHUB_ENV"
+
+      - name: Cache SDL3
+        id: sdl3
+        uses: actions/cache@v4
+        with:
+          path: ~/sdl3
+          key: sdl3-${{ env.SDL3_SHA256 }}-linux-${{ matrix.arch }}-ubuntu-22.04
 
       - name: SDL3 (shared library, system compiler, shipped next to the game)
+        if: steps.sdl3.outputs.cache-hit != 'true'
         run: |
           curl -fsSL -o sdl3.tar.gz "$SDL3_URL"
           echo "$SDL3_SHA256  sdl3.tar.gz" | sha256sum -c -
@@ -201,13 +231,16 @@ jobs:
       - name: Build runtime (Release, Vulkan + SDL3) with zig against placeholder guest code
         run: |
           python3 tools/recomp/stubgen.py build/gen-stub
+          ccache -z
           cmake -S . -B build/rel -G Ninja -DCMAKE_BUILD_TYPE=Release -DNSMBU_VERSION="$VERSION" -DGEN_DIR="$PWD/build/gen-stub" \
             -DCMAKE_C_COMPILER="$ZBIN/zcc" -DCMAKE_CXX_COMPILER="$ZBIN/zcxx" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_AR="$ZBIN/zar" -DCMAKE_RANLIB="$ZBIN/zranlib" \
             -DNSMBU_BUNDLED_DEPS=ON -DCMAKE_PREFIX_PATH="$HOME/sdl3" -DNSMBU_SETUP_GUI=ON \
             -DVulkan_INCLUDE_DIR="$HOME/vulkan/include" \
             -DVulkan_LIBRARY="/usr/lib/$ARCH-linux-gnu/libvulkan.so.1"
           cmake --build build/rel
+          ccache -s
 
       - name: Unit tests
         run: |
