@@ -7,6 +7,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Changed
+
+- A later release tag reuses the Linux compiler cache, so that build compiles less.
+
 ## [0.7.2] - 2026-10-27
 
 ### Fixed
