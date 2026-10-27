@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { reachWorldMap, type PlayCase } from "../helpers.ts";
 
-function readPng(path: string): { w: number; h: number; rgb: Uint8Array } {
+export function readPng(path: string): { w: number; h: number; rgb: Uint8Array } {
     const file = readFileSync(path);
     if (file.length < 8 || file[0] !== 137) throw new Error(`not a png: ${path}`);
     let w = 0;

@@ -27,6 +27,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- 21:9 title characters stay centered under the logo, as they do at 16:9.
+  The wide background still extends past the 16:9 frame.
 - Widescreen HUD sits on the screen edges.
   World-map Menu, Map View, and Items, and the course HUD, keep the 16:9 margin.
   Centered menus stay in the 16:9 frame.
