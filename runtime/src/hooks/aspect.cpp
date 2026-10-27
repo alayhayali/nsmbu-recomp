@@ -22,21 +22,7 @@ namespace aspect {
 namespace {
 constexpr float kBase = 16.0f / 9.0f;
 
-int parse_env_mode(float& custom) {
-    const char* e = env::ASPECT();
-    if (!e || !*e) return kOriginal;
-    if (!strcmp(e, "window") || !strcmp(e, "match")) return kWindow;
-    if (!strcmp(e, "16:9")) return kOriginal;
-    if (!strcmp(e, "16:10")) return k16x10;
-    if (!strcmp(e, "21:9")) return k21x9;
-    if (!strcmp(e, "32:9")) return k32x9;
-    float a = 0;
-    if (const char* c = strchr(e, ':')) a = (float)atof(e) / (float)atof(c + 1);
-    else a = (float)atof(e);
-    if (!(a > 0.5f && a < 8.0f)) return kOriginal;
-    custom = a;
-    return kCustom;
-}
+int parse_env_mode(float& custom) { return mode_from_text(env::ASPECT(), custom); }
 float g_custom = kBase;
 std::atomic<int> g_mode{parse_env_mode(g_custom)};
 std::atomic<float> g_window{kBase};
@@ -105,6 +91,13 @@ void set_mode(int m) {
     g_mode = m;
     LOG("[aspect] %s", mode_name(m));
 }
+void apply_choice(const char* text) {
+    float custom = g_custom;
+    int m = mode_from_text(text, custom);
+    if (m == kCustom) g_custom = custom;
+    set_mode(m);
+}
+void choice_text(char* out, size_t n) { text_from_mode(mode(), g_custom, out, n); }
 void set_window_aspect(float a) {
     if (!(a > 0.1f && a < 20.0f)) return;
 
@@ -177,8 +170,8 @@ extern "C" void site_025ADB38(Cpu* c) { adjust_projection_args(c, 1, 2); }
 
 extern "C" {
 void f_02874038_orig(Cpu* c);
-void f_028766CC_orig(Cpu* c);
-void f_02877100_orig(Cpu* c);
+void f_02ABC054_orig(Cpu* c);
+void f_02ABCAE8_orig(Cpu* c);
 }
 namespace aspect {
 namespace {
@@ -230,13 +223,8 @@ std::pair<float, float> offset_of(uint32_t pane) {
 bool name_is(uint32_t pane, const char* n) { return !strncmp((const char*)mem::ptr(pane + kPaneName), n, 24); }
 
 bool is_hud_edge_pane(uint32_t pane) {
-    static const char* const kEdge[] = {
-        "N_TV_00", "N_DRC_00", "N_Default_00", "N_HeartPos_01", "L_Rupy_00", "L_CompassClock_00",
-        "L_DungeonKey_00", "N_SwimTimePos_00", "L_BossHP_00", "L_Arrow_00", "L_BatteryVol1_00",
-        "L_RupySwordCounter_00", "N_Position_00", "N_Time_00"};
-    for (const char* n : kEdge)
-        if (name_is(pane, n)) return true;
-    return false;
+    const char* n = (const char*)mem::ptr(pane + kPaneName);
+    return panes::edge_anchor(std::string_view(n, strnlen(n, 24)));
 }
 
 bool has_world_anchor(uint32_t pane, int depth = 0) {
@@ -251,10 +239,45 @@ bool has_world_anchor(uint32_t pane, int depth = 0) {
 
 thread_local uint32_t t_root = 0;
 thread_local bool t_anchor = false;
+
+constexpr uint32_t kTextDrawSelf = 0x02ABE3B8u;
+struct ScaledText { uint32_t pane; uint32_t info; float proj[16]; };
+std::vector<ScaledText> t_scaled_text;
+
+bool is_text_pane(uint32_t pane) {
+    uint32_t vt = ld32(pane + 8);
+    if (vt < 0x10000000u) return false;
+    return ld32(vt + 0x94) == kTextDrawSelf;
+}
+void push_text_scale(uint32_t pane, uint32_t info) {
+    float kx, ky;
+    factors(g_game, kx, ky);
+    if ((kx == 1.0f && ky == 1.0f) || !info) return;
+    ScaledText s{};
+    s.pane = pane;
+    s.info = info;
+    for (int i = 0; i < 16; i++) s.proj[i] = (float)ldf32(info + uint32_t(i) * 4);
+    float scaled[16];
+    for (int i = 0; i < 16; i++) scaled[i] = s.proj[i];
+    view::scale_guest_ortho(scaled, 16, 1280.0f, 720.0f, kx, ky);
+    for (int i = 0; i < 16; i++) stf32(info + uint32_t(i) * 4, scaled[i]);
+    t_scaled_text.push_back(s);
+}
+void pop_text_scale(uint32_t pane) {
+    if (t_scaled_text.empty() || t_scaled_text.back().pane != pane) return;
+    ScaledText s = t_scaled_text.back();
+    t_scaled_text.pop_back();
+    for (int i = 0; i < 16; i++) stf32(s.info + uint32_t(i) * 4, s.proj[i]);
 }
 }
 
-extern "C" void hook_028766CC(Cpu* c) {
+void scale_edge_text_draw(uint32_t pane, uint32_t info, bool edge) {
+    if (edge && is_text_pane(pane)) push_text_scale(pane, info);
+}
+void restore_edge_text_draw(uint32_t pane) { pop_text_scale(pane); }
+}
+
+extern "C" void hook_02ABC054(Cpu* c) {
     using namespace aspect;
     uint32_t pane = c->r[3];
     uint32_t parent = ld32(pane + kPaneParent);
@@ -270,18 +293,18 @@ extern "C" void hook_028766CC(Cpu* c) {
         bool placed = t_anchor && (tx != 0.0f || ty != 0.0f) && has_world_anchor(pane);
 
         static const bool log_roots = env::ASPECT_LOG() != nullptr;
-        if (log_roots && placed) {
+        if (log_roots) {
             static std::mutex mu;
             static std::unordered_map<std::string, int> seen;
             std::string nm((const char*)mem::ptr(pane + kPaneName), strnlen((const char*)mem::ptr(pane + kPaneName), 24));
             std::lock_guard<std::mutex> lk(mu);
-            if (seen[nm]++ == 0) LOG("[aspect] placed root '%s' at %.1f, %.1f", nm.c_str(), tx, ty);
+            if (seen[nm]++ == 0) LOG("[aspect] root '%s' anchor=%d at %.1f, %.1f", nm.c_str(), t_anchor ? 1 : 0, tx, ty);
         }
 
         if (anchor_changed(pane, t_anchor) || (g_changed_swap && g_swaps - g_changed_swap < 4)) c->r[5] = 1;
         if (placed) { stf32(pane + kPaneTrans, tx * kx); stf32(pane + kPaneTrans + 4, ty * ky); }
         set_offset(pane, placed ? tx * (kx - 1.0f) : 0.0f, placed ? ty * (ky - 1.0f) : 0.0f);
-        f_028766CC_orig(c);
+        f_02ABC054_orig(c);
         if (placed) { stf32(pane + kPaneTrans, tx); stf32(pane + kPaneTrans + 4, ty); }
         t_root = saveRoot;
         t_anchor = saveAnchor;
@@ -289,17 +312,15 @@ extern "C" void hook_028766CC(Cpu* c) {
     }
     if (!t_anchor) {
         if (parent == t_root) set_offset(pane, 0, 0);
-        f_028766CC_orig(c);
+        f_02ABC054_orig(c);
         return;
     }
     float tx = (float)ldf32(pane + kPaneTrans), ty = (float)ldf32(pane + kPaneTrans + 4);
     float sx = (float)ldf32(pane + kPaneScale), sy = (float)ldf32(pane + kPaneScale + 4);
     float nx = tx, ny = ty, nsx = sx, nsy = sy;
     panes::Role role = panes::Role::Content;
-    if (parent == t_root) {
-        if (name_is(pane, "L_EnemyHP_00") || name_is(pane, "L_CommandA_00")) role = panes::Role::Projected;
-        else if (is_hud_edge_pane(pane)) role = panes::Role::Hud;
-    }
+    if (is_hud_edge_pane(pane)) role = panes::Role::Hud;
+    else if (parent == t_root && (name_is(pane, "L_EnemyHP_00") || name_is(pane, "L_CommandA_00"))) role = panes::Role::Projected;
     auto transformed = panes::transform(role, tx, ty, sx, sy, kx, ky);
     nx = transformed.x; ny = transformed.y;
 
@@ -322,24 +343,24 @@ extern "C" void hook_028766CC(Cpu* c) {
     }
     bool moved = nx != tx || ny != ty, scaled = nsx != sx || nsy != sy;
     static const bool log_moves = env::ASPECT_LOG() != nullptr;
-    if (log_moves && moved && parent == t_root) {
+    if (log_moves && parent == t_root) {
         static std::mutex mu;
         static std::unordered_map<std::string, int> seen;
         auto nm = [](uint32_t p) { return std::string((const char*)mem::ptr(p + kPaneName), strnlen((const char*)mem::ptr(p + kPaneName), 24)); };
         std::string key = nm(t_root) + "/" + nm(pane);
         std::lock_guard<std::mutex> lk(mu);
-        if (seen[key]++ == 0) LOG("[aspect] moved '%s' %.1f,%.1f -> %.1f,%.1f", key.c_str(), tx, ty, nx, ny);
+        if (seen[key]++ == 0) LOG("[aspect] child '%s' role=%d %.1f,%.1f -> %.1f,%.1f", key.c_str(), int(role), tx, ty, nx, ny);
     }
-    if (parent == t_root) set_offset(pane, nx - tx, ny - ty);
+    if (parent == t_root || role == panes::Role::Hud) set_offset(pane, nx - tx, ny - ty);
     if (moved || scaled) st8(pane + kPaneFlags, ld8(pane + kPaneFlags) | kPaneMtxDirty);
     if (moved) { stf32(pane + kPaneTrans, nx); stf32(pane + kPaneTrans + 4, ny); }
     if (scaled) { stf32(pane + kPaneScale, nsx); stf32(pane + kPaneScale + 4, nsy); }
-    f_028766CC_orig(c);
+    f_02ABC054_orig(c);
     if (moved) { stf32(pane + kPaneTrans, tx); stf32(pane + kPaneTrans + 4, ty); }
     if (scaled) { stf32(pane + kPaneScale, sx); stf32(pane + kPaneScale + 4, sy); }
 }
 
-extern "C" void hook_02877100(Cpu* c) {
+extern "C" void hook_02ABCAE8(Cpu* c) {
     using namespace aspect;
     uint32_t pane = c->r[3];
     static const uint64_t trace_frame = env::ASPECT_TRACE_FRAME.u64_or(0);
@@ -352,7 +373,7 @@ extern "C" void hook_02877100(Cpu* c) {
         };
         if (!ld32(pane+kPaneParent)) trace(trace,pane,0);
     }
-    if (original()) { f_02877100_orig(c); return; }
+    if (original()) { f_02ABCAE8_orig(c); return; }
     uint32_t parent = ld32(pane + kPaneParent);
     if (!parent) {
         gx2::emit(gx2::OP_LAYOUT_ROOT, {pane});
@@ -370,7 +391,7 @@ extern "C" void hook_02877100(Cpu* c) {
             if (panes::parked_hud(gx, gy)) return;
         }
     }
-    f_02877100_orig(c);
+    f_02ABCAE8_orig(c);
 }
 
 static thread_local int t_tag = 0;
@@ -463,11 +484,12 @@ void aspect::ss_reset() {
     aspect::g_fovy.clear();
 }
 
-extern "C" void site_0287714C(Cpu* c) {
+extern "C" void site_02ABCB34(Cpu* c) {
     using namespace aspect;
     if (original()) return;
     uint32_t pane = c->r[3];
     bool content = true;
+    bool edge = false;
     const char* name = (const char*)mem::ptr(pane + kPaneName);
     uint32_t sentinel = pane + kPaneChildren;
     if (panes::fill(std::string_view(name, strnlen(name, 24)), ld32(sentinel) == sentinel,
@@ -476,18 +498,28 @@ extern "C" void site_0287714C(Cpu* c) {
                     (float)ldf32(pane + kPaneSize + 4) * std::fabs((float)ldf32(pane + kPaneScale + 4)))) content = false;
     for (uint32_t p = pane; p; p = ld32(p + kPaneParent)) {
         uint32_t parent = ld32(p + kPaneParent);
+        if (is_hud_edge_pane(p)) { content = false; edge = true; }
         if (parent && !ld32(parent + kPaneParent) &&
-            (is_hud_edge_pane(p) || name_is(p, "L_EnemyHP_00") || name_is(p, "L_CommandA_00"))) content = false;
+            (name_is(p, "L_EnemyHP_00") || name_is(p, "L_CommandA_00"))) content = false;
         if (!parent && (ldf32(p + kPaneTrans) != 0 || ldf32(p + kPaneTrans + 4) != 0) &&
             has_world_anchor(p)) content = false;
     }
-    gx2::emit(gx2::OP_LAYOUT_CONTENT, {content ? 1u : 0u});
+    gx2::emit(gx2::OP_LAYOUT_CONTENT, {content ? 1u : 0u, edge ? 1u : 0u});
+    aspect::scale_edge_text_draw(pane, c->r[4], edge);
 }
-extern "C" void site_02877150(Cpu*) {
-    if (!aspect::original()) gx2::emit(gx2::OP_LAYOUT_CONTENT, {0});
+extern "C" void site_02ABCB38(Cpu* c) {
+    if (aspect::original()) return;
+    aspect::restore_edge_text_draw(c->r[30]);
+    gx2::emit(gx2::OP_LAYOUT_CONTENT, {0, 0});
 }
 namespace aspect {
 thread_local bool g_content_clip = false;
 void set_content_clip(bool clip) { g_content_clip = clip; }
 bool content_clip() { return g_content_clip; }
+thread_local bool g_edge_hud = false;
+void set_edge_hud(bool edge) { g_edge_hud = edge; }
+bool edge_hud() { return g_edge_hud; }
+thread_local bool g_cover_draw = false;
+void set_cover_draw(bool cover) { g_cover_draw = cover; }
+bool cover_draw() { return g_cover_draw; }
 }

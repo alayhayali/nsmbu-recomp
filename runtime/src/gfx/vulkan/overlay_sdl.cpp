@@ -3,6 +3,7 @@
 #include "core/env.h"
 #ifdef NSMBU_SDL_HOST
 #include "backend.h"
+#include "gfx/aspect.h"
 #include "gfx/display_modes.h"
 #include "settings.h"
 #include "input/input.h"
@@ -204,6 +205,9 @@ void graphics_changed() {
     put("interpFps", {env::INTERP_FPS}, std::to_string(interp::fps()));
     put("fps60Paced", {env::INTERP_PACED}, interp::paced_interpolation_at(60) ? "1" : "0");
     put("scaleFilter", {env::SCALE_FILTER}, std::to_string(gfxvk::scale_filter()));
+    char aspect[32];
+    aspect::choice_text(aspect, sizeof aspect);
+    put("aspect", {env::ASPECT}, aspect);
     if (!env_set({env::VK_PRESENT_MODE}) && gfxvk::present_mode_user_set()) {
         g_values["vkPresentMode"] = std::to_string(gfxvk::present_mode());
         g_values["vkPresentChosen"] = "1";
@@ -227,6 +231,7 @@ void load_saved_options() {
     if (saved("fps60", {env::INTERP, env::INTERP_FPS})) interp::set_mode((int)num("fps60"));
     if (saved("fps60Paced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(60, num("fps60Paced") != 0);
     if (saved("scaleFilter", {env::SCALE_FILTER})) gfxvk::set_scale_filter((int)num("scaleFilter"));
+    if (saved("aspect", {env::ASPECT})) aspect::apply_choice(v["aspect"].c_str());
     if (saved("vkPresentMode", {env::VK_PRESENT_MODE})) {
         const int mode = (int)num("vkPresentMode");
         const bool chosen = v.count("vkPresentChosen") && v["vkPresentChosen"] == "1";

@@ -16,6 +16,15 @@ Changing the aspect ratio mid-session must leave layout and projection in a clea
 0.7.0 expands the camera for non-16:9 windows via [runtime/src/gfx/aspect_view.h](../../runtime/src/gfx/aspect_view.h) and hooks in [runtime/src/hooks/aspect.cpp](../../runtime/src/hooks/aspect.cpp).
 The changelog says the HUD stays in its original frame; that path is incomplete for NSMBU.
 
+21:9 (`64/27`) on a 1920×1080 window letterboxes the TV picture.
+The title scan is the check for the remaining edge faults: bush pop-in, stretched logo text, fades that stop at 16:9, and a one-pixel sky column.
+That work is [widescreen-title.md](widescreen-title.md).
+The file-select iris still opens only to the 16:9 circle, so that scene keeps black side bars inside the 21:9 picture.
+GamePad-sized targets (854×480 and the smaller copies) stay at their own size.
+The world-map dark bars are the screen overlay, which hangs just outside the 1280×720 ortho.
+That ortho stays at 1280×720 and is drawn in the center of the wide picture, so the bars stay off screen.
+Wider world orthos and perspective cameras still expand.
+
 Pane roles and fill/HUD names in [runtime/src/gfx/aspect_panes.h](../../runtime/src/gfx/aspect_panes.h) and `is_hud_edge_pane` still look like Zelda WW HD layouts (`L_Rupy_00`, `N_TV_00`, `PF_PauseTV_00`, …).
 Those names do not match NSMBU layouts, so fill/HUD/content classification is wrong and menus stretch.
 

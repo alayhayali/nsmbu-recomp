@@ -1,5 +1,6 @@
 
 #include "shaders.h"
+#include "gfx/aspect_view.h"
 #include "mods/cemu_pack.h"
 #include "mods/shader_interface.h"
 #include "graphic_pack_hash.h"
@@ -24,6 +25,7 @@
 #include "platform/host.h"
 #include <array>
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <mutex>
 #include <future>
@@ -988,7 +990,7 @@ ShaderStats shader_stats() {
 }
 
 void pack_uniforms_into(const uint32_t* regs, const Shader& shader,
-                        std::vector<uint8_t>& data, float scaleX, float scaleY) {
+                        std::vector<uint8_t>& data, float scaleX, float scaleY, float orthoKx, float orthoKy) {
     const auto& offsets = shader.uniforms;
     data.resize((std::max(offsets.offset_endOfBlock, 16) + 15) & ~15);
 
@@ -1031,12 +1033,17 @@ void pack_uniforms_into(const uint32_t* regs, const Shader& shader,
         float scale[] = {1, 1};
         copy(offsets.offset_texScale[unit], scale, sizeof scale);
     }
+    if (orthoKx != 1.0f || orthoKy != 1.0f) {
+        float vw = std::fabs(2.0f * bitsf(regs[Latte::REGADDR::PA_CL_VPORT_XSCALE]));
+        float vh = std::fabs(2.0f * bitsf(regs[Latte::REGADDR::PA_CL_VPORT_YSCALE]));
+        aspect::view::scale_guest_ortho(reinterpret_cast<float*>(data.data()), data.size() / sizeof(float), vw, vh, orthoKx, orthoKy);
+    }
 }
 
 std::vector<uint8_t> pack_uniforms(const uint32_t* regs, const Shader& shader,
-                                   float scaleX, float scaleY) {
+                                   float scaleX, float scaleY, float orthoKx, float orthoKy) {
     std::vector<uint8_t> data;
-    pack_uniforms_into(regs, shader, data, scaleX, scaleY);
+    pack_uniforms_into(regs, shader, data, scaleX, scaleY, orthoKx, orthoKy);
     return data;
 }
 

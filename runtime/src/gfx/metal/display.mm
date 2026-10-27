@@ -977,12 +977,14 @@ bool drc_overlay_hit(void* window, double wx, double wy) {
 }
 
 // ---------------------------------------------------------------- Display menu
+void menu_options_changed();
 }  // namespace gfx
 
 @interface NsmbuDisplayMenu : NSObject <NSMenuItemValidation, NSMenuDelegate>
 @end
 @implementation NsmbuDisplayMenu
 - (void)fullScreen:(NSMenuItem*)item { [gfx::g_tv_window toggleFullScreen:nil]; }
+- (void)setAspect:(NSMenuItem*)item { aspect::set_mode((int)item.tag); gfx::menu_options_changed(); }
 - (void)setFilter:(NSMenuItem*)item { gfx::g_filter = (int)item.tag; gfx::save_options(); }
 - (void)setMode:(NSMenuItem*)item { gfx::set_drc_mode((int)item.tag); }
 - (void)toggleDrc:(NSMenuItem*)item { gfx::toggle_drc_screen(); }
@@ -1017,6 +1019,7 @@ bool drc_overlay_hit(void* window, double wx, double wy) {
     auto on = [&](bool b) { item.state = b ? NSControlStateValueOn : NSControlStateValueOff; };
     SEL a = item.action;
     if (a == @selector(fullScreen:)) item.title = gfx::tv_fullscreen() ? @"Exit Full Screen" : @"Enter Full Screen";
+    if (a == @selector(setAspect:)) on(item.tag == aspect::mode());
     if (a == @selector(setFilter:)) on(gfx::g_filter == item.tag);
     if (a == @selector(setMode:)) {
         on(gfx::g_mode == item.tag);
@@ -1064,6 +1067,14 @@ void install_display_menu(NSMenu* bar) {
     add(m, @"Enter Full Screen", @selector(fullScreen:), 0, @"f");
     NSMenuItem* alt = add(m, @"Enter Full Screen", @selector(fullScreen:), 0, @"f", NSEventModifierFlagCommand | NSEventModifierFlagControl);
     alt.alternate = YES;  // Ctrl+Cmd+F, the system's full-screen shortcut, does the same
+    [m addItem:[NSMenuItem separatorItem]];
+    header(m, @"Aspect ratio (experimental)");
+    add(m, @"    16:9 (original)", @selector(setAspect:), aspect::kOriginal);
+    add(m, @"    Match window", @selector(setAspect:), aspect::kWindow).toolTip =
+        @"The picture takes the shape of the TV window (or the screen in full screen): wider shows more to the sides";
+    add(m, @"    16:10", @selector(setAspect:), aspect::k16x10);
+    add(m, @"    21:9", @selector(setAspect:), aspect::k21x9);
+    add(m, @"    32:9", @selector(setAspect:), aspect::k32x9);
     [m addItem:[NSMenuItem separatorItem]];
     header(m, @"Picture scaling");
     add(m, @"    Smooth (bilinear)", @selector(setFilter:), kSmooth).toolTip = @"Bilinear filtering, box-filtered when the picture is shrunk";
