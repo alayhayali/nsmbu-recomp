@@ -31,6 +31,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- The aspect ratio chosen in Settings is restored on the next launch.
+  A set `NSMBU_ASPECT` value is used instead of that saved choice.
+- 21:9 button labels stay on the buttons.
+  Menu, Map View, Items, and the world name were drawn past the pills and clipped at the screen edge.
 - 21:9 title characters stay centered under the logo, as they do at 16:9.
   The wide background still extends past the 16:9 frame.
 - Widescreen HUD sits on the screen edges.

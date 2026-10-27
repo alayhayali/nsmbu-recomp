@@ -22,21 +22,7 @@ namespace aspect {
 namespace {
 constexpr float kBase = 16.0f / 9.0f;
 
-int parse_env_mode(float& custom) {
-    const char* e = env::ASPECT();
-    if (!e || !*e) return kOriginal;
-    if (!strcmp(e, "window") || !strcmp(e, "match")) return kWindow;
-    if (!strcmp(e, "16:9")) return kOriginal;
-    if (!strcmp(e, "16:10")) return k16x10;
-    if (!strcmp(e, "21:9")) return k21x9;
-    if (!strcmp(e, "32:9")) return k32x9;
-    float a = 0;
-    if (const char* c = strchr(e, ':')) a = (float)atof(e) / (float)atof(c + 1);
-    else a = (float)atof(e);
-    if (!(a > 0.5f && a < 8.0f)) return kOriginal;
-    custom = a;
-    return kCustom;
-}
+int parse_env_mode(float& custom) { return mode_from_text(env::ASPECT(), custom); }
 float g_custom = kBase;
 std::atomic<int> g_mode{parse_env_mode(g_custom)};
 std::atomic<float> g_window{kBase};
@@ -105,6 +91,13 @@ void set_mode(int m) {
     g_mode = m;
     LOG("[aspect] %s", mode_name(m));
 }
+void apply_choice(const char* text) {
+    float custom = g_custom;
+    int m = mode_from_text(text, custom);
+    if (m == kCustom) g_custom = custom;
+    set_mode(m);
+}
+void choice_text(char* out, size_t n) { text_from_mode(mode(), g_custom, out, n); }
 void set_window_aspect(float a) {
     if (!(a > 0.1f && a < 20.0f)) return;
 
@@ -246,7 +239,42 @@ bool has_world_anchor(uint32_t pane, int depth = 0) {
 
 thread_local uint32_t t_root = 0;
 thread_local bool t_anchor = false;
+
+constexpr uint32_t kTextDrawSelf = 0x02ABE3B8u;
+struct ScaledText { uint32_t pane; uint32_t info; float proj[16]; };
+std::vector<ScaledText> t_scaled_text;
+
+bool is_text_pane(uint32_t pane) {
+    uint32_t vt = ld32(pane + 8);
+    if (vt < 0x10000000u) return false;
+    return ld32(vt + 0x94) == kTextDrawSelf;
 }
+void push_text_scale(uint32_t pane, uint32_t info) {
+    float kx, ky;
+    factors(g_game, kx, ky);
+    if ((kx == 1.0f && ky == 1.0f) || !info) return;
+    ScaledText s{};
+    s.pane = pane;
+    s.info = info;
+    for (int i = 0; i < 16; i++) s.proj[i] = (float)ldf32(info + uint32_t(i) * 4);
+    float scaled[16];
+    for (int i = 0; i < 16; i++) scaled[i] = s.proj[i];
+    view::scale_guest_ortho(scaled, 16, 1280.0f, 720.0f, kx, ky);
+    for (int i = 0; i < 16; i++) stf32(info + uint32_t(i) * 4, scaled[i]);
+    t_scaled_text.push_back(s);
+}
+void pop_text_scale(uint32_t pane) {
+    if (t_scaled_text.empty() || t_scaled_text.back().pane != pane) return;
+    ScaledText s = t_scaled_text.back();
+    t_scaled_text.pop_back();
+    for (int i = 0; i < 16; i++) stf32(s.info + uint32_t(i) * 4, s.proj[i]);
+}
+}
+
+void scale_edge_text_draw(uint32_t pane, uint32_t info, bool edge) {
+    if (edge && is_text_pane(pane)) push_text_scale(pane, info);
+}
+void restore_edge_text_draw(uint32_t pane) { pop_text_scale(pane); }
 }
 
 extern "C" void hook_02ABC054(Cpu* c) {
@@ -477,9 +505,12 @@ extern "C" void site_02ABCB34(Cpu* c) {
             has_world_anchor(p)) content = false;
     }
     gx2::emit(gx2::OP_LAYOUT_CONTENT, {content ? 1u : 0u, edge ? 1u : 0u});
+    aspect::scale_edge_text_draw(pane, c->r[4], edge);
 }
-extern "C" void site_02ABCB38(Cpu*) {
-    if (!aspect::original()) gx2::emit(gx2::OP_LAYOUT_CONTENT, {0, 0});
+extern "C" void site_02ABCB38(Cpu* c) {
+    if (aspect::original()) return;
+    aspect::restore_edge_text_draw(c->r[30]);
+    gx2::emit(gx2::OP_LAYOUT_CONTENT, {0, 0});
 }
 namespace aspect {
 thread_local bool g_content_clip = false;

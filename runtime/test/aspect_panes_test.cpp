@@ -1,6 +1,8 @@
+#include "gfx/aspect.h"
 #include "gfx/aspect_panes.h"
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 using namespace aspect::panes;
 static void check(bool ok) { if (!ok) { std::fprintf(stderr,"pane policy check failed\n"); std::exit(1); } }
@@ -40,6 +42,16 @@ int main() {
     check(!projected_root_name("W_Cursor_00") && !projected_root_name("N_FloorCenter_00") && projected_root_name("N_EnemyHP_00"));
     check(edge_anchor("N_L_00") && edge_anchor("N_R_00") && edge_anchor("P_ArrowL_00") && edge_anchor("N_Coin_00"));
     check(!edge_anchor("N_Arrow_00") && !edge_anchor("W_Frame_00") && !edge_anchor("T_100_00") && !edge_anchor("N_Btn_00"));
+    float custom = 0;
+    check(aspect::mode_from_text("21:9", custom) == aspect::k21x9);
+    check(aspect::mode_from_text("window", custom) == aspect::kWindow);
+    check(aspect::mode_from_text("2.5", custom) == aspect::kCustom && std::fabs(custom - 2.5f) < 1e-4f);
+    char token[32];
+    aspect::text_from_mode(aspect::k21x9, 0, token, sizeof token);
+    check(!strcmp(token, "21:9"));
+    aspect::text_from_mode(aspect::kCustom, custom, token, sizeof token);
+    float again = 0;
+    check(aspect::mode_from_text(token, again) == aspect::kCustom && std::fabs(again - custom) < 1e-4f);
     float wide = (64.f / 27.f) / (16.f / 9.f);
     auto left = transform(Role::Hud, -600, 0, 1, 1, wide, 1);
     check(left.x == -600 - 640 * (wide - 1) && left.y == 0);

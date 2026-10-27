@@ -15,6 +15,7 @@
 #include "../../overlay/hostui.h"
 #include "../../overlay/overlay.h"
 #include "crash/crashrec.h"
+#include "gfx/aspect.h"
 #include "gfx/renderer.h"
 #ifdef NSMBU_HAS_VULKAN
 #include "gfx/vulkan/settings.h"
@@ -90,6 +91,7 @@ static void load_prefs() {
     if (saved(@"fps60", {env::INTERP, env::INTERP_FPS})) interp::set_mode([pref(@"fps60") intValue]);
     if (saved(@"fps60Paced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(60, [pref(@"fps60Paced") boolValue]);
     if (saved(@"fpsHighPaced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(120, [pref(@"fpsHighPaced") boolValue]);
+    if (saved(@"aspect", {env::ASPECT})) aspect::apply_choice([pref(@"aspect") UTF8String]);
 #ifdef NSMBU_HAS_VULKAN
     if (saved(@"vkPresentMode", {env::VK_PRESENT_MODE})) gfxvk::set_present_mode([pref(@"vkPresentMode") intValue]);
 #endif
@@ -101,6 +103,11 @@ static void save_prefs() {
     if (!env_set({env::FXAA})) set_pref(@"fxaa", @(render::fxaa()));
     if (!env_set({env::INTERP, env::INTERP_FPS})) set_pref(@"fps60", @(interp::mode()));
     if (!env_set({env::INTERP_FPS})) set_pref(@"interpFps", @(interp::fps()));
+    if (!env_set({env::ASPECT})) {
+        char aspect[32];
+        aspect::choice_text(aspect, sizeof aspect);
+        set_pref(@"aspect", @(aspect));
+    }
     if (!env_set({env::INTERP_PACED})) {
         set_pref(@"fps60Paced", @(interp::paced_interpolation_at(60)));
         set_pref(@"fpsHighPaced", @(interp::paced_interpolation_at(120)));

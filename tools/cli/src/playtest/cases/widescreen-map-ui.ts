@@ -104,15 +104,95 @@ function buttonEdges(img: { w: number; h: number; rgb: Uint8Array }): { left: nu
     return { left, right };
 }
 
+function pillSpan(
+    img: { w: number; h: number; rgb: Uint8Array },
+    y0: number,
+    y1: number,
+    side: "left" | "right",
+): { x0: number; x1: number; y0: number; y1: number } | null {
+    const stride = img.w * 3;
+    let x0 = img.w;
+    let x1 = 0;
+    let top = img.h;
+    let bot = 0;
+    for (let y = y0; y < y1; y += 2) {
+        let x = 0;
+        while (x < img.w) {
+            if (!blue(img.rgb, stride, x, y)) {
+                x += 2;
+                continue;
+            }
+            const start = x;
+            while (x < img.w && blue(img.rgb, stride, x, y)) x += 2;
+            if (x - start < 80) continue;
+            const onSide = side === "left" ? start < img.w / 2 : x > img.w / 2;
+            if (!onSide) continue;
+            x0 = Math.min(x0, start);
+            x1 = Math.max(x1, x);
+            top = Math.min(top, y);
+            bot = Math.max(bot, y);
+        }
+    }
+    if (x1 - x0 < 80) return null;
+    return { x0, x1, y0: top, y1: bot };
+}
+
+function labelInside(img: { w: number; h: number; rgb: Uint8Array }, pill: { x0: number; x1: number; y0: number; y1: number }, side: "left" | "right"): boolean {
+    const stride = img.w * 3;
+    const pad = 90;
+    const from = Math.max(0, pill.x0 - (side === "left" ? pad : 8));
+    const to = Math.min(img.w, pill.x1 + (side === "right" ? pad : 8));
+    const xs: number[] = [];
+    let outside = 0;
+    for (let y = pill.y0; y <= pill.y1; y++) {
+        for (let x = from; x < to; x++) {
+            const i = y * stride + x * 3;
+            const r = img.rgb[i];
+            const g = img.rgb[i + 1];
+            const b = img.rgb[i + 2];
+            if (r < 210 || g < 210 || b < 180) continue;
+            xs.push(x);
+            if (side === "left" ? x < pill.x0 : x >= pill.x1) outside++;
+        }
+    }
+    if (xs.length < 25) return false;
+    xs.sort((a, b) => a - b);
+    const mid = xs[xs.length >> 1];
+    return mid > pill.x0 && mid < pill.x1 && outside < xs.length * 0.2;
+}
+
+function worldNameInset(img: { w: number; h: number; rgb: Uint8Array }): number | null {
+    const stride = img.w * 3;
+    const y0 = Math.floor(img.h * 0.05);
+    const y1 = Math.floor(img.h * 0.16);
+    const x1 = Math.floor(img.w * 0.28);
+    let best = img.w;
+    let columns = 0;
+    for (let x = 0; x < x1; x++) {
+        let n = 0;
+        for (let y = y0; y < y1; y += 2) {
+            const i = y * stride + x * 3;
+            if (img.rgb[i] < 35 && img.rgb[i + 1] < 35 && img.rgb[i + 2] < 35) n++;
+        }
+        if (n >= 6) {
+            best = Math.min(best, x);
+            columns++;
+        }
+    }
+    if (columns < 8) return null;
+    return best;
+}
+
 export const widescreenMapUi: PlayCase = {
     name: "widescreen-map-ui",
-    summary: "21:9 world map keeps Map View and Items on the screen edges.",
+    summary: "21:9 world map keeps Map View, Items, and their labels on the screen edges.",
     run: async (session) => {
         await session.start({ save: "repo", env: { NSMBU_ASPECT: "21:9" } });
         await reachWorldMap(session, 180);
         const path = join(session.workDir, "map.png");
         let edges: { left: number; right: number } | null = null;
         let img = { w: 0, h: 0, rgb: new Uint8Array() };
+        let limit = 0;
         for (let i = 0; i < 12; i++) {
             await session.advance(60, 20);
             await session.screenshot(path);
@@ -127,14 +207,24 @@ export const widescreenMapUi: PlayCase = {
                 }
             }
             edges = buttonEdges(img);
-            if (edges) break;
+            limit = img.w * 0.12;
+            if (edges && edges.left <= limit && img.w - edges.right <= limit) break;
         }
         if (!edges) throw new Error(`map buttons not found in ${path}`);
-        const limit = img.w * 0.12;
         if (edges.left > limit || img.w - edges.right > limit) {
             throw new Error(
                 `map buttons inset at 21:9: left ${edges.left}px right ${img.w - edges.right}px of ${img.w} (limit ${Math.round(limit)})`,
             );
+        }
+        const view = pillSpan(img, Math.floor(img.h * 0.7), Math.floor(img.h * 0.98), "left");
+        const items = pillSpan(img, Math.floor(img.h * 0.7), Math.floor(img.h * 0.98), "right");
+        const menu = pillSpan(img, Math.floor(img.h * 0.02), Math.floor(img.h * 0.18), "right");
+        if (!view || !labelInside(img, view, "left")) throw new Error(`Map View label is outside its button in ${path}`);
+        if (!items || !labelInside(img, items, "right")) throw new Error(`Items label is outside its button in ${path}`);
+        if (!menu || !labelInside(img, menu, "right")) throw new Error(`Menu label is outside its button in ${path}`);
+        const name = worldNameInset(img);
+        if (name != null && name < img.w * 0.012) {
+            throw new Error(`world name is clipped at the left edge (${name}px of ${img.w}) in ${path}`);
         }
     },
 };
