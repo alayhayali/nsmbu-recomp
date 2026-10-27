@@ -16,6 +16,7 @@
 
 #include "gx2/gx2_cmd.h"
 #include "core/runtime.h"
+#include "guest_addr.h"
 
 #include "core/env.h"
 namespace aspect {
@@ -240,14 +241,13 @@ bool has_world_anchor(uint32_t pane, int depth = 0) {
 thread_local uint32_t t_root = 0;
 thread_local bool t_anchor = false;
 
-constexpr uint32_t kTextDrawSelf = 0x02ABE3B8u;
 struct ScaledText { uint32_t pane; uint32_t info; float proj[16]; };
 std::vector<ScaledText> t_scaled_text;
 
 bool is_text_pane(uint32_t pane) {
     uint32_t vt = ld32(pane + 8);
     if (vt < 0x10000000u) return false;
-    return ld32(vt + 0x94) == kTextDrawSelf;
+    return ld32(vt + 0x94) == GC(0x02ABE3B8);
 }
 void push_text_scale(uint32_t pane, uint32_t info) {
     float kx, ky;
