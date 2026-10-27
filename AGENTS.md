@@ -20,7 +20,7 @@ That command reconfigures CMake and regenerates guest stubs on every run, so do 
 `tools/build/build.py` should configure only when the cache or compiler flags are missing, and regenerate guest stubs only when `hooks.txt`, `hooks_*.txt`, or the recomp inputs changed.
 Hidden boots launch `build/debug/nsmbu --game game/usa-1.3.0` (the dump folder that contains the rpx).
 `nsmbu scripted` and `tools/run/scripted-run.sh` pass `game/` and exit before the first frame.
-Title and file-select frame checks use `docs/shortcuts.md`.
+Title and file-select frame checks use the boot recipes in `docs/automation.md`.
 
 ## Code style
 

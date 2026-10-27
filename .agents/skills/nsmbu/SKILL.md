@@ -10,9 +10,8 @@ Run `nsmbu --help` for the command list.
 
 ## Docs
 
-Read `docs/automation.md` for playtests, `nsmbu scripted`, and replay inputs.
-World-map boots and other reused `NSMBU_PRESS` timelines are in `docs/shortcuts.md`.
-Add a new shortcut there when a command is worth running again.
+Read `docs/automation.md` for playtests, `nsmbu scripted`, replay inputs, and boot recipes.
+Add a new boot recipe there when a command is worth running again.
 Read `docs/cli.md` for install, build/launch, and the short live control commands.
 Read `docs/env.md` when you add, rename, or read an `NSMBU_*` variable.
 Read `game/README.md` for dump folder layout.
@@ -57,7 +56,7 @@ Launch `build/debug/nsmbu --game game/usa-1.3.0`.
 Copy `nsmbu/save` into `.tmp/<name>/save` and set `NSMBU_USER_DIR` to `nsmbu/`.
 `NSMBU_LOG_FILE` does not capture `fprintf` from the render thread.
 That text stays on the terminal.
-Title and file-select press lists are in `docs/shortcuts.md`.
+Title and file-select press lists are in `docs/automation.md`.
 Enter `FileSelect` directly when the check is the menu.
 Do not play the title for 1000 frames to reach it.
 
