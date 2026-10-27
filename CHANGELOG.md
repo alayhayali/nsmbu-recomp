@@ -7,6 +7,11 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Added
+
+- Decompiled `SndAudioMgr::startSound` / `startSystemSe`, `CourseSelectLayerMgr::createLayers`, and `ReflectionRenderObjLayer::render_` in `vendor/decomp/src`.
+  The frame-loop, map-shadow, and soft-restart notes answer their open claims: the draw-context lock and unlock, the task-manager `afterCalc`, the eleven-node `DualScreenMethodTreeMgr` layout, the TV `"DepthShadow"` creation sites, and the `0x1017C814` `SndAudioMgr` method table.
+
 ## [0.7.1] - 2026-10-27
 
 ### Changed
