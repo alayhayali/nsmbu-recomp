@@ -20,6 +20,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Changed
 
+- Aspect ratio moved from Settings → Graphics to Settings → Display and is marked experimental.
 - The window title never shows a live frame rate, including in development builds.
   Use the performance overlay for fps.
 - Settings language and content-mod Restart now relaunches the app (same path as switching Metal and Vulkan) instead of soft-rebooting the guest in the same window.

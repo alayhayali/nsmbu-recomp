@@ -15,7 +15,6 @@
 #include "../../overlay/hostui.h"
 #include "../../overlay/overlay.h"
 #include "crash/crashrec.h"
-#include "gfx/aspect.h"
 #include "gfx/renderer.h"
 #ifdef NSMBU_HAS_VULKAN
 #include "gfx/vulkan/settings.h"
@@ -241,11 +240,9 @@ static NsmbuStateMenu* g_state_menu;
 - (void)toggleDrcWindow:(NSMenuItem*)item { gfx::show_drc_window(!gfx::drc_window_shown()); }
 - (void)toggleFxaa:(NSMenuItem*)item { render::set_fxaa(!render::fxaa()); update_title(); }
 - (void)setRes:(NSMenuItem*)item { set_res(kResScales[item.tag]); update_title(); }
-- (void)setAspect:(NSMenuItem*)item { aspect::set_mode((int)item.tag); update_title(); }
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
     if (item.action == @selector(setRes:))
         item.state = fabsf(kResScales[item.tag] - current_res_scale()) < 0.01f ? NSControlStateValueOn : NSControlStateValueOff;
-    if (item.action == @selector(setAspect:)) item.state = item.tag == aspect::mode() ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(setRenderer:)) {
         render::Api a = (render::Api)item.tag;
         item.state = a == render::preferred() ? NSControlStateValueOn : NSControlStateValueOff;
@@ -334,14 +331,6 @@ void install_menu(NSWindow* tv) {
     add(g, @"    1.5x (1920x1080)", @selector(setRes:), @"R", 1);
     add(g, @"    2x (2560x1440)", @selector(setRes:), @"R", 2);
     add(g, @"    3x (3840x2160)", @selector(setRes:), @"R", 3);
-    [g addItem:[NSMenuItem separatorItem]];
-    [g addItemWithTitle:@"Aspect ratio" action:nil keyEquivalent:@""].enabled = NO;
-    add(g, @"    16:9 (original)", @selector(setAspect:), @"", aspect::kOriginal);
-    add(g, @"    Match window", @selector(setAspect:), @"", aspect::kWindow).toolTip =
-        @"The picture takes the shape of the TV window (or the screen in full screen): wider shows more to the sides";
-    add(g, @"    16:10", @selector(setAspect:), @"", aspect::k16x10);
-    add(g, @"    21:9", @selector(setAspect:), @"", aspect::k21x9);
-    add(g, @"    32:9", @selector(setAspect:), @"", aspect::k32x9);
     [g addItem:[NSMenuItem separatorItem]];
     add(g, @"16x anisotropic filtering (N)", @selector(toggleAniso:), @"N");
     add(g, @"Edge smoothing, FXAA (8)", @selector(toggleFxaa:), @"8");

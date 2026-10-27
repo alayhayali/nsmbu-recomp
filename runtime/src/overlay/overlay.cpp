@@ -727,13 +727,6 @@ void tab_graphics() {
         if (radio(names[i], std::fabs(cur - s) < 0.01f)) post_changed([s] { hostui::set_res_scale(s); });
     }
 
-    heading("Aspect ratio");
-    int am = aspect::mode();
-    for (int i = aspect::kOriginal; i <= aspect::k32x9; i++) {
-        if (i) ImGui::SameLine();
-        if (radio(aspect::mode_name(i), am == i)) post_changed([i] { aspect::set_mode(i); });
-    }
-
     heading("Effects");
     bool v;
     if (check("16x anisotropic filtering", render::aniso(), &v, render::feature_available(render::kFeatureAniso)))
@@ -855,6 +848,12 @@ void tab_display() {
         hostui::post([v] { hostui::set_run_in_background(v); });
     help("Keeps the game at full speed when another window is in front.\n"
          "Turn this off to pause the game when the window loses focus.");
+    heading("Aspect ratio (experimental)");
+    int am = aspect::mode();
+    for (int i = aspect::kOriginal; i <= aspect::k32x9; i++) {
+        if (i) ImGui::SameLine();
+        if (radio(aspect::mode_name(i), am == i)) post_changed([i] { aspect::set_mode(i); });
+    }
     heading("Picture scaling");
     static const char* const f[] = {"Smooth", "Sharp", "Integer scale (pixel exact)"};
     const bool fok = hostui::scale_filter_available();
