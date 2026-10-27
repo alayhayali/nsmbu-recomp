@@ -9,6 +9,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Added
 
+- A decomp verification checklist (`vendor/decomp/docs/TODO.md`) that breaks the decomp notes into single address and offset claims, checked against the USA and Europe RPX.
+- `tools/rpx/ppcdis.py` annotates import calls and calls to a name in `tools/recomp/headers_names.txt`, and finds the dump through `game/active`.
 - A plan for test isolation, scripted run compare, CI checks, and release packages taken from later Wind Waker HD work.
 - Decomp notes for the sead / ApplicationFramework frame loop, and a plan to drive present rate from wall-clock time while keeping 60 logic steps/s.
 - Settings → Saves shows a short preview of the real game save (files, world, lives, play time) and opens that saves folder (not save states) from the top of the tab.
