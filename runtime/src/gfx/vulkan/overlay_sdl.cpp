@@ -6,6 +6,7 @@
 #include "gfx/aspect.h"
 #include "gfx/display_modes.h"
 #include "settings.h"
+#include "device_choice.h"
 #include "input/input.h"
 #include "hooks/interp.h"
 #include "overlay/hostui.h"
@@ -211,6 +212,10 @@ void graphics_changed() {
     if (!env_set({env::VK_PRESENT_MODE}) && gfxvk::present_mode_user_set()) {
         g_values["vkPresentMode"] = std::to_string(gfxvk::present_mode());
         g_values["vkPresentChosen"] = "1";
+    }
+    if (!env_set({env::VK_GPU}) && !gfxvk::device_inventory.empty()) {
+        const std::string gpu = gfxvk::device_setting();
+        g_values["gpu"] = gpu.empty() ? "dedicated" : gpu;
     }
     save_locked();
 }

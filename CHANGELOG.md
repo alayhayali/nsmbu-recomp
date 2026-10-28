@@ -15,8 +15,13 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- Vulkan prefers a dedicated GPU when one can draw the game windows.
+  Graphics (` or F12) can prefer dedicated, prefer integrated, or one listed card.
+  The choice applies on the next start.
+  `NSMBU_VK_GPU` overrides it for that start.
 - The TV window title uses ASCII separators so punctuation no longer shows as garbled text on some systems.
-- Metal: a new render target starts with the texels already in guest memory. A course's static tiles drawn from its working tileset, such as the used block after hitting a ? block, were invisible.
+- Metal: a new render target starts with the texels already in guest memory.
+  A course's static tiles drawn from its working tileset, such as the used block after hitting a ? block, were invisible.
 
 ## [0.7.2] - 2026-10-27
 

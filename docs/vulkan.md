@@ -230,6 +230,14 @@ measured about 30 FPS with argument buffers and 30–40 FPS with direct bindings
 these are historical measurements from before the later CPU fixes. The setting is documented in
 [MoltenVK configuration parameters](https://github.com/KhronosGroup/MoltenVK/blob/main/Docs/MoltenVK_Configuration_Parameters.md).
 
+## Graphics card
+
+When more than one Vulkan device can draw the TV and GamePad windows, the game uses a dedicated GPU.
+Graphics in the settings overlay (` or F12) offers Prefer dedicated, Prefer integrated, or one listed card.
+That choice is saved and applies the next time the game starts.
+`NSMBU_VK_GPU` overrides the saved choice for one start.
+Its value is `dedicated`, `integrated`, a card id such as `10de:2184`, or part of the card name.
+
 ## CPU paths (on by default since 2026-10-07; formerly "opt-in CPU experiments")
 
 The following paths are on by default on every platform (`runtime/src/main.cpp`,
