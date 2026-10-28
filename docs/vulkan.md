@@ -210,7 +210,7 @@ pipelines before gameplay.
 
 Set `NSMBU_VK_STATS=1` to report frame rate, frame-interval percentiles, upload
 traffic, shader compilation, and GPU/presentation waits every 120 frames.
-Use the performance overlay for live presented FPS; the window title stays as the app name.
+Use the performance overlay for live presented FPS; the window title shows the release and game versions.
 Stats also report descriptor allocation/reuse, SPIR-V compilation and disk hits,
 decompiler time, and Vulkan pipeline-creation time. Cache snapshot-copy time is
 reported separately from background serialization and disk-write time.
@@ -229,6 +229,14 @@ for larger resource limits or another device. A same-scene M3 Max comparison
 measured about 30 FPS with argument buffers and 30–40 FPS with direct bindings;
 these are historical measurements from before the later CPU fixes. The setting is documented in
 [MoltenVK configuration parameters](https://github.com/KhronosGroup/MoltenVK/blob/main/Docs/MoltenVK_Configuration_Parameters.md).
+
+## Graphics card
+
+When more than one Vulkan device can draw the TV and GamePad windows, the game uses a dedicated GPU.
+Graphics in the settings overlay (` or F12) offers Prefer dedicated, Prefer integrated, or one listed card.
+That choice is saved and applies the next time the game starts.
+`NSMBU_VK_GPU` overrides the saved choice for one start.
+Its value is `dedicated`, `integrated`, a card id such as `10de:2184`, or part of the card name.
 
 ## CPU paths (on by default since 2026-10-07; formerly "opt-in CPU experiments")
 
@@ -369,14 +377,14 @@ controls remain disabled until the renderer reports support.
 
 | Control | Behavior |
 | --- | --- |
-| `R` | Cycle internal resolution through 1×, 1.5×, 2×, and 3×: 1280×720, 1920×1080, 2560×1440, and 3840×2160. The menu also selects each preset directly. |
+| `R` | Cycle internal resolution through 360p, 540p, 720p (the Wii U picture), 1080p, 1440p, and 2160p/4K, with lower choices scaled up to the window and each preset also available in the menu. |
 | `N` | Toggle anisotropic filtering up to 16×, bounded by device support, for eligible mipmapped asset textures. |
 | `8` | Toggle FXAA in final screen presentation. This is post-process antialiasing; it does not enable multisampled guest surfaces. |
 | `6` | Toggle 60 FPS interpolation mode. Selecting it does not guarantee its target frame rate. |
 | Graphics menu: Scaling | Select smooth, sharp, or integer scaling for presentation. |
 
 Startup overrides match Metal: `NSMBU_RES_SCALE` selects the initial internal scale
-(1–4). `NSMBU_ANISO` defaults to off and a
+(0.5–4). `NSMBU_ANISO` defaults to off and a
 nonzero value enables it. `NSMBU_FXAA` defaults to off and its presence enables it,
 including a value of `0`, matching Metal's existing behavior.
 `NSMBU_SCALE_FILTER=smooth|sharp|integer` selects the initial presentation filter;

@@ -121,6 +121,11 @@ static void test_cap() {
     CHECK(cap_fps(240, 0, true) == 240);
     CHECK(cap_fps(240, 60, false) == 240);
     CHECK(cap_fps(100, 240, true) == 120);
+    CHECK(presented_fps(0, 120, 165, true) == 60);
+    CHECK(presented_fps(0, 165, 165, false) == 60);
+    CHECK(presented_fps(1, 120, 165, true) == 120);
+    CHECK(presented_fps(1, 240, 165, true) == 165);
+    CHECK(repeat_period_ns(false, presented_fps(0, 120, 165, true)) == 0);
     CHECK(logic_wait_matches_presents(60));
     CHECK(logic_wait_matches_presents(120));
     CHECK(logic_wait_matches_presents(240));

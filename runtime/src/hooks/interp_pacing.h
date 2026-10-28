@@ -129,6 +129,11 @@ inline int cap_fps(int fps, int hz, bool vsync) {
     return std::min(fps, display_fps(hz));
 }
 
+inline int presented_fps(int mode, int fps, int hz, bool vsync) {
+    if (mode != 1) return 60;
+    return cap_fps(fps, hz, vsync);
+}
+
 inline int frames_for_step(int fps, uint64_t step) {
     const int64_t rate = valid_fps(fps);
     return int(rate * int64_t(step + 1) / 60 - rate * int64_t(step) / 60);

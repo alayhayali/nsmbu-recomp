@@ -67,7 +67,7 @@ A hardware keyboard uses the keyboard layout and hotkeys of the macOS build.
 
 ## Differences from macOS
 
-- The GamePad picture has no window of its own; picture-in-picture in the top right corner is the default.
+- The GamePad picture has no window of its own. It starts off; picture-in-picture goes in the top right corner.
 - A GPU without BC texture compression (the Simulator, some iPhones) gets BC1–5 textures decoded to RGBA8 on upload.
 - The game pauses whenever the app is not active, because iOS does not let apps use the GPU in the background.
 - Presentation always waits for the display, so the uncapped debug mode only uncaps the game.

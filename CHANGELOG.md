@@ -10,12 +10,35 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ### Added
 
 - iOS and iPadOS build (`ios/build_ios.sh`, [docs/ios.md](docs/ios.md)): the Metal renderer in a UIKit app with on-screen controls, game controllers and hardware keyboards.
-  The GamePad picture is shown over the TV picture and takes touches.
+  Picture-in-picture puts the GamePad picture over the TV picture, where it takes touches.
 - Metal decodes BC1–5 textures on upload when the GPU cannot sample them.
 
 ### Changed
 
+- Guest-code notes live in the docs.
+  The guest skill is gone.
+- The GamePad screen starts off.
+  Off is the first choice in Settings.
+- Internal resolution adds 360p and 540p for slower machines.
+  The choices read 360p, 540p, 720p, 1080p, 1440p, and 2160p/4K.
+  720p is the Wii U picture.
+  Lower choices draw fewer pixels and are scaled up to the window.
+  R cycles the list.
+- Translating the game to C uses every CPU core, so install and a full recompile finish sooner.
+- The TV window title shows the NSMBU release version and the installed game build (for example `v0.7.2 - USA v64`, or `0.7.2 git - EU v0` on a local build).
 - A later release tag reuses the Linux compiler cache, so that build compiles less.
+
+### Fixed
+
+- 60 fps stays at 60 when a higher rate was used earlier.
+  The performance overlay no longer reports that higher rate.
+- Vulkan prefers a dedicated GPU when one can draw the game windows.
+  Graphics (` or F12) can prefer dedicated, prefer integrated, or one listed card.
+  The choice applies on the next start.
+  `NSMBU_VK_GPU` overrides it for that start.
+- The TV window title uses ASCII separators so punctuation no longer shows as garbled text on some systems.
+- Metal: a new render target starts with the texels already in guest memory.
+  A course's static tiles drawn from its working tileset, such as the used block after hitting a ? block, were invisible.
 
 ## [0.7.2] - 2026-10-27
 
