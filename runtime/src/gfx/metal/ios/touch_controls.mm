@@ -241,8 +241,13 @@ static bool host_only(int i) { return kControls[i].kind != kStick && kControls[i
             [_owners setObject:@(c) forKey:t];
             continue;
         }
+        // the drawn stick wins over the GamePad picture: with the GamePad screen full size (the world
+        // map in Auto, GamePad only) every point is on the picture and the stick never got a finger
+        const CGRect stick = _frames[kStickIndex];
+        const bool onStick = CGRectContainsPoint(CGRectInset(stick, -stick.size.height * 0.15, -stick.size.height * 0.15), p);
         float tx, ty;
-        if (!input::pro_controller() && [self gamePadPoint:p tx:&tx ty:&ty clamp:false]) {
+        if (!(onStick && !_stickTouch && !_shapes[kStickIndex].hidden) && !input::pro_controller() &&
+            [self gamePadPoint:p tx:&tx ty:&ty clamp:false]) {
             [_owners setObject:@(kGamePadTouch) forKey:t];
             input::set_touch(true, tx, ty);
             gfx::display_touched();
