@@ -4,6 +4,12 @@ This project compiles Wii U game assets into a standalone, native executable.
 The release package includes the necessary runtime, build tools, and installer script.  
 You must supply your own copy of the game files, disc image, and encryption keys.  
 
+> [!IMPORTANT]
+> There is no Nintendo code, no assets and no game data anywhere in this project or its releases.  
+> You need your own legally dumped copy of the game.  
+> Nothing in this repo, in any release, or in the build process contains or downloads Nintendo IP.  
+
+
 ## Controls
 
 Press `F12` to open the settings overlay.  
