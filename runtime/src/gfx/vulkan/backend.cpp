@@ -11,6 +11,7 @@
 #define VK_USE_PLATFORM_METAL_EXT
 #endif
 #include "app_title.h"
+#include "core/window_title.h"
 #include "core/build_info.h"
 #include "backend.h"
 #include "bc_decode.h"
@@ -2375,7 +2376,9 @@ void init() {
 #ifndef __ANDROID__
   ::hostui::window_size(windowW, windowH);
 #endif
-  R.tv.window = SDL_CreateWindow(app_title::kName, windowW, windowH, windowFlags);
+  char initialTitle[window_title::kCap];
+  window_title::format_base(initialTitle, sizeof initialTitle);
+  R.tv.window = SDL_CreateWindow(initialTitle, windowW, windowH, windowFlags);
   if (!R.tv.window)
     throw std::runtime_error(SDL_GetError());
 #ifdef __ANDROID__
@@ -2745,11 +2748,11 @@ void run_main_loop() {
       if (exitFrame && frame_count() >= exitFrame) {
         SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);
       }
-      char title[160];
-      std::snprintf(title, sizeof title, "%s", app_title::kName);
+      char title[window_title::kCap];
+      window_title::format_base(title, sizeof title);
       if (build::dev() && gx2::uncapped())
         std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
-      static char lastTitle[160];
+      static char lastTitle[window_title::kCap];
       if (strcmp(title, lastTitle)) {
         memcpy(lastTitle, title, sizeof lastTitle);
         SDL_SetWindowTitle(R.tv.window, title);

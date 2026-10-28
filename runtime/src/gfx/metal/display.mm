@@ -21,6 +21,7 @@
 namespace gfx { uint64_t shader_warm_activity(); }
 #include "gfx/renderer.h"
 #include "core/runtime.h"
+#include "core/window_title.h"
 #include "hooks/interp.h"
 #ifdef NSMBU_HAS_VULKAN
 #include "gfx/vulkan/api.h"
@@ -364,7 +365,9 @@ static void create_windows() {
     for (NSNotificationName n in @[ NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification ])
         [[NSNotificationCenter defaultCenter] addObserverForName:n object:NSApp queue:nil
                                                       usingBlock:^(NSNotification*) { update_app_focus(); }];
-    NSWindow* tv = make_window(0, @"New Super Mario Bros. U (recompiled)",
+    char tvTitle[window_title::kCap];
+    window_title::format_base(tvTitle, sizeof tvTitle);
+    NSWindow* tv = make_window(0, @(tvTitle),
                                [[NsmbuTvView alloc] initWithFrame:NSMakeRect(0, 0, 1280, 720)], 1280, 720, NSMakePoint(0, 0));
     g_tv_window = tv;
     install_menu(tv);

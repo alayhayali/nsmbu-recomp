@@ -22,6 +22,7 @@
 #endif
 #include "core/runtime.h"
 #include "core/build_info.h"
+#include "core/window_title.h"
 
 namespace gfx {
 bool drc_window_available();
@@ -49,7 +50,6 @@ namespace ax { void start_sound_trace(const char* path, double seconds); }
 namespace gfx { bool menu_hotkey(uint16_t code); NSMenuItem* controls_menu_item();  void install_overlay_input(); }
 
 static NSWindow* g_tv;
-static NSString* const kTitle = @"New Super Mario Bros. U (recompiled)";
 
 static const bool g_prefs = env::NO_HOST_INPUT() == nullptr;
 static bool g_prefs_loaded = false;
@@ -120,11 +120,14 @@ static void save_prefs() {
 
 static void update_title() {
     save_prefs();
-    NSString* t = kTitle;
+    char base[window_title::kCap];
+    window_title::format_base(base, sizeof base);
+    NSString* baseTitle = @(base);
+    NSString* t = baseTitle;
     if (build::dev() && gx2::uncapped())
         t = [t stringByAppendingString:@" \u00b7 UNCAPPED (debug)"];
     std::string msg = ss::last_message();
-    if (!msg.empty()) t = [NSString stringWithFormat:@"%@ \u2014 %s", kTitle, msg.c_str()];
+    if (!msg.empty()) t = [NSString stringWithFormat:@"%@ \u2014 %s", baseTitle, msg.c_str()];
     if (env::LOG_TITLE() && ![t isEqualToString:g_tv.title]) {
         static NSString* last;
         if (![t isEqualToString:last]) LOG("[display] title: %s", t.UTF8String);
