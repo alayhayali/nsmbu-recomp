@@ -7,6 +7,12 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Added
+
+- iOS and iPadOS build (`ios/build_ios.sh`, [docs/ios.md](docs/ios.md)): the Metal renderer in a UIKit app with on-screen controls, game controllers and hardware keyboards.
+  The GamePad picture is shown over the TV picture and takes touches.
+- Metal decodes BC1–5 textures on upload when the GPU cannot sample them.
+
 ### Changed
 
 - A later release tag reuses the Linux compiler cache, so that build compiles less.
