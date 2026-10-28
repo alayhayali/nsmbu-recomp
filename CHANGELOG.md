@@ -21,6 +21,31 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Translating the game to C uses every CPU core, so install and a full recompile finish sooner.
 - The TV window title shows the NSMBU release version and the installed game build (for example `v0.7.2 - USA v64`, or `0.7.2 git - EU v0` on a local build).
 - A later release tag reuses the Linux compiler cache, so that build compiles less.
+- Each ctest runs with its own `NSMBU_USER_DIR` under `test-users/`, so tests no longer write the `nsmbu/` folder.
+  A new `user_folder_isolation` test checks that a saved `controls.json` lands there and not in the home folder.
+- Each `nsmbu test` case runs with its own user folder (`.tmp/playtest/<name>/user`) for settings, controls, and the shader cache.
+  Cases that use the repo save also get a copy of `settings.ini` and `controls.json`.
+- `tools/run/scripted-run.sh` now uses its own user folder under the run folder (`.tmp/<name>/user`) unless `NSMBU_USER_DIR` is set.
+- Recompiling an unchanged game no longer rewrites every generated C file, so a normal rebuild skips guest code that did not change.
+- Hooked game functions and instruction-level hook sites keep plain register form in the recompiled C (the runtime hook can read and write the Cpu mid-function).
+- `tools/gametest/run_scenario.sh` and `compare.py` compare two scripted runs.
+  The runtime writes a status line per logic step (scene, course, pack, player position) with `NSMBU_TEST_STATUS_TRACE`, and the compare tool aligns the runs on a named scene and prints the first differing step.
+  `NSMBU_TEST_ALIGN_SCENE` names the scene, and `NSMBU_TEST_FIXED_SEED=1` counts scripted presses, sticks, keys, and frame dumps from that scene.
+  A boot that misses the scene is retried and its log is kept.
+- Linux and Windows CI run the benchmark tooling tests, new `tools/test_shaderprep.py` shader preparation tests, and the compare tool tests.
+  CI runs on every branch push only (no separate `pull_request` run); tag pushes do not start it.
+- Windows on ARM64 release: `NSMBU-<version>-windows-arm64.zip`, built and tested on a `windows-11-arm` runner with llvm-mingw `aarch64-w64-mingw32` and the embeddable `python.windows-arm64`.
+  `guard.py` checks its Python files against `tools/release/python-windows-arm64-files.json`.
+- Rolling development build: a nightly check of `main` publishes the `devel-build` pre-release (`<last release>-devel.<sha>`, never marked latest) when `main` moved since the last one.
+  Its notes are the `## [Unreleased]` block (`notes.py --devel`).
+- Windows setup stops before any download when the install folder is too deep for the game (more than 179 characters), and unpacks the compiler with long-path (`\\?\`) paths.
+  `windows.yml` runs `test_setup.py LongPaths` on MSYS2 Python and python.org Python 3.14, and `release.yml` repeats the check in a deep release folder and in one character past the limit.
+- The Windows executables declare `longPathAware`.
+- The Linux AppImage pins the type2 runtime by SHA-256 (`appimage.py` `RUNTIME`, passed to appimagetool with `--runtime-file`) and ships its license texts, which `guard.py` checks.
+  `appimage.py --extract-runtime` recovers the runtime from a built AppImage, and the release workflow checks that the AppImage reports the pinned runtime commit.
+- `nsmbu installer --no-open` packages the installer and returns without opening setup.
+- Decompiled `SndAudioMgr::startSound` / `startSystemSe`, `CourseSelectLayerMgr::createLayers`, and `ReflectionRenderObjLayer::render_` in `vendor/decomp/src`.
+  The frame-loop, map-shadow, and soft-restart notes answer their open claims: the draw-context lock and unlock, the task-manager `afterCalc`, the eleven-node `DualScreenMethodTreeMgr` layout, the TV `"DepthShadow"` creation sites, and the `0x1017C814` `SndAudioMgr` method table.
 
 ### Fixed
 

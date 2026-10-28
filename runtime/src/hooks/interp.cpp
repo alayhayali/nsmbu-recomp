@@ -21,6 +21,7 @@
 #include "core/write_watch.h"
 #include "agent/agent_ctl.h"
 #include "save/savestate.h"
+#include "test/status_trace.h"
 
 #include "core/env.h"
 extern "C" {
@@ -809,6 +810,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
             g_step_work = 0;
             g_pass_valid = false;
             f_029C52CC_orig(c);
+            status_trace::on_logic_step(logic_steps());
             return;
         }
     }
@@ -847,6 +849,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
         f_029C52CC_orig(c);
         work_end();
     }
+    status_trace::on_logic_step(g_logic_steps);
     model_stats_report();
     static uint64_t n = 0, t0 = timebase::now(), f0 = 0;
     if (++n % 300 == 0) {

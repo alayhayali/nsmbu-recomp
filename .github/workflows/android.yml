@@ -14,8 +14,8 @@ name: android
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    # Tag pushes do not start this workflow; a release tag points at a commit CI already tested.
+    branches: ["**"]
 
 permissions:
   contents: read

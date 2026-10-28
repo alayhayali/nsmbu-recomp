@@ -47,3 +47,24 @@ Stop without retagging only when the user asks to watch or report.
    On failure, report the run URL and the failing step from `gh run view <id> --log-failed`, fix on `main`, push `main`, replace the tag as in step 5, and return to this step.
 
 Done when the version branch is on `main` in this checkout, `nsmbu test` and `nsmbu installer --no-open` have passed here, the tag is on `origin`, the release workflow conclusion is `success`, and the GitHub Release exists and is not a draft.
+
+## Rules
+
+- Tag pattern must be `v*` or the workflow does not publish.
+- `tools/release/notes.py` copies the matching `## [X.Y.Z]` block from `CHANGELOG.md` into the GitHub Release body.
+  That heading must exist before the tag build publishes.
+- Do not create an empty version heading.
+- Do not push a tag that already exists on `origin` without retagging after a fix (the default loop) or an explicit retag request.
+- Do not push `main` or the tag until step 0 (merge into `main`) is done and step 3 local verify has passed on `main`.
+- Dry run without publishing: `gh workflow run release.yml -f dry_run=true` (no tag required).
+  Use that only when the user asks for a dry run.
+
+## Jobs to expect
+
+| Job | Role |
+| --- | --- |
+| version | Sets `VERSION` from the tag; on the nightly schedule starts a development build when `main` moved since the `devel-build` tag |
+| macos / windows-x86_64 / windows-arm64 / linux-x86_64 / linux-aarch64 | Build, package, unit tests |
+| publish | Upload zips / AppImage and `gh release create` |
+
+Any failed package job skips publish.
