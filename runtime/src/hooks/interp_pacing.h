@@ -130,8 +130,9 @@ inline bool skip_bunched_present(bool course_play, int output_fps, int64_t since
 }
 
 inline bool collapse_duplicate_vsync(bool presented_since_wake, bool wake_valid, int64_t since_wake_ns) {
+    (void)since_wake_ns;
     if (presented_since_wake || !wake_valid) return false;
-    return since_wake_ns < 2'000'000;
+    return true;
 }
 
 inline int64_t absorb_late_wake(int64_t last_ns, int64_t now_ns, int64_t period_ns) {

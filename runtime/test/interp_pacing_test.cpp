@@ -102,7 +102,9 @@ static void test_cap() {
     CHECK(!skip_bunched_present(false, 165, 5000000));
     CHECK(bunched_present_delay_ns(false, 165, 1000000) == 0);
     CHECK(collapse_duplicate_vsync(false, true, 1'000'000));
+    CHECK(collapse_duplicate_vsync(false, true, 5'000'000));
     CHECK(!collapse_duplicate_vsync(true, true, 500'000));
+    CHECK(!collapse_duplicate_vsync(false, false, 5'000'000));
     const int64_t period = present_period_ns(165);
     CHECK(absorb_late_wake(0, period / 2, period) == 0);
     CHECK(absorb_late_wake(0, period + period / 3, period) == period);

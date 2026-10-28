@@ -837,7 +837,14 @@ static void capped_vsync_ready_flip_last_wake(uint64_t granule) {
 }
 static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void (*before_resume)()) {
     const auto now = std::chrono::steady_clock::now();
-    if (capped_vsync_same_frame(granule, now)) return;
+    if (capped_vsync_same_frame(granule, now)) {
+        const int64_t since = g_capped_vsync_last_wake_valid
+            ? std::chrono::duration_cast<std::chrono::nanoseconds>(now - g_capped_vsync_last_wake).count()
+            : 0;
+        if (since > 2'000'000)
+            threads::park_sleep_until(now + std::chrono::microseconds(200), false, nullptr);
+        return;
+    }
     const auto period = capped_vsync_wait_period(granule);
     if (!g_capped_vsync_last_wake_valid) {
         g_capped_vsync_last_wake = now;
@@ -912,7 +919,7 @@ void gx2::pace_host_present() {
     }
     while (drain_before_swap()) {}
     g_pacing_present = false;
-    g_last_paced_swap = std::chrono::steady_clock::now();
+    g_last_paced_swap = std::chrono::steady_clock::time_point(std::chrono::nanoseconds(gap.swap_ns));
     g_last_paced_swap_valid = true;
 }
 

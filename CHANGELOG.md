@@ -66,6 +66,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- A 165 Hz present cap stays on 165.
+  The present wait was keeping the time it actually woke, so each short overrun started the next frame late and the overlay sat near 162.
+- A late world-map frame no longer starts a second present slot while it waits for the previous flip.
+  That extra wait held the overworld near 108 fps.
 - Frame time stays on the present cap when a light frame would otherwise show early and the next full draw shows late.
   The present wait keeps running queued GPU loads, so the boot screen can finish.
 - Install and recomp tools find generated code and hook lists when the install path contains square brackets.
