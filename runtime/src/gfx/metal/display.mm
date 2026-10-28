@@ -92,7 +92,7 @@ static void save_options() {
     save_settings();
 }
 static void load_options() {
-    g_mode = find_name(kModeNames, kDrcModeCount, g_settings[@"drcMode"], kDrcWindow);
+    g_mode = find_name(kModeNames, kDrcModeCount, g_settings[@"drcMode"], kDrcDefaultMode);
     if (!drc_mode_offered(g_mode)) g_mode = kDrcWindow;
     g_corner = find_name(kCornerNames, 4, g_settings[@"pipCorner"], 3);
     g_filter = find_name(kFilterNames, 3, g_settings[@"scaleFilter"], kSmooth);
@@ -1086,11 +1086,11 @@ void install_display_menu(NSMenu* bar) {
         @"Whole-number scale with a border; falls back to Smooth when the picture is larger than the window";
     [m addItem:[NSMenuItem separatorItem]];
     header(m, @"GamePad screen");
+    add(m, @"    Off", @selector(setMode:), kDrcOff).toolTip = @"Not shown; the game keeps drawing it";
     add(m, @"    Separate window", @selector(setMode:), kDrcWindow);
     add(m, @"    Picture-in-picture in the TV window", @selector(setMode:), kDrcPip).toolTip = @"Click the overlay to touch";
     add(m, @"    Automatic picture-in-picture", @selector(setMode:), kDrcAuto).toolTip =
         @"The overlay appears for a few seconds when the GamePad picture changes a lot (a menu opens); Cmd+G keeps it up";
-    add(m, @"    Off", @selector(setMode:), kDrcOff).toolTip = @"Not shown; the game keeps drawing it";
     add(m, @"    GamePad only", @selector(setMode:), kDrcGamePad).toolTip =
         @"Only the GamePad picture in the TV window (click it to touch); in the game, Minus switches to Off-TV Play";
     add(m, @"Show GamePad screen", @selector(toggleDrc:), 0, @"g");

@@ -16,6 +16,7 @@
 #include "core/runtime.h"
 #include "core/write_watch.h"
 #include "core/env.h"
+#include "gfx/res_presets.h"
 #define XXH_INLINE_ALL
 #include "../../../third_party/xxhash/xxhash.h"
 
@@ -40,15 +41,14 @@ uint64_t next_write_seq() {
 }
 
 static float parse_scale(const char* e) {
-    float f = e ? (float)atof(e) : 1.0f;
-    return std::clamp(f > 0 ? f : 1.0f, 1.0f, 4.0f);
+    return clamp_res_scale(e ? (float)atof(e) : 1.0f);
 }
 static std::atomic<float> g_res_requested{parse_scale(env::RES_SCALE())};
 static float g_res_frame = g_res_requested.load();
 static void latch_aspect();
 float res_scale() { return g_res_frame; }
 void set_res_scale(float f) {
-    g_res_requested = std::clamp(f, 1.0f, 4.0f);
+    g_res_requested = clamp_res_scale(f);
     LOG("[gfx] internal resolution %gx", g_res_requested.load());
 }
 void latch_res_scale() {

@@ -27,6 +27,8 @@
 #include "controls_view.h"
 #include "text_entry.h"
 #include "gfx/aspect.h"
+#include "gfx/display_modes.h"
+#include "gfx/res_presets.h"
 #include "crash/crashrec.h"
 #include "text/game_languages.h"
 #include "../gfx/renderer.h"
@@ -764,14 +766,13 @@ void tab_graphics() {
          "60 steps a second.)");
 
     heading("Internal resolution");
-    static const float scales[] = {1.0f, 1.5f, 2.0f, 3.0f};
-    static const char* const names[] = {"1x  (1280x720)", "1.5x  (1920x1080)", "2x  (2560x1440)", "3x  (3840x2160)"};
     float cur = hostui::res_scale();
-    for (int i = 0; i < 4; i++) {
+    for (size_t i = 0; i < gfx::res_preset_count(); i++) {
         if (i) ImGui::SameLine();
-        float s = scales[i];
-        if (radio(names[i], std::fabs(cur - s) < 0.01f)) post_changed([s] { hostui::set_res_scale(s); });
+        const float s = gfx::kResPresets[i].scale;
+        if (radio(gfx::kResPresets[i].label, std::fabs(cur - s) < 0.01f)) post_changed([s] { hostui::set_res_scale(s); });
     }
+    note("720p is the Wii U picture. Lower options draw fewer pixels and are scaled up to the window.");
 
     heading("Effects");
     bool v;
@@ -914,7 +915,8 @@ void tab_display() {
         static const char* const modes[] = {"Separate window", "Picture-in-picture", "Automatic picture-in-picture", "Off",
                                             "GamePad only"};
         bool first = true;
-        for (int i = 0; i < hostui::drc_modes() && i < 5; i++) {
+        for (int i : gfx::kDrcUiOrder) {
+            if (i >= hostui::drc_modes()) continue;
             if (!hostui::drc_mode_offered(i)) continue;
             if (!first) ImGui::SameLine();
             first = false;

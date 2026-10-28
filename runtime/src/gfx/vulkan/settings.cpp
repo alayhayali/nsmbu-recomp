@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "gfx/res_presets.h"
 #include "core/runtime.h"
 #include <atomic>
 #include <cstdlib>
@@ -60,7 +61,7 @@ void set_graphics_feature_available(GraphicsFeature f,bool v) { int i=static_cas
 bool graphics_hotkey(char k,bool activate) {
     GraphicsFeature f;
     switch(k) {
-    case 'R': if(activate) { constexpr float scales[]={1,1.5f,2,3}; float cur=requested_res_scale(); unsigned next=0; for(unsigned i=0;i<4;++i) if(cur<scales[i]-0.01f) { next=i; break; } set_res_scale(scales[next]); } return true;
+    case 'R': if(activate) set_res_scale(gfx::next_res_preset(requested_res_scale())); return true;
     case '6': if(activate) interp::set_mode(0); return true;
     case '7': if(activate) {
         static const int order[] = {60, 120, 144, 165, 240};

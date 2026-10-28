@@ -377,14 +377,14 @@ controls remain disabled until the renderer reports support.
 
 | Control | Behavior |
 | --- | --- |
-| `R` | Cycle internal resolution through 1×, 1.5×, 2×, and 3×: 1280×720, 1920×1080, 2560×1440, and 3840×2160. The menu also selects each preset directly. |
+| `R` | Cycle internal resolution through 360p, 540p, 720p (the Wii U picture), 1080p, 1440p, and 2160p/4K, with lower choices scaled up to the window and each preset also available in the menu. |
 | `N` | Toggle anisotropic filtering up to 16×, bounded by device support, for eligible mipmapped asset textures. |
 | `8` | Toggle FXAA in final screen presentation. This is post-process antialiasing; it does not enable multisampled guest surfaces. |
 | `6` | Toggle 60 FPS interpolation mode. Selecting it does not guarantee its target frame rate. |
 | Graphics menu: Scaling | Select smooth, sharp, or integer scaling for presentation. |
 
 Startup overrides match Metal: `NSMBU_RES_SCALE` selects the initial internal scale
-(1–4). `NSMBU_ANISO` defaults to off and a
+(0.5–4). `NSMBU_ANISO` defaults to off and a
 nonzero value enables it. `NSMBU_FXAA` defaults to off and its presence enables it,
 including a value of `0`, matching Metal's existing behavior.
 `NSMBU_SCALE_FILTER=smooth|sharp|integer` selects the initial presentation filter;

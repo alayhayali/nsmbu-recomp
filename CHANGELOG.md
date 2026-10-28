@@ -9,6 +9,13 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Changed
 
+- The GamePad screen starts off.
+  Off is the first choice in Settings.
+- Internal resolution adds 360p and 540p for slower machines.
+  The choices read 360p, 540p, 720p, 1080p, 1440p, and 2160p/4K.
+  720p is the Wii U picture.
+  Lower choices draw fewer pixels and are scaled up to the window.
+  R cycles the list.
 - Translating the game to C uses every CPU core, so install and a full recompile finish sooner.
 - The TV window title shows the NSMBU release version and the installed game build (for example `v0.7.2 - USA v64`, or `0.7.2 git - EU v0` on a local build).
 - A later release tag reuses the Linux compiler cache, so that build compiles less.
