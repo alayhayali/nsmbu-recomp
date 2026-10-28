@@ -125,9 +125,9 @@ static void update_title() {
     NSString* baseTitle = @(base);
     NSString* t = baseTitle;
     if (build::dev() && gx2::uncapped())
-        t = [t stringByAppendingString:@" \u00b7 UNCAPPED (debug)"];
+        t = [t stringByAppendingString:@" - UNCAPPED (debug)"];
     std::string msg = ss::last_message();
-    if (!msg.empty()) t = [NSString stringWithFormat:@"%@ \u2014 %s", baseTitle, msg.c_str()];
+    if (!msg.empty()) t = [NSString stringWithFormat:@"%@ - %s", baseTitle, msg.c_str()];
     if (env::LOG_TITLE() && ![t isEqualToString:g_tv.title]) {
         static NSString* last;
         if (![t isEqualToString:last]) LOG("[display] title: %s", t.UTF8String);
