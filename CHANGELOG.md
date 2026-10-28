@@ -9,6 +9,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Changed
 
+- Guest-code notes live in the docs.
+  The guest skill is gone.
 - The GamePad screen starts off.
   Off is the first choice in Settings.
 - Internal resolution adds 360p and 540p for slower machines.

@@ -80,6 +80,8 @@ under `.tmp/nsmbu-sead/`.
 - `docs/map-shadow-interp.md` — TV DepthShadow, `0x024F9E24` as mid-function label.
 - `docs/soft-restart-tls.md` — TLS / audio bootstrap.
 
-## Guest skill overlap
+## Parent repo
 
-Runtime hooks and `f_XXXXXXXX` live in the parent repo; use the `guest` skill for `build/gen`, hooks, and crash PC canon mapping. This skill is for REDPRO2 documentation C++ under `vendor/decomp`.
+Runtime hooks and `f_XXXXXXXX` live in the parent repo.
+Read `docs/how-it-works.md` for `build/gen` and guest memory, `docs/names.md` for hooks and symbol names, `docs/builds.md` for regional maps, and `docs/logs.md` to map a crash log's guest PCs to USA ids.
+This skill is for REDPRO2 documentation C++ under `vendor/decomp`.

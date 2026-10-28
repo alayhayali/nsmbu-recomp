@@ -5,6 +5,8 @@ An address is the canonical id of a function, a global, or an instruction site (
 A name is easier to read and easier to talk about.
 Add the name next to the address.
 Do not replace the address with the name: the address stays the key in the hooks files and in the runtime.
+`hooks.txt` and `hooks_*.txt` list the call sites the runtime replaces.
+A regional rebuild shifts those addresses through the map in [builds.md](builds.md) and keeps the `f_XXXXXXXX` names.
 
 ## Where the names come from
 
