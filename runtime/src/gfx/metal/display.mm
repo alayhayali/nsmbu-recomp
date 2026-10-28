@@ -21,6 +21,7 @@
 namespace gfx { uint64_t shader_warm_activity(); }
 #include "gfx/renderer.h"
 #include "core/runtime.h"
+#include "core/window_title.h"
 #include "hooks/interp.h"
 #ifdef NSMBU_HAS_VULKAN
 #include "gfx/vulkan/api.h"
@@ -91,7 +92,7 @@ static void save_options() {
     save_settings();
 }
 static void load_options() {
-    g_mode = find_name(kModeNames, kDrcModeCount, g_settings[@"drcMode"], kDrcWindow);
+    g_mode = find_name(kModeNames, kDrcModeCount, g_settings[@"drcMode"], kDrcDefaultMode);
     if (!drc_mode_offered(g_mode)) g_mode = kDrcWindow;
     g_corner = find_name(kCornerNames, 4, g_settings[@"pipCorner"], 3);
     g_filter = find_name(kFilterNames, 3, g_settings[@"scaleFilter"], kSmooth);
@@ -364,7 +365,9 @@ static void create_windows() {
     for (NSNotificationName n in @[ NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification ])
         [[NSNotificationCenter defaultCenter] addObserverForName:n object:NSApp queue:nil
                                                       usingBlock:^(NSNotification*) { update_app_focus(); }];
-    NSWindow* tv = make_window(0, @"New Super Mario Bros. U (recompiled)",
+    char tvTitle[window_title::kCap];
+    window_title::format_base(tvTitle, sizeof tvTitle);
+    NSWindow* tv = make_window(0, @(tvTitle),
                                [[NsmbuTvView alloc] initWithFrame:NSMakeRect(0, 0, 1280, 720)], 1280, 720, NSMakePoint(0, 0));
     g_tv_window = tv;
     install_menu(tv);
@@ -1083,11 +1086,11 @@ void install_display_menu(NSMenu* bar) {
         @"Whole-number scale with a border; falls back to Smooth when the picture is larger than the window";
     [m addItem:[NSMenuItem separatorItem]];
     header(m, @"GamePad screen");
+    add(m, @"    Off", @selector(setMode:), kDrcOff).toolTip = @"Not shown; the game keeps drawing it";
     add(m, @"    Separate window", @selector(setMode:), kDrcWindow);
     add(m, @"    Picture-in-picture in the TV window", @selector(setMode:), kDrcPip).toolTip = @"Click the overlay to touch";
     add(m, @"    Automatic picture-in-picture", @selector(setMode:), kDrcAuto).toolTip =
         @"The overlay appears for a few seconds when the GamePad picture changes a lot (a menu opens); Cmd+G keeps it up";
-    add(m, @"    Off", @selector(setMode:), kDrcOff).toolTip = @"Not shown; the game keeps drawing it";
     add(m, @"    GamePad only", @selector(setMode:), kDrcGamePad).toolTip =
         @"Only the GamePad picture in the TV window (click it to touch); in the game, Minus switches to Off-TV Play";
     add(m, @"Show GamePad screen", @selector(toggleDrc:), 0, @"g");

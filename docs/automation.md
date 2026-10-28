@@ -71,7 +71,7 @@ The repo `nsmbu/save` stays unread by the game.
 | `NSMBU_NO_HOST_INPUT` | `1` | Ignores keyboard, mouse, and gamepad; scripted input only |
 | `NSMBU_VK_PRESENT_MODE` | `immediate` | Uncapped present for faster boots |
 | `NSMBU_NO_AUDIO` | `1` | Skips opening an audio output device |
-| `NSMBU_RES_SCALE` | `1` unless already set | Internal resolution scale (1–4) |
+| `NSMBU_RES_SCALE` | `1` unless already set | Internal resolution scale (0.5–4) |
 
 The binary also receives `--game` set to `game/` and `--save .tmp/<name>/save`.
 That `game/` folder has no `red-pro2.rpx`, so the process exits before the first frame.

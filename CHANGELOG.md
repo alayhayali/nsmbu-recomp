@@ -7,8 +7,25 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
-### Added
+### Changed
 
+- The GamePad screen starts off.
+  Off is the first choice in Settings.
+- Internal resolution adds 360p and 540p for slower machines.
+  The choices read 360p, 540p, 720p, 1080p, 1440p, and 2160p/4K.
+  720p is the Wii U picture.
+  Lower choices draw fewer pixels and are scaled up to the window.
+  R cycles the list.
+- Translating the game to C uses every CPU core, so install and a full recompile finish sooner.
+- The TV window title shows the NSMBU release version and the installed game build (for example `v0.7.2 - USA v64`, or `0.7.2 git - EU v0` on a local build).
+- A later release tag reuses the Linux compiler cache, so that build compiles less.
+- Each ctest runs with its own `NSMBU_USER_DIR` under `test-users/`, so tests no longer write the `nsmbu/` folder.
+  A new `user_folder_isolation` test checks that a saved `controls.json` lands there and not in the home folder.
+- Each `nsmbu test` case runs with its own user folder (`.tmp/playtest/<name>/user`) for settings, controls, and the shader cache.
+  Cases that use the repo save also get a copy of `settings.ini` and `controls.json`.
+- `tools/run/scripted-run.sh` now uses its own user folder under the run folder (`.tmp/<name>/user`) unless `NSMBU_USER_DIR` is set.
+- Recompiling an unchanged game no longer rewrites every generated C file, so a normal rebuild skips guest code that did not change.
+- Hooked game functions and instruction-level hook sites keep plain register form in the recompiled C (the runtime hook can read and write the Cpu mid-function).
 - `tools/gametest/run_scenario.sh` and `compare.py` compare two scripted runs.
   The runtime writes a status line per logic step (scene, course, pack, player position) with `NSMBU_TEST_STATUS_TRACE`, and the compare tool aligns the runs on a named scene and prints the first differing step.
   `NSMBU_TEST_ALIGN_SCENE` names the scene, and `NSMBU_TEST_FIXED_SEED=1` counts scripted presses, sticks, keys, and frame dumps from that scene.
@@ -28,20 +45,24 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Decompiled `SndAudioMgr::startSound` / `startSystemSe`, `CourseSelectLayerMgr::createLayers`, and `ReflectionRenderObjLayer::render_` in `vendor/decomp/src`.
   The frame-loop, map-shadow, and soft-restart notes answer their open claims: the draw-context lock and unlock, the task-manager `afterCalc`, the eleven-node `DualScreenMethodTreeMgr` layout, the TV `"DepthShadow"` creation sites, and the `0x1017C814` `SndAudioMgr` method table.
 
-### Changed
+### Fixed
 
-- Each ctest runs with its own `NSMBU_USER_DIR` under `test-users/`, so tests no longer write the `nsmbu/` folder.
-  A new `user_folder_isolation` test checks that a saved `controls.json` lands there and not in the home folder.
-- Each `nsmbu test` case runs with its own user folder (`.tmp/playtest/<name>/user`) for settings, controls, and the shader cache.
-  Cases that use the repo save also get a copy of `settings.ini` and `controls.json`.
-- `tools/run/scripted-run.sh` now uses its own user folder under the run folder (`.tmp/<name>/user`) unless `NSMBU_USER_DIR` is set.
-- Recompiling an unchanged game no longer rewrites every generated C file, so a normal rebuild skips guest code that did not change.
-- Hooked game functions and instruction-level hook sites keep plain register form in the recompiled C (the runtime hook can read and write the Cpu mid-function).
+- 60 fps stays at 60 when a higher rate was used earlier.
+  The performance overlay no longer reports that higher rate.
+- Vulkan prefers a dedicated GPU when one can draw the game windows.
+  Graphics (` or F12) can prefer dedicated, prefer integrated, or one listed card.
+  The choice applies on the next start.
+  `NSMBU_VK_GPU` overrides it for that start.
+- The TV window title uses ASCII separators so punctuation no longer shows as garbled text on some systems.
+- Metal: a new render target starts with the texels already in guest memory.
+  A course's static tiles drawn from its working tileset, such as the used block after hitting a ? block, were invisible.
+
+## [0.7.2] - 2026-10-27
 
 ### Fixed
 
-- Install and recomp tools find generated code and hook lists when the install path contains square brackets.
-- Setup save import lets you choose **Copy saves and settings from another NSMBU folder** when no earlier per-user install is detected.
+- On 21:9, enemies, blocks, bushes, and other course scenery no longer pop in at the old 16:9 edge.
+  The title parade stays centered.
 
 ## [0.7.1] - 2026-10-27
 
@@ -296,7 +317,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - The TV and GamePad present together on one vsync.
 
-[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.3...v0.7.0
 [0.6.3]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.2...v0.6.3

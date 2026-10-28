@@ -11,8 +11,10 @@
 #define VK_USE_PLATFORM_METAL_EXT
 #endif
 #include "app_title.h"
+#include "core/window_title.h"
 #include "core/build_info.h"
 #include "backend.h"
+#include "device_choice.h"
 #include "bc_decode.h"
 #include "android_driver.h"
 #include "buffer_cache.h"
@@ -44,6 +46,7 @@
 #include "core/write_watch.h"
 #include <algorithm>
 #include <functional>
+#include <map>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -2078,44 +2081,81 @@ static void init_device(std::vector<const char *> extensions,
   devices.resize(n);
 
   std::string unsuitable;
-  for (DynamicRendering want : {DynamicRendering::Core, DynamicRendering::KHR}) {
-    for (auto device : devices) {
-      VkPhysicalDeviceProperties properties;
-      vkGetPhysicalDeviceProperties(device, &properties);
-      const DynamicRendering have = dynamic_rendering(device, properties, device_extensions(device));
-      if (have != want) {
-        if (want == DynamicRendering::KHR && have == DynamicRendering::None)
-          unsuitable += std::string("\n") + properties.deviceName + ": Vulkan " +
-                        version_text(device_api_version(properties)) + ", driver " +
-                        driver_version_text(properties) +
-                        (device_api_version(properties) < VK_API_VERSION_1_1 ? "; older than Vulkan 1.1"
-                                                                             : "; VK_KHR_dynamic_rendering missing");
-        continue;
-      }
+  struct Found {
+    VkPhysicalDevice device = VK_NULL_HANDLE;
+    uint32_t queue = UINT32_MAX;
+    VkQueueFamilyProperties family{};
+    DynamicRendering rendering = DynamicRendering::None;
+  };
+  std::vector<Found> found(devices.size());
+  device_inventory.clear();
+  for (size_t i = 0; i < devices.size(); i++) {
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(devices[i], &properties);
+    const DynamicRendering have = dynamic_rendering(devices[i], properties, device_extensions(devices[i]));
+    GpuCandidate info;
+    info.name = properties.deviceName;
+    info.kind = int(properties.deviceType);
+    info.rank = have == DynamicRendering::Core ? 0 : 1;
+    char id[32];
+    snprintf(id, sizeof id, "%04x:%04x", properties.vendorID, properties.deviceID);
+    info.identity = id;
+    if (have == DynamicRendering::None) {
+      info.unavailable = "Vulkan " + version_text(device_api_version(properties)) + ", driver " +
+                         driver_version_text(properties) +
+                         (device_api_version(properties) < VK_API_VERSION_1_1 ? "; older than Vulkan 1.1"
+                                                                              : "; VK_KHR_dynamic_rendering missing");
+    } else {
       uint32_t qn;
-      vkGetPhysicalDeviceQueueFamilyProperties(device, &qn, nullptr);
+      vkGetPhysicalDeviceQueueFamilyProperties(devices[i], &qn, nullptr);
       std::vector<VkQueueFamilyProperties> qs(qn);
-      vkGetPhysicalDeviceQueueFamilyProperties(device, &qn, qs.data());
+      vkGetPhysicalDeviceQueueFamilyProperties(devices[i], &qn, qs.data());
       for (uint32_t q = 0; q < qn; q++) {
         VkBool32 tv = 0, drc = VK_TRUE;
-        vkGetPhysicalDeviceSurfaceSupportKHR(device, q, R.tv.surface, &tv);
+        vkGetPhysicalDeviceSurfaceSupportKHR(devices[i], q, R.tv.surface, &tv);
         if (R.drc.surface)
-          vkGetPhysicalDeviceSurfaceSupportKHR(device, q, R.drc.surface, &drc);
+          vkGetPhysicalDeviceSurfaceSupportKHR(devices[i], q, R.drc.surface, &drc);
         if ((qs[q].queueFlags & VK_QUEUE_GRAPHICS_BIT) && tv && drc) {
-          R.physicalDevice = device;
-          R.queueFamily = q;
-          R.computeQueue = (qs[q].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
-          R.gpuTimestampValidBits = qs[q].timestampValidBits;
-          R.dynamicRenderingKHR = have == DynamicRendering::KHR;
+          found[i].device = devices[i];
+          found[i].queue = q;
+          found[i].family = qs[q];
+          found[i].rendering = have;
           break;
         }
       }
-      if (R.physicalDevice)
-        break;
-      unsuitable += std::string("\n") + properties.deviceName + ": cannot draw to the game window";
+      if (!found[i].device) info.unavailable = "cannot draw to the game window";
     }
-    if (R.physicalDevice)
-      break;
+    device_inventory.push_back(info);
+  }
+  std::map<std::string, int> identityCount;
+  for (const auto& info : device_inventory) identityCount[info.identity]++;
+  for (auto& info : device_inventory)
+    if (identityCount[info.identity] > 1) info.identity += ":" + info.name;
+  for (size_t i = 0; i < device_inventory.size(); i++) {
+    const auto& info = device_inventory[i];
+    LOG("[vulkan] GPU %zu: %s (%s, %s): %s", i, info.name.c_str(), gpu_kind_name(info.kind),
+        info.identity.c_str(), info.usable() ? "usable" : info.unavailable.c_str());
+    if (!info.usable()) unsuitable += "\n" + info.name + ": " + info.unavailable;
+  }
+  std::string savedGpu;
+  if (hostui::get("gpu", savedGpu) && (savedGpu == "dedicated" || savedGpu == "discrete")) savedGpu.clear();
+  set_device_setting(savedGpu);
+  const char* gpuEnv = env::VK_GPU();
+  const GpuChoice choice = choose_gpu(device_inventory, device_setting(), gpuEnv ? gpuEnv : "");
+  if (choice.index >= 0) {
+    const auto& slot = found[size_t(choice.index)];
+    const auto& info = device_inventory[size_t(choice.index)];
+    R.physicalDevice = slot.device;
+    R.queueFamily = slot.queue;
+    R.computeQueue = (slot.family.queueFlags & VK_QUEUE_COMPUTE_BIT) != 0;
+    R.gpuTimestampValidBits = slot.family.timestampValidBits;
+    R.dynamicRenderingKHR = slot.rendering == DynamicRendering::KHR;
+    active_gpu_name = info.name;
+    active_gpu_identity = info.identity;
+    active_gpu_kind = info.kind;
+    gpu_fallback = choice.fallback.empty() ? "" : choice.fallback + "; using " + info.name + ".";
+    LOG("[vulkan] chosen GPU: %s (%s)", info.name.c_str(), choice.reason.c_str());
+    if (!gpu_fallback.empty()) LOG("[vulkan] %s", gpu_fallback.c_str());
   }
   if (!R.physicalDevice)
     throw std::runtime_error(
@@ -2377,7 +2417,9 @@ void init() {
 #ifndef __ANDROID__
   ::hostui::window_size(windowW, windowH);
 #endif
-  R.tv.window = SDL_CreateWindow(app_title::kName, windowW, windowH, windowFlags);
+  char initialTitle[window_title::kCap];
+  window_title::format_base(initialTitle, sizeof initialTitle);
+  R.tv.window = SDL_CreateWindow(initialTitle, windowW, windowH, windowFlags);
   if (!R.tv.window)
     throw std::runtime_error(SDL_GetError());
 #ifdef __ANDROID__
@@ -2747,11 +2789,11 @@ void run_main_loop() {
       if (exitFrame && frame_count() >= exitFrame) {
         SDL_Event quit{};quit.type=SDL_EVENT_QUIT;SDL_PushEvent(&quit);
       }
-      char title[160];
-      std::snprintf(title, sizeof title, "%s", app_title::kName);
+      char title[window_title::kCap];
+      window_title::format_base(title, sizeof title);
       if (build::dev() && gx2::uncapped())
         std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
-      static char lastTitle[160];
+      static char lastTitle[window_title::kCap];
       if (strcmp(title, lastTitle)) {
         memcpy(lastTitle, title, sizeof lastTitle);
         SDL_SetWindowTitle(R.tv.window, title);

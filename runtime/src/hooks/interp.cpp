@@ -58,7 +58,7 @@ static std::atomic<int> g_display_hz{0};
 static std::atomic<bool> g_present_vsync{true};
 int display_hz() { return g_env_hz >= 0 ? g_env_hz : g_display_hz.load(std::memory_order_relaxed); }
 bool present_vsync() { return g_present_vsync.load(std::memory_order_relaxed); }
-int output_fps() { return pacing::cap_fps(fps(), display_hz(), present_vsync()); }
+int output_fps() { return pacing::presented_fps(mode(), fps(), display_hz(), present_vsync()); }
 void set_display_hz(int hz) {
     if (hz < 0) hz = 0;
     if (!hz) return;

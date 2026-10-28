@@ -1,4 +1,5 @@
 #include "gfx/aspect_view.h"
+#include "gfx/res_presets.h"
 #include "gfx/render_mips.h"
 #include "bc_decode.h"
 #include "mods/cemu_pack.h"
@@ -82,8 +83,7 @@ static uint64_t content_hash(const uint8_t* p, size_t n) {
 }
 uint64_t next_write_seq() { static uint64_t seq=0; return ++seq; }
 static float parse_scale(const char* e) {
-    float f = e ? (float)atof(e) : 1.0f;
-    return std::clamp(f > 0 ? f : 1.0f, 1.0f, 4.0f);
+    return gfx::clamp_res_scale(e ? (float)atof(e) : 1.0f);
 }
 static std::atomic<float> g_res_requested{parse_scale(env::RES_SCALE())};
 static float g_res_frame = g_res_requested.load();
@@ -91,7 +91,7 @@ static void latch_aspect();
 float res_scale() { return g_res_frame; }
 float requested_res_scale() { return g_res_requested.load(std::memory_order_relaxed); }
 void set_res_scale(float f) {
-    g_res_requested = std::clamp(std::isfinite(f) ? f : 1.0f, 1.0f, 4.0f);
+    g_res_requested = gfx::clamp_res_scale(f);
     LOG("[gfx] internal resolution %gx", g_res_requested.load());
 }
 void latch_res_scale() {
