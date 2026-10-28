@@ -10,6 +10,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ### Added
 
 - `nsmbu installer --no-open` packages the installer and returns without opening setup.
+- Scene checks for agents live in the `scenes` skill.
+  The world map, a course pack, and the file menu each have a short boot that stops on `nsmbu status`.
 
 ### Changed
 
