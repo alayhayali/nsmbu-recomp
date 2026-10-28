@@ -122,6 +122,9 @@ Configure only when the cache or compiler flags are missing.
 Regenerate guest stubs only when `hooks.txt`, `hooks_*.txt`, or the recomp inputs changed.
 The `0 hooks` line from stub generation is normal.
 Hooks live in `build/gen`.
+`tools/recomp/guest_stubs.py` writes weak stubs for guest symbols the runtime still names.
+CMake runs that script on every build.
+A generated game function with the same name replaces the stub.
 
 ## Launch
 

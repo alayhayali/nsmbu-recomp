@@ -9,6 +9,8 @@
 namespace gfx {
 
 enum DrcMode { kDrcWindow, kDrcPip, kDrcAuto, kDrcOff, kDrcGamePad, kDrcModeCount };
+inline constexpr DrcMode kDrcUiOrder[] = {kDrcOff, kDrcWindow, kDrcPip, kDrcAuto, kDrcGamePad};
+inline constexpr int kDrcDefaultMode = kDrcOff;
 enum Filter { kSmooth, kSharp, kInteger };
 extern const char* const kModeNames[kDrcModeCount];
 extern const char* const kCornerNames[4];

@@ -27,6 +27,8 @@
 #include "controls_view.h"
 #include "text_entry.h"
 #include "gfx/aspect.h"
+#include "gfx/display_modes.h"
+#include "gfx/res_presets.h"
 #include "crash/crashrec.h"
 #include "text/game_languages.h"
 #include "../gfx/renderer.h"
@@ -35,6 +37,7 @@
 #endif
 #ifdef NSMBU_HAS_VULKAN
 #include "../gfx/vulkan/settings.h"
+#include "../gfx/vulkan/device_choice.h"
 namespace gfxvk { bool buffer_cache_enabled(); }
 #endif
 #include "input/input.h"
@@ -681,6 +684,51 @@ void tab_graphics() {
             if (ImGui::Button("Restart now")) hostui::post([] { render::restart(); });
         }
     }
+#ifdef NSMBU_HAS_VULKAN
+    if (render::vulkan() && !gfxvk::device_inventory.empty()) {
+        heading("Graphics card (next start)");
+        const bool env = env::VK_GPU() != nullptr;
+        const std::string saved = gfxvk::device_setting();
+        const bool dedicated = saved.empty() || saved == "dedicated" || saved == "discrete";
+        bool haveDiscrete = false, haveIntegrated = false;
+        for (const auto& gpu : gfxvk::device_inventory) {
+            if (!gpu.usable()) continue;
+            if (gpu.kind == gfxvk::kGpuDiscrete) haveDiscrete = true;
+            if (gpu.kind == gfxvk::kGpuIntegrated) haveIntegrated = true;
+        }
+        auto choose = [](const std::string& value) {
+            gfxvk::set_device_setting(value);
+            hostui::set("gpu", value.empty() ? "dedicated" : value);
+        };
+        if (radio("Prefer dedicated", dedicated, !env)) post_changed([choose] { choose(""); });
+        ImGui::SameLine();
+        if (radio("Prefer integrated", saved == "integrated", !env)) post_changed([choose] { choose("integrated"); });
+        for (size_t i = 0; i < gfxvk::device_inventory.size(); i++) {
+            const auto& gpu = gfxvk::device_inventory[i];
+            ImGui::PushID(int(i));
+            const std::string label = gpu.name + " (" + gfxvk::gpu_kind_name(gpu.kind) + ")";
+            if (radio(label.c_str(), saved == gpu.identity, !env && gpu.usable())) {
+                const std::string identity = gpu.identity;
+                post_changed([choose, identity] { choose(identity); });
+            }
+            if (!gpu.usable()) note("%s", gpu.unavailable.c_str());
+            ImGui::PopID();
+        }
+        note("This start uses %s. A different choice applies the next time the game starts.",
+             gfxvk::active_gpu_name.c_str());
+        if (env) note("NSMBU_VK_GPU=%s is set for this start and takes precedence.", env::VK_GPU());
+#ifndef _WIN32
+        else if (gfxvk::gpu_restart_pending(saved, gfxvk::active_gpu_identity, gfxvk::active_gpu_kind, haveDiscrete, haveIntegrated)) {
+            note("Progress since your last save is lost if you restart now.");
+            if (ImGui::Button("Restart now##gpu")) hostui::post([] { render::restart(); });
+        }
+#endif
+        if (!gfxvk::gpu_fallback.empty()) note("%s", gfxvk::gpu_fallback.c_str());
+        help("Prefer dedicated uses a separate graphics card when one can draw the game windows.\n"
+             "Prefer integrated keeps the GPU built into the processor.\n"
+             "A listed card is used on the next start when it is still available.");
+    }
+#endif
     heading("Frame rate (experimental)");
     int m = interp::mode(), f = interp::fps();
     static const int rates[] = {60, 120, 144, 165, 240};
@@ -718,14 +766,13 @@ void tab_graphics() {
          "60 steps a second.)");
 
     heading("Internal resolution");
-    static const float scales[] = {1.0f, 1.5f, 2.0f, 3.0f};
-    static const char* const names[] = {"1x  (1280x720)", "1.5x  (1920x1080)", "2x  (2560x1440)", "3x  (3840x2160)"};
     float cur = hostui::res_scale();
-    for (int i = 0; i < 4; i++) {
+    for (size_t i = 0; i < gfx::res_preset_count(); i++) {
         if (i) ImGui::SameLine();
-        float s = scales[i];
-        if (radio(names[i], std::fabs(cur - s) < 0.01f)) post_changed([s] { hostui::set_res_scale(s); });
+        const float s = gfx::kResPresets[i].scale;
+        if (radio(gfx::kResPresets[i].label, std::fabs(cur - s) < 0.01f)) post_changed([s] { hostui::set_res_scale(s); });
     }
+    note("720p is the Wii U picture. Lower options draw fewer pixels and are scaled up to the window.");
 
     heading("Effects");
     bool v;
@@ -868,7 +915,8 @@ void tab_display() {
         static const char* const modes[] = {"Separate window", "Picture-in-picture", "Automatic picture-in-picture", "Off",
                                             "GamePad only"};
         bool first = true;
-        for (int i = 0; i < hostui::drc_modes() && i < 5; i++) {
+        for (int i : gfx::kDrcUiOrder) {
+            if (i >= hostui::drc_modes()) continue;
             if (!hostui::drc_mode_offered(i)) continue;
             if (!first) ImGui::SameLine();
             first = false;

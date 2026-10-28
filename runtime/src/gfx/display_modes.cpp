@@ -23,12 +23,7 @@ const char* const kModeNames[kDrcModeCount] = {"window", "pip", "auto", "off", "
 const char* const kCornerNames[4] = {"tl", "tr", "bl", "br"};
 const char* const kFilterNames[3] = {"smooth", "sharp", "integer"};
 
-#ifdef __ANDROID__
-
-std::atomic<int> g_mode{kDrcOff};
-#else
-std::atomic<int> g_mode{kDrcWindow};
-#endif
+std::atomic<int> g_mode{kDrcDefaultMode};
 std::atomic<int> g_corner{3};
 std::atomic<float> g_pip_size{0.25f};
 std::atomic<float> g_pip_opacity{1.0f};

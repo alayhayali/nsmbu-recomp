@@ -39,3 +39,14 @@ Unset or any non-zero value keeps model interpolation enabled; set `0` to disabl
 `NSMBU_INTERP_FPS` is a present cap (snapped to the rate ladder); guest logic stays at 60 steps/s.
 `NSMBU_INTERP=0` means 60 presents and 60 logic with blend `t=1`.
 Other interpolation variables (`NSMBU_INTERP_PACED`, and the rest in `env.h`) are listed only in `env.h` unless a feature doc describes them.
+
+## Scripted compare runs
+
+These variables are used by `tools/gametest/run_scenario.sh` and `tools/gametest/compare.py` (see `docs/automation.md`).
+
+- `NSMBU_TEST_STATUS_TRACE=path` appends one line per logic step: step, scene, map, course, pack, and player x, y, z.
+- `NSMBU_TEST_ALIGN_SCENE=name` names the scene (`Title`, `Map`, `CourseTask`, ...) whose first logic step is the align point.
+  The runtime logs `[test] align at logic step N scene=NAME` there and records the TV frame.
+- `NSMBU_TEST_FIXED_SEED=1` counts `NSMBU_PRESS`, `NSMBU_KEYS`, `NSMBU_STICK`, `NSMBU_RSTICK`, and `NSMBU_DUMP_FRAMES` from that TV frame, which counts as frame 1800.
+  It writes no guest memory.
+  `NSMBU_EXIT_AT_FRAME` stays on raw TV frames.

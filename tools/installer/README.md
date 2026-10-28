@@ -121,6 +121,22 @@ that as a dropper (issue #58). Nothing needs the mark removed: SmartScreen asks 
 and remembers "Run anyway", and programs started with CreateProcess (Python, the extractor, the compiler,
 the game) and DLLs are not checked for it.
 
+## Windows on ARM64
+
+There are two Windows releases, `windows-x86_64` and `windows-arm64`.
+The release job builds each on its own runner (`windows-latest`, `windows-11-arm`) with the matching pinned llvm-mingw (`llvm-mingw-20260922` or `llvm-mingw-20260922-aarch64`, whose `triple` is `aarch64-w64-mingw32`).
+The arm64 release ships the embeddable Python `python.windows-arm64`, checked against `tools/release/python-windows-arm64-files.json`.
+`tools/release/guard.py` picks that list from the `windows-arm64` part of the package name.
+
+## Windows: long paths
+
+Windows limits ordinary paths to 259 characters.
+Setup unpacks, moves and deletes the compiler with `\\?\` paths (`longpath()` in `setup.py`), because the deepest files of llvm-mingw pass that limit below a deep release folder.
+The game and its tools use ordinary paths, so setup stops before any download when the data folder is longer than `MAX_DATA_DIR_CHARS` (179).
+The deepest name below the data folder is the shader cache file `nsmbu\shadercache\vulkan-<8 hex>-<8 hex>-<32 hex>.bin` (79 characters, `DEEPEST_DATA_PATH`).
+A Python that joins paths with `/` (MSYS2) keeps ordinary paths, so `test_setup.py LongPaths` runs on MSYS2 Python and on python.org Python in `windows.yml`.
+The release workflow repeats the check in a 174 character release folder, and in one 175 characters deep that must stop with exit code 1.
+
 ## Linux on x86-64 and arm64
 
 There are two Linux releases, `linux-x86_64` and `linux-aarch64`, built by the same release job on

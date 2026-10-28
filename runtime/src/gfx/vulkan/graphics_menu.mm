@@ -6,7 +6,7 @@
 #include "crash/crashrec.h"
 #include <cmath>
 #include "hooks/interp.h"
-static constexpr float scales[]={1,1.5f,2,3};
+#include "gfx/res_presets.h"
 @interface NsmbuVulkanStateMenu : NSObject <NSMenuDelegate>
 @end
 @implementation NsmbuVulkanStateMenu
@@ -62,7 +62,7 @@ static constexpr float scales[]={1,1.5f,2,3};
 @interface NsmbuVulkanGraphicsMenu : NSObject <NSMenuItemValidation>
 @end
 @implementation NsmbuVulkanGraphicsMenu
-- (void)resolution:(NSMenuItem*)i { gfxvk::set_res_scale(scales[i.tag]); }
+- (void)resolution:(NSMenuItem*)i { gfxvk::set_res_scale(gfx::kResPresets[i.tag].scale); }
 - (void)aniso:(NSMenuItem*)i { gfxvk::set_aniso(!gfxvk::aniso_enabled()); }
 - (void)fxaa:(NSMenuItem*)i { gfxvk::set_fxaa(!gfxvk::fxaa_enabled()); }
 - (void)filter:(NSMenuItem*)i { gfxvk::set_scale_filter((int)i.tag); }
@@ -70,7 +70,7 @@ static constexpr float scales[]={1,1.5f,2,3};
 - (void)interpolation:(NSMenuItem*)i { interp::toggle_fps((int)i.tag); }
 - (BOOL)validateMenuItem:(NSMenuItem*)i {
     BOOL on=NO; bool available=true;
-    if(i.action==@selector(resolution:))on=std::fabs(gfxvk::requested_res_scale()-scales[i.tag])<0.01f;
+    if(i.action==@selector(resolution:))on=std::fabs(gfxvk::requested_res_scale()-gfx::kResPresets[i.tag].scale)<0.01f;
     if(i.action==@selector(aniso:)){on=gfxvk::aniso_enabled();available=gfxvk::graphics_feature_available(gfxvk::GraphicsFeature::Anisotropy);}
     if(i.action==@selector(fxaa:)){on=gfxvk::fxaa_enabled();available=gfxvk::graphics_feature_available(gfxvk::GraphicsFeature::FXAA);}
     if(i.action==@selector(filter:)){on=gfxvk::scale_filter()==i.tag;available=gfxvk::graphics_feature_available(gfxvk::GraphicsFeature::ScaleFilter);}
@@ -91,10 +91,10 @@ void install_graphics_menu(SDL_Window* window) {
     NSMenuItem* root=[[NSMenuItem alloc]initWithTitle:@"Graphics" action:nil keyEquivalent:@""];
     NSMenu* menu=[[NSMenu alloc]initWithTitle:@"Graphics"];root.submenu=menu;[bar addItem:root];
     auto add=[&](NSString* title,SEL action,NSInteger tag){NSMenuItem* i=[[NSMenuItem alloc]initWithTitle:title action:action keyEquivalent:@""];i.target=target;i.tag=tag;[menu addItem:i];};
-    add(@"1280 × 720 (1×) — R cycles",@selector(resolution:),0);
-    add(@"1920 × 1080 (1.5×)",@selector(resolution:),1);
-    add(@"2560 × 1440 (2×)",@selector(resolution:),2);
-    add(@"3840 × 2160 (3×)",@selector(resolution:),3);
+    for(size_t i=0;i<gfx::res_preset_count();++i){
+        NSString* title=i?@(gfx::kResPresets[i].label):[NSString stringWithFormat:@"%s — R cycles",gfx::kResPresets[i].label];
+        add(title,@selector(resolution:),(NSInteger)i);
+    }
     [menu addItem:NSMenuItem.separatorItem];
     add(@"16× anisotropic filtering — N",@selector(aniso:),0);
     add(@"FXAA — 8",@selector(fxaa:),0);
