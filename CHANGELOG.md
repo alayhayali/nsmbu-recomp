@@ -22,6 +22,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- 60 fps stays at 60 when a higher rate was used earlier.
+  The performance overlay no longer reports that higher rate.
 - Vulkan prefers a dedicated GPU when one can draw the game windows.
   Graphics (` or F12) can prefer dedicated, prefer integrated, or one listed card.
   The choice applies on the next start.
