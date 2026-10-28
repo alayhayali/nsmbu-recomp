@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Statically recompile a Wii U RPX into C.
 
-usage: recomp.py game/code/red-pro2.rpx OUTDIR [--insns-per-file N] [--build NAME]
+usage: recomp.py game/code/red-pro2.rpx OUTDIR [--insns-per-file N] [--build NAME] [--jobs N]
+
+--jobs N (default: the CPU count) translates in that many processes. 0 and NSMBU_RECOMP_JOBS select
+the same count. 1 stays on one process. Windows, and NSMBU_RECOMP_SPAWN=1, start fresh workers;
+other systems share the loaded game.
 
 The rpx is identified by its SHA-256 (tools/recomp/builds.py). Functions are named by their
 *canonical* (USA) address, so the runtime refers to the same f_XXXXXXXX whichever build of the game
@@ -79,6 +83,148 @@ CR_CHECK = os.environ.get("NSMBU_RECOMP_CR_CHECK", "0") == "1"
 LEAF = ppc2c.pass_on("NSMBU_RECOMP_LEAF")
 NONLEAF = ppc2c.pass_on("NSMBU_RECOMP_NONLEAF")
 GQR_STATIC = ppc2c.pass_on("NSMBU_RECOMP_GQR")
+_SAVED_SET_RE = re.compile(r"c->r\[(1[4-9]|2\d|3[01])\]\s*(=(?!=)|\|=)|c->f\[(1[4-9]|2\d|3[01])\]\.ps[01]\s*=(?!=)"
+                           r"|psq_load\(c, (1[4-9]|2\d|3[01]),")
+_TAIL_RE = re.compile(r"MUSTTAIL return f_([0-9A-F]{8})\(c\)")
+_RC = None
+
+
+def _job_count(requested):
+    if requested is None:
+        raw = os.environ.get("NSMBU_RECOMP_JOBS")
+        if raw is None or raw == "":
+            return os.cpu_count() or 1
+        try:
+            requested = int(raw)
+        except ValueError:
+            raise SystemExit("NSMBU_RECOMP_JOBS must be an integer, not %r" % raw)
+    if requested == 0:
+        return os.cpu_count() or 1
+    if requested < 0:
+        raise SystemExit("--jobs must be >= 0")
+    return requested
+
+
+def _fork_ok():
+    if os.environ.get("NSMBU_RECOMP_SPAWN") == "1" or sys.platform == "win32":
+        return False
+    import multiprocessing as mp
+    try:
+        mp.get_context("fork")
+    except ValueError:
+        return False
+    return True
+
+
+class _SeqPool:
+    def imap_unordered(self, fn, items, chunksize=1):
+        for item in items:
+            yield fn(item)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _dump_rc(rc):
+    import pickle
+    import tempfile
+    fd, path = tempfile.mkstemp(prefix="recomp-", suffix=".pkl")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            pickle.dump(rc, f, protocol=pickle.HIGHEST_PROTOCOL)
+    except Exception:
+        os.remove(path)
+        raise
+    return path
+
+
+def _load_rc(path):
+    import pickle
+    global _RC
+    with open(path, "rb") as f:
+        _RC = pickle.load(f)
+
+
+def _open_pool(jobs, rc):
+    global _RC
+    _RC = rc
+    if jobs <= 1:
+        return _SeqPool(), None
+    import multiprocessing as mp
+    if _fork_ok():
+        try:
+            return mp.get_context("fork").Pool(jobs), None
+        except OSError:
+            pass
+    path = _dump_rc(rc)
+    try:
+        ctx = mp.get_context("spawn")
+        return ctx.Pool(jobs, initializer=_load_rc, initargs=(path,)), path
+    except Exception:
+        os.remove(path)
+        raise
+
+
+def _shutdown_pool(pool, pickle_path, failed):
+    if not isinstance(pool, _SeqPool):
+        if failed:
+            pool.terminate()
+        else:
+            pool.close()
+        pool.join()
+    if pickle_path:
+        try:
+            os.remove(pickle_path)
+        except OSError:
+            pass
+
+
+def _slices(n, jobs):
+    jobs = max(1, min(jobs, n)) if n else 1
+    if jobs <= 1 or n == 0:
+        return [(0, n)]
+    size = (n + jobs - 1) // jobs
+    return [(i, min(n, i + size)) for i in range(0, n, size)]
+
+
+def _clobber_job(bounds):
+    rc = _RC
+    lo, hi = bounds
+    return [rc._clobber_facts(s) for s in rc.sorted_entries[lo:hi]]
+
+
+def _emit_job(job):
+    index, starts, path = job
+    rc = _RC
+    ppc2c.single_stats[:] = [0, 0]
+    leaflocal.reset_stats()
+    rc.unhandled = collections.Counter()
+    rc.cr_stats = [0, 0]
+    rc.leaf_count = 0
+    rc.nonleaf_count = 0
+    rc.used_imports = set()
+    parts = []
+    for start in starts:
+        src, _count = rc.emit_function(start)
+        parts.append(src)
+    with _Output(path) as f:
+        f.write('#include "funcs.h"\n\n')
+        f.write("\n\n".join(parts))
+        f.write("\n")
+    return {
+        "index": index,
+        "funcs": len(starts),
+        "unhandled": rc.unhandled,
+        "cr": (rc.cr_stats[0], rc.cr_stats[1]),
+        "leaf": rc.leaf_count,
+        "nonleaf": rc.nonleaf_count,
+        "used": rc.used_imports,
+        "single": (ppc2c.single_stats[0], ppc2c.single_stats[1]),
+        "reloads": (leaflocal.reloads_written, leaflocal.reloads_left_out, leaflocal.reload_calls),
+    }
 
 def unknown_build_message(path):
     return "%s is not a build of the game this port knows (SHA-256 %s...); known: %s" % (
@@ -312,36 +458,20 @@ class Recompiler:
         such a register, itself or in the code it falls or jumps into, counts as one: after a call
         to it, f14-f31 are not assumed to keep their single-precision state (single_dataflow,
         singleflow.py)."""
-        saved_set = re.compile(r"c->r\[(1[4-9]|2\d|3[01])\]\s*(=(?!=)|\|=)|c->f\[(1[4-9]|2\d|3[01])\]\.ps[01]\s*=(?!=)"
-                               r"|psq_load\(c, (1[4-9]|2\d|3[01]),")
-        tail = re.compile(r"MUSTTAIL return f_([0-9A-F]{8})\(c\)")
         frame, sets, nexts = {}, {}, {}
-        for start in self.sorted_entries:
-            end = self.func_end(start)
-            self.cur_start, self.cur_end = start, end
-            self.labels = set()
-            push = pop = assigns = False
-            targets = set()
-            for a in range(start, end, 4):
-                w = self.p.word(a)
-                op, rd, ra = w >> 26, (w >> 21) & 31, (w >> 16) & 31
-                if op == 37 and rd == 1 and ra == 1:  # stwu r1, d(r1): a frame is pushed
-                    push = True
-                if (op == 14 and rd == 1 and ra == 1 and not w & 0x8000) or (op == 32 and rd == 1 and ra == 1):
-                    pop = True  # addi r1, r1, +d / lwz r1, d(r1): and popped again
-                if op == 31 and rd == 1 and ra == 1 and ((w >> 1) & 0x3FF) == 183:  # stwux r1, r1, rB
-                    push = True
-                try:
-                    st = translate(a, w, self)
-                except Unhandled:
-                    continue
-                if saved_set.search(st):
-                    assigns = True
-                targets.update(int(t, 16) for t in tail.findall(st))
-            if end < self.p.text_hi:
-                targets.add(end)
-            # the frame helpers that push or pop the caller's frame have only one of the two
-            frame[start], sets[start], nexts[start] = push and pop, assigns, targets
+        jobs = getattr(self, "jobs", 1)
+        slices = _slices(len(self.sorted_entries), jobs)
+        pool, pickle_path = _open_pool(jobs if len(slices) > 1 else 1, self)
+        failed = True
+        try:
+            for part in pool.imap_unordered(_clobber_job, slices, chunksize=1):
+                for start, has_frame, assigns, targets in part:
+                    frame[start], sets[start], nexts[start] = has_frame, assigns, targets
+            failed = False
+        finally:
+            _shutdown_pool(pool, pickle_path, failed)
+        if len(frame) != len(self.sorted_entries):
+            raise RuntimeError("register-helper scan did not cover every function")
         clobbers = {f for f in self.sorted_entries if not frame[f] and sets[f]}
         changed = True
         while changed:
@@ -351,6 +481,34 @@ class Recompiler:
                     clobbers.add(f)
                     changed = True
         return clobbers
+
+    def _clobber_facts(self, start):
+        end = self.func_end(start)
+        self.cur_start, self.cur_end = start, end
+        self.labels = set()
+        push = pop = assigns = False
+        targets = set()
+        ppc2c.fp_state = 0
+        for a in range(start, end, 4):
+            w = self.p.word(a)
+            op, rd, ra = w >> 26, (w >> 21) & 31, (w >> 16) & 31
+            if op == 37 and rd == 1 and ra == 1:  # stwu r1, d(r1): a frame is pushed
+                push = True
+            if (op == 14 and rd == 1 and ra == 1 and not w & 0x8000) or (op == 32 and rd == 1 and ra == 1):
+                pop = True  # addi r1, r1, +d / lwz r1, d(r1): and popped again
+            if op == 31 and rd == 1 and ra == 1 and ((w >> 1) & 0x3FF) == 183:  # stwux r1, r1, rB
+                push = True
+            try:
+                st = translate(a, w, self)
+            except Unhandled:
+                continue
+            if _SAVED_SET_RE.search(st):
+                assigns = True
+            targets.update(int(t, 16) for t in _TAIL_RE.findall(st))
+        if end < self.p.text_hi:
+            targets.add(end)
+        # the frame helpers that push or pop the caller's frame have only one of the two
+        return start, push and pop, assigns, targets
 
     def single_dataflow(self, start, end):
         """For each instruction of the function: the FPR halves known to hold single-precision values
@@ -491,11 +649,24 @@ class Recompiler:
         out.append("}")
         return "\n".join(out), len(body)
 
-    def run(self, outdir, per_file, on_progress=None):
+    def _source_groups(self, per_file):
+        files, cur, n = [], [], 0
+        for start in self.sorted_entries:
+            cur.append(start)
+            n += (self.func_end(start) - start) // 4
+            if n >= per_file:
+                files.append(cur)
+                cur, n = [], 0
+        if cur:
+            files.append(cur)
+        return files
+
+    def run(self, outdir, per_file, on_progress=None, jobs=1):
         def progress(done, total, detail=""):
             if on_progress:
                 on_progress(done, total, detail)
 
+        self.jobs = max(1, jobs)
         os.makedirs(outdir, exist_ok=True)
         progress(0, 1, "loading names")
         self.names = names.load()
@@ -506,38 +677,59 @@ class Recompiler:
         leaflocal.reset_stats()
         self.used_imports = set()
         self.imm_override = self.imm_override
-        self.saved_clobbers = self.find_saved_clobbers() if ppc2c.SINGLE else set()
+        if ppc2c.SINGLE:
+            progress(0, 1, "finding register helpers")
+            self.saved_clobbers = self.find_saved_clobbers()
+        else:
+            self.saved_clobbers = set()
         self.singleflow = None
         if ppc2c.SINGLE and singleflow.INTERPROC:
             progress(0, 1, "analyzing floating-point use")
             t0 = time.time()
-            self.singleflow = singleflow.Solver(self).solve()
+            self.singleflow = singleflow.Solver(self).solve(self.jobs)
             sys.stderr.write("single-precision summaries: %d function analyses, %.1f s\n" %
                              (self.singleflow.rounds, time.time() - t0))
         self.used_imports = set()
         ppc2c.single_stats[:] = [0, 0]
-        files, cur, n = [], [], 0
+        leaflocal.reset_stats()
+        files = self._source_groups(per_file)
         total_fn = len(self.sorted_entries)
-        for i, start in enumerate(self.sorted_entries):
-            src, count = self.emit_function(start)
-            cur.append(src)
-            n += count
-            if n >= per_file:
-                files.append(cur)
-                cur, n = [], 0
-            if (i + 1) % 64 == 0 or i + 1 == total_fn:
-                progress(i + 1, total_fn, "translating functions (%d of %d)" % (i + 1, total_fn))
-        if cur:
-            files.append(cur)
-        written = set()
-        for i, funcs in enumerate(files):
-            name = "code_%03d.c" % i
-            with _Output(os.path.join(outdir, name)) as f:
-                f.write('#include "funcs.h"\n\n')
-                f.write("\n\n".join(funcs))
-                f.write("\n")
-            written.add(name)
-            progress(i + 1, len(files), "writing code_%03d.c (%d of %d)" % (i, i + 1, len(files)))
+        jobs_arg = [(i, group, os.path.join(outdir, "code_%03d.c" % i)) for i, group in enumerate(files)]
+        stats = [None] * len(files)
+        done_fns = 0
+        if jobs_arg:
+            pool, pickle_path = _open_pool(self.jobs, self)
+            failed = True
+            try:
+                for st in pool.imap_unordered(_emit_job, jobs_arg, chunksize=1):
+                    stats[st["index"]] = st
+                    done_fns += st["funcs"]
+                    progress(done_fns, total_fn, "translating functions (%d of %d)" % (done_fns, total_fn))
+                failed = False
+            finally:
+                _shutdown_pool(pool, pickle_path, failed)
+        self.unhandled = collections.Counter()
+        self.cr_stats = [0, 0]
+        self.leaf_count = 0
+        self.nonleaf_count = 0
+        self.used_imports = set()
+        single = [0, 0]
+        reloads = [0, 0, 0]
+        for st in stats:
+            self.unhandled += st["unhandled"]
+            self.cr_stats[0] += st["cr"][0]
+            self.cr_stats[1] += st["cr"][1]
+            self.leaf_count += st["leaf"]
+            self.nonleaf_count += st["nonleaf"]
+            self.used_imports |= st["used"]
+            single[0] += st["single"][0]
+            single[1] += st["single"][1]
+            reloads[0] += st["reloads"][0]
+            reloads[1] += st["reloads"][1]
+            reloads[2] += st["reloads"][2]
+        ppc2c.single_stats[:] = single
+        leaflocal.reloads_written, leaflocal.reloads_left_out, leaflocal.reload_calls = reloads
+        written = set("code_%03d.c" % i for i in range(len(files)))
         for name in os.listdir(outdir):
             if re.fullmatch(r"code_\d+\.c", name) and name not in written:
                 os.remove(os.path.join(outdir, name))
@@ -656,6 +848,8 @@ if __name__ == "__main__":
     ap.add_argument("rpx")
     ap.add_argument("outdir")
     ap.add_argument("--insns-per-file", type=int, default=30000)
+    ap.add_argument("--jobs", type=int, default=None,
+                    help="worker processes (default: CPU count; 0 = CPU count; 1 = one process)")
     ap.add_argument("--progress", action="store_true",
                     help="print 'progress DONE TOTAL detail' lines for the installer")
     ap.add_argument("--build", help="which build the rpx is, when it should not be identified by "
@@ -673,4 +867,4 @@ if __name__ == "__main__":
 
     if a.progress:
         print("progress 0 1 reading game code", flush=True)
-    Recompiler(a.rpx, build).run(a.outdir, a.insns_per_file, on_progress=on_progress)
+    Recompiler(a.rpx, build).run(a.outdir, a.insns_per_file, on_progress=on_progress, jobs=_job_count(a.jobs))
