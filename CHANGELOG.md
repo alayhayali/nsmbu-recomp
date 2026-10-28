@@ -12,6 +12,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - The TV window title shows the NSMBU release version and the installed game region and version (for example `v0.7.2 · USA 1.3.0`).
 - A later release tag reuses the Linux compiler cache, so that build compiles less.
 
+### Fixed
+
+- Metal: a new render target starts with the texels already in guest memory. A course's static tiles drawn from its working tileset, such as the used block after hitting a ? block, were invisible.
+
 ## [0.7.2] - 2026-10-27
 
 ### Fixed

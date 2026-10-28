@@ -387,6 +387,13 @@ Surface* find_or_create_surface(const SurfaceDesc& d, bool forRendering) {
             s->isDepth ? " depth" : "", (unsigned long)s->tex.width, (unsigned long)s->tex.height);
     Surface* raw = s.get();
     R.surfaces.emplace(d.addr, std::move(s));
+    // a new colour target starts with what the guest memory holds, as on the console where the target
+    // is that memory: texels the CPU put there first would otherwise be missing. A course's working
+    // tileset is filled by the CPU and then gets its animated tiles drawn into it every frame; its
+    // static tiles (the used block) were blank. Unscaled single images only.
+    if (forRendering && !raw->isDepth && raw->slices == 1 && raw->tex.textureType == MTLTextureType2D &&
+        raw->tex.width == raw->width && raw->tex.height == raw->height && !raw->fmt.compressed)
+        upload_surface(raw);
     // format views of one guest surface (adopt_newer_alias): flag them once, so lookups stay cheap
     if (!raw->isDepth && !raw->fmt.compressed && raw->fmt.convert == Convert::NONE) {
         auto views = R.surfaces.equal_range(d.addr);
