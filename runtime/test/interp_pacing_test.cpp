@@ -180,6 +180,67 @@ static void test_accumulator() {
     }
 }
 
+static void test_present_gap() {
+    const int64_t period = present_period_ns(165);
+    int64_t wake = 0, last = 0, prev = 0;
+    bool valid = false;
+    int steady = 0;
+    for (int i = 0; i < 40; i++) {
+        const int64_t work = (i % 3 == 2) ? 4'000'000 : 400'000;
+        const PresentGap gap = pace_present(wake + work, last, valid, period);
+        valid = true;
+        if (i > 2) {
+            CHECK(gap.swap_ns - prev == period);
+            steady++;
+        }
+        prev = gap.swap_ns;
+        last = gap.swap_ns;
+        const int64_t target = wake + period;
+        wake = gap.swap_ns < target ? target : gap.swap_ns;
+    }
+    CHECK(steady > 20);
+
+    wake = last = prev = 0;
+    valid = false;
+    for (int i = 0; i < 24; i++) {
+        const int64_t work = (i % 3 == 2) ? 8'000'000 : 400'000;
+        const PresentGap gap = pace_present(wake + work, last, valid, period);
+        valid = true;
+        if (i > 2) CHECK(gap.swap_ns - prev >= period);
+        prev = gap.swap_ns;
+        last = gap.swap_ns;
+        const int64_t target = wake + period;
+        wake = gap.swap_ns < target ? target : gap.swap_ns;
+    }
+
+    const PresentGap first = pace_present(1000, 0, false, period);
+    CHECK(first.sleep_ns == 0);
+    CHECK(first.swap_ns == 1000);
+    const PresentGap early = pace_present(1'000'000, 0, true, period);
+    CHECK(early.swap_ns == period);
+    CHECK(early.sleep_ns == period - 1'000'000);
+    const PresentGap behind = pace_present(period + 2'000'000, 0, true, period);
+    CHECK(behind.sleep_ns == 0);
+    CHECK(behind.swap_ns == period + 2'000'000);
+}
+
+static void test_swap_align() {
+    const int64_t p165 = present_period_ns(165);
+    const int64_t offset = 2'500'000;
+    SwapAlign hold = align_swap(400'000, p165, offset);
+    SwapAlign logic = align_swap(4'000'000, p165, offset);
+    CHECK(logic.sleep_ns == 0);
+    CHECK(hold.sleep_ns == 1'620'000);
+
+    const int64_t p60 = present_period_ns(60);
+    SwapAlign heavy = align_swap(p60 / 2 + 1, p60, offset);
+    CHECK(heavy.sleep_ns == 0);
+    CHECK(heavy.offset_ns == offset);
+    SwapAlign light = align_swap(1'000'000, p60, offset);
+    CHECK(light.offset_ns == 2'800'000);
+    CHECK(light.sleep_ns == 1'800'000);
+}
+
 static void test_present_spacing() {
     const int caps[] = {60, 120, 144, 165, 240};
     for (int cap : caps) {
@@ -205,6 +266,8 @@ int main() {
     test_slerp();
     test_cap();
     test_accumulator();
+    test_present_gap();
+    test_swap_align();
     test_present_spacing();
     if (g_failed) {
         std::fprintf(stderr, "interp_pacing_test: %d check(s) failed\n", g_failed);

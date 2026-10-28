@@ -20,10 +20,14 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- Frame time stays on the present cap when a light frame would otherwise show early and the next full draw shows late.
+  The present wait keeps running queued GPU loads, so the boot screen can finish.
 - Install and recomp tools find generated code and hook lists when the install path contains square brackets.
 - High present caps keep their cadence when a frame runs late, so the world map no longer drifts well below the selected rate.
 - Logic presents at high frame rates draw the finished step (blend t = 1) instead of the open-step leftover, so Mario no longer jitters while running at 120/165.
 - World-map presents no longer defer or idle-repeat against the present-cap wake schedule, so the overworld can hold the same host frame rate as courses.
+- A hitch can run up to four guest logic steps on one present, and the leftover time stays in the accumulator so the game slows under load.
+- Hold frames blend the course camera across the open logic step, and logic frames still draw the finished step.
 
 ## [0.7.2] - 2026-10-27
 

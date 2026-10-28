@@ -267,7 +267,7 @@ void apply_hold_camera(Cpu* c) {
     float cur[4], box[4];
     for (int i = 0; i < 4; i++) cur[i] = g_cam_cur[i];
     const bool record = record_pass();
-    const bool blend = !record && g_cam.valid && !g_exact_step && g_cam.step + 1 == g_logic_steps && !cam_cut(g_cam.v, cur);
+    const bool blend = !record && g_cam.valid && !g_exact_step && g_cam.step == g_logic_steps && !cam_cut(g_cam.v, cur);
     if (record) {
         g_cam.valid = true;
         g_cam.step = g_logic_steps;
@@ -738,7 +738,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
     g_wake_valid = true;
 
     const bool interpolate = interp_on() && output_fps() > 60;
-    pacing::WakePlan plan = pacing::advance_accumulator(g_acc_ns, dt, interpolate, 1);
+    pacing::WakePlan plan = pacing::advance_accumulator(g_acc_ns, dt, interpolate);
     if (interpolate && plan.logic_steps == 0 && g_logic_steps == 0) {
         plan.logic_steps = 1;
         plan.t = 1.f;
@@ -767,10 +767,11 @@ extern "C" void hook_029C52CC(Cpu* c) {
     g_logic_pass = true;
     g_hold_next = false;
     g_phase = 0;
-    g_logic_steps++;
-    g_record_passes++;
-    c->r[3] = self;
-    {
+    const int steps = std::max(1, plan.logic_steps);
+    for (int i = 0; i < steps; i++) {
+        g_logic_steps++;
+        g_record_passes++;
+        c->r[3] = self;
         PassTimer timer(0);
         f_029C52CC_orig(c);
     }
@@ -808,7 +809,7 @@ extern "C" void hook_024FBF6C(Cpu* c) {
     for (int i = 0; i < 4; i++) g_cam_cur[i] = cur[i];
     g_cam_cur_valid = true;
     remember_view(mgr, view, proj);
-    const bool blend = g_cam.valid && !g_exact_step && g_cam.step + 1 == g_logic_steps && !cam_cut(g_cam.v, cur);
+    const bool blend = g_cam.valid && !g_exact_step && g_cam.step == g_logic_steps && !cam_cut(g_cam.v, cur);
     if (!blend) {
         g_cam.valid = true;
         g_cam.step = g_logic_steps;

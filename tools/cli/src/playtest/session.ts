@@ -179,7 +179,8 @@ export class Session {
         await this.launch();
     }
 
-    async restart(): Promise<void> {
+    async restart(env?: Record<string, string>): Promise<void> {
+        if (env) this.env = { ...this.env, ...env };
         await this.stop();
         await this.launch();
     }

@@ -140,5 +140,43 @@ inline int64_t absorb_late_wake(int64_t last_ns, int64_t now_ns, int64_t period_
     return last_ns + slots * period_ns;
 }
 
+struct SwapAlign {
+    int64_t sleep_ns = 0;
+    int64_t offset_ns = 0;
+};
+
+struct PresentGap {
+    int64_t sleep_ns = 0;
+    int64_t swap_ns = 0;
+};
+
+inline PresentGap pace_present(int64_t now_ns, int64_t last_swap_ns, bool last_valid, int64_t period_ns) {
+    PresentGap out;
+    out.swap_ns = now_ns;
+    if (!last_valid || period_ns <= 0 || now_ns < 0) return out;
+    const int64_t target = last_swap_ns + period_ns;
+    if (now_ns < target) {
+        out.sleep_ns = target - now_ns;
+        out.swap_ns = target;
+    }
+    return out;
+}
+
+inline SwapAlign align_swap(int64_t elapsed_ns, int64_t period_ns, int64_t offset_ns) {
+    SwapAlign out;
+    out.offset_ns = offset_ns;
+    if (period_ns <= 0 || elapsed_ns < 0 || elapsed_ns > period_ns / 2) return out;
+    int64_t offset_us = offset_ns / 1000;
+    const int64_t want_us = elapsed_ns / 1000 + 1800;
+    if (want_us > offset_us) offset_us = want_us;
+    const int64_t cap_us = (period_ns / 3) / 1000;
+    if (offset_us < 1500) offset_us = 1500;
+    if (cap_us > 0 && offset_us > cap_us) offset_us = cap_us;
+    out.offset_ns = offset_us * 1000;
+    const int64_t elapsed_us = elapsed_ns / 1000;
+    if (elapsed_us < offset_us) out.sleep_ns = (offset_us - elapsed_us) * 1000;
+    return out;
+}
+
 }
 }
