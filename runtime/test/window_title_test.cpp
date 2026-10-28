@@ -24,9 +24,12 @@ static bool ascii_only(const char* s) {
 
 int main() {
     char buf[window_title::kCap];
+    char game[window_title::kCap];
     window_title::format_base(buf, sizeof buf);
+    window_title::format_game_label(game, sizeof game);
     check(std::strstr(buf, "New Super Mario Bros. U") != nullptr, "app name");
-    check(std::strstr(buf, g_guest_build_label) != nullptr, "game label");
+    check(std::strstr(buf, game) != nullptr, "game label");
+    check(std::strstr(buf, "Europe") == nullptr && std::strstr(buf, "European") == nullptr, "no region prose");
     check(ascii_only(buf), "ascii only");
     if (build::dev()) {
         check(std::strstr(buf, " git") != nullptr, "local build label");

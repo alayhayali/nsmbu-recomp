@@ -34,12 +34,33 @@ static void release_label(char* out, size_t cap) {
     std::snprintf(out, cap, "%s", v);
 }
 
+void format_game_label(char* out, size_t cap) {
+    const char* name = g_guest_build_name;
+    if (!out || cap <= 1 || !name || !*name) {
+        if (out && cap)
+            out[0] = 0;
+        return;
+    }
+    const char* v0 = std::strstr(name, "_V0");
+    if (v0 && v0[3] == '\0') {
+        std::snprintf(out, cap, "%.*s v0", (int)(v0 - name), name);
+        return;
+    }
+    if (std::strncmp(name, "NSMBU_NSLU_", 11) == 0) {
+        std::snprintf(out, cap, "NSMBU+NSLU %s v%d", name + 11, g_guest_build_title_version);
+        return;
+    }
+    std::snprintf(out, cap, "%s v%d", name, g_guest_build_title_version);
+}
+
 void format_base(char* out, size_t cap) {
     if (!out || !cap)
         return;
     char release[48];
+    char game[48];
     release_label(release, sizeof release);
-    std::snprintf(out, cap, "%s - %s - %s", app_title::kName, release, g_guest_build_label);
+    format_game_label(game, sizeof game);
+    std::snprintf(out, cap, "%s - %s - %s", app_title::kName, release, game);
 }
 
 }

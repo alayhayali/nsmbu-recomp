@@ -10,7 +10,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ### Changed
 
 - Translating the game to C uses every CPU core, so install and a full recompile finish sooner.
-- The TV window title shows the NSMBU release version and the installed game region and version (for example `v0.7.2 - USA 1.3.0`, or `0.7.2 git` on a local build).
+- The TV window title shows the NSMBU release version and the installed game build (for example `v0.7.2 - USA v64`, or `0.7.2 git - EU v0` on a local build).
 - A later release tag reuses the Linux compiler cache, so that build compiles less.
 
 ### Fixed
