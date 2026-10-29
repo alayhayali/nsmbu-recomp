@@ -9,6 +9,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Added
 
+- Decomp UI stack for native mod hooks: `Multi2D`, `AnimLayoutBase`, `LayoutAllocator`, `TagProcessor`, and `UtilCursorButtonMgr` in `vendor/decomp/src/layout_sys/`; screen units `AttentionScreen`, `ChangePlayerNum`, `CommonWindowMgr`, `CommonWindow`, `PaCursor`, and `GamesceneBase` in `vendor/decomp/src/layout/`; architecture notes in `vendor/decomp/docs/ui-system.md`.
+
 - Press Start and Select together (+ and − on the GamePad, or the matching controller buttons) to open or close the settings overlay, on PC and Android as well as `` ` `` or F12.
 - The settings overlay uses larger touch targets on Android, direct touch on the menu, and controller navigation that follows your face-button layout (A confirms, B goes back, LB/RB change tabs).
 - Android-hosted LLVM toolchain packaging scripts, unit tests, and CI compiler cache action.
