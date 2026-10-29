@@ -132,7 +132,12 @@ Geo layout(bool pro, FaceLayout fl, ImVec2 org, float w, float h) {
     Geo g;
     g.org = org;
 
-    g.k = std::clamp(std::min(w / 1060.0f, h / 520.0f), 0.55f, 1.3f);
+#ifdef __ANDROID__
+    const float ref_h = 400.0f;
+#else
+    const float ref_h = 520.0f;
+#endif
+    g.k = std::clamp(std::min(w / 1060.0f, h / ref_h), 0.55f, 1.3f);
     const float k = g.k;
     ControllerDef d = controller_def(pro);
     g.colLx = org.x + kMargin * k;

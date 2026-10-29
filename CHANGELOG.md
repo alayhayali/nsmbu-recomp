@@ -39,6 +39,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - `nsmbu apk` skips copying the active dump when it is already on the device (same version and RPX size); use `--force-push` to copy anyway.
 - PC-built APKs can choose an extracted game folder on the device (same checks as setup); the app copies it into private storage for Play.
 - Android AYANEO/Odin built-in controllers get corrected SDL gamepad mappings so analog sticks and face buttons reach the game.
+- Android no longer opens the soft keyboard when Settings opens; it appears only when a text field (such as custom frame rate) is focused.
+- Android Settings uses larger touch targets (9 mm controls, phone-style padding), including on handhelds.
+- Android Settings overlay is nearly full screen with larger UI scale (11 mm controls plus extra scale boost).
+- Android Controls settings gives the controller map a larger share of the tab without a nested scrollbar.
 - A 30 fps choice in Graphics.
   It draws half as often and runs two logic steps per picture, so the game keeps its speed.
 - Graphics can set any frame rate from 60 to 1000.
@@ -53,7 +57,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - `nsmbu build` and `nsmbu run` skip CMake configure when the build cache is already up to date, and use a quiet log level when configure does run.
 - Graphics frame rate: Custom is a preset radio on its own row with a number field beside it.
   Preset rates stay selectable while Custom is active.
-- The performance overlay averages fps and logic steps/s over the same 120 frames as the frame-time graph, not since you opened the overlay or reset.
+- The performance overlay has three levels in Settings > Debug: a compact FPS summary, optional GPU lines and frame-time graph, and optional lag breakdown.
 - Performance overlay controls moved from Graphics to the top of Debug.
 - Graphics card choice moved from Graphics to the bottom of Debug.
 - The performance overlay shows GPU name, driver, and Vulkan version on separate lines.

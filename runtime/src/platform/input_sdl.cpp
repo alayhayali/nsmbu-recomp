@@ -595,7 +595,7 @@ void update(){
   }
  }
  static bool overlay_text=false;
- const bool overlay_wants_text=overlay::is_open()&&!text_entry::active()&&!g_done;
+ const bool overlay_wants_text=overlay::is_open()&&overlay::wants_text_input()&&!text_entry::active()&&!g_done;
  if(overlay_wants_text!=overlay_text){
   overlay_text=overlay_wants_text;
   if(g_prompt_window){

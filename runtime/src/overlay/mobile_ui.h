@@ -8,6 +8,8 @@ constexpr float kPhonePad = 21.0f;
 constexpr float kPhoneAspect = 1.9f;
 constexpr float kPhoneDiagonal = 7.5f;
 constexpr float kPhoneAutomaticMm = 7.62f;
+constexpr float kAndroidSettingsMm = 11.0f;
+constexpr float kAndroidSettingsScaleBoost = 1.15f;
 enum Preset { kAutomatic, kSmall, kMedium, kLarge };
 
 inline float dpi_of(float dpi, float density) {
@@ -43,6 +45,16 @@ inline Layout layout(float dpi, float density, int preset, float width = 0, floa
 }
 
 inline float scale(float dpi, float density, int preset) { return layout(dpi, density, preset).scale; }
+
+inline Layout android_settings(float dpi, float density, float width, float height) {
+    dpi = dpi_of(dpi, density);
+    Layout l;
+    l.phone = phone_screen(width, height, dpi);
+    l.pad_y = kPhonePad;
+    l.scale = std::clamp(dpi * kAndroidSettingsMm / (25.4f * l.control()), 1.0f, 12.0f);
+    l.scale = std::clamp(l.scale * kAndroidSettingsScaleBoost, 1.0f, 12.0f);
+    return l;
+}
 
 inline float desktop_scale(float density, float window_height) {
     return std::max({1.0f, density, window_height / 820.0f});

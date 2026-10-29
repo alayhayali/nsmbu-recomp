@@ -8,6 +8,7 @@ struct ImDrawData;
 namespace overlay {
 
 bool is_open();
+bool wants_text_input();
 void set_open(bool open);
 
 bool blocks_input();
@@ -17,6 +18,8 @@ bool captures();
 bool alive();
 bool perf_shown();
 void set_perf_shown(bool on);
+bool perf_extended_shown();
+void set_perf_extended_shown(bool on);
 bool perf_detail_shown();
 void set_perf_detail_shown(bool on);
 

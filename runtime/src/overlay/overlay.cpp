@@ -79,6 +79,7 @@ double now_s() { return std::chrono::duration<double>(clock::now().time_since_ep
 
 std::atomic<bool> g_open{false};
 std::atomic<bool> g_perf{false};
+std::atomic<bool> g_perf_extended{false};
 std::atomic<bool> g_perf_detail{false};
 PerfAverage g_average;
 std::atomic<float> g_density{1.0f};
@@ -189,6 +190,7 @@ struct Ui {
     bool list_view = false;
     int hover_action = -1;
     int control_player = 0;
+    float options_height = 0;
 };
 Ui U;
 
@@ -1353,9 +1355,14 @@ void tab_controls() {
             status = "Select a button on the controller or a chip to rebind it. Changes are saved to controls.json.";
         }
     }
-    const float bottom = ImGui::GetFrameHeightWithSpacing() * 2 + 4;
+    const float bottom = ImGui::GetTextLineHeightWithSpacing() + std::max(U.options_height, ImGui::GetFrameHeightWithSpacing() * 2) + 4;
     const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const float h = std::max(160.0f, avail.y - bottom);
+    const float room = std::max(0.0f, avail.y - bottom);
+    float h = std::max(160.0f, room);
+#ifdef __ANDROID__
+    h = std::max(std::min(ImGui::GetIO().DisplaySize.y * 0.52f, room), std::min(160.0f, room));
+#endif
+    if (h > room) h = room;
     U.hover_action = -1;
     if (U.list_view) {
         controls_list(m, h, p == 0);
@@ -1399,6 +1406,7 @@ void tab_controls() {
     ImGui::PushStyleColor(ImGuiCol_Text, sc);
     ImGui::TextUnformatted(status.c_str());
     ImGui::PopStyleColor();
+    const float options_top = ImGui::GetCursorPosY();
     float dz = m.deadzone * 100.0f;
     ImGui::SetNextItemWidth(200);
     if (ImGui::SliderFloat("Stick dead zone", &dz, 0.0f, 90.0f, "%.0f%%")) {
@@ -1462,6 +1470,7 @@ void tab_controls() {
                          "No controller motor: also while the connected controller has no motor."
                        : "Set by NSMBU_PHONE_RUMBLE for this start.");
 #endif
+    U.options_height = ImGui::GetCursorPosY() - options_top;
 }
 
 int saved_language() {
@@ -1512,9 +1521,13 @@ void restart_button(const char* why) {
 void tab_debug() {
     heading("Overlay");
     bool v;
-    if (check("Performance overlay (FPS, frame time)", perf_shown(), &v)) set_perf_shown(v);
-    if (check("Performance overlay detail (lag breakdown)", perf_detail_shown(), &v, perf_shown())) set_perf_detail_shown(v);
-    if (!perf_shown()) help("Needs the performance overlay on");
+    if (check("Performance overlay (FPS summary)", perf_shown(), &v)) set_perf_shown(v);
+    if (check("Performance overlay detail (GPU and graph)", perf_extended_shown(), &v, perf_shown())) set_perf_extended_shown(v);
+    if (check("Performance overlay lag breakdown", perf_detail_shown(), &v, perf_shown() && perf_extended_shown()))
+        set_perf_detail_shown(v);
+    if (!perf_shown()) help("Shows a compact FPS and frame-time summary in the corner.");
+    else if (!perf_extended_shown()) help("Compact view only. Enable detail for GPU lines and the frame-time graph.");
+    else if (!perf_detail_shown()) help("Enable lag breakdown for per-frame wait times.");
     if (ImGui::Button("Reset performance averages")) {
         g_average.reset();
         perf::reset();
@@ -1694,6 +1707,11 @@ void perf_window(bool menu_open) {
     if (ImGui::Begin("##perf", nullptr, fl)) {
         ImGui::Text("%.0f fps   %.1f ms (worst %.1f)", U.fps, avg_ms, worst);
         ImGui::Text("Average %.1f fps   %.1f logic steps/s", avg_fps, avg_logic);
+        if (!perf_extended_shown()) {
+            ImGui::End();
+            (void)menu_open;
+            return;
+        }
         {
             static double t0 = 0; static uint64_t s0 = 0; static double rate = 60;
             static int slowWindows = 0;
@@ -1756,7 +1774,11 @@ void perf_window(bool menu_open) {
 void settings_window() {
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 ds = io.DisplaySize;
+#ifdef __ANDROID__
+    const ImVec2 size(ds.x * 0.98f, ds.y * 0.97f);
+#else
     const ImVec2 size(std::min(1040.0f, ds.x * 0.96f), std::min(620.0f, ds.y * 0.92f));
+#endif
     ImGui::SetNextWindowPos(ImVec2(ds.x * 0.5f, ds.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
     ImGuiWindowFlags fl = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -1788,7 +1810,8 @@ void settings_window() {
                 if (ImGui::BeginTabItem(kTabNames[i], nullptr, f)) {
                     if (U.tab != i) U.cap_action = -1, g_capturing_keys = false, U.cap_note.clear();
                     U.tab = i;
-                    ImGui::BeginChild("page", ImVec2(0, 0), ImGuiChildFlags_NavFlattened);
+                    ImGui::BeginChild("page", ImVec2(0, 0), ImGuiChildFlags_NavFlattened,
+                                      i == kControls ? ImGuiWindowFlags_NoScrollbar : ImGuiWindowFlags_None);
                     switch (i) {
                     case kControls: tab_controls(); break;
                     case kGraphics: tab_graphics(); break;
@@ -1820,6 +1843,10 @@ void settings_window() {
 }
 
 bool is_open() { return g_open.load(std::memory_order_relaxed); }
+bool wants_text_input() {
+    if (!is_open() || !ImGui::GetCurrentContext()) return false;
+    return ImGui::GetIO().WantTextInput;
+}
 void set_open(bool open) {
     if (g_open.exchange(open) == open) return;
     for (auto& k : g_held_keys) k = false;
@@ -1840,6 +1867,15 @@ bool perf_shown() { return g_perf.load(std::memory_order_relaxed); }
 void set_perf_shown(bool on) {
     g_perf = on;
     hostui::post([on] { hostui::set("perfOverlay", on ? "1" : "0"); });
+}
+bool perf_extended_shown() { return g_perf_extended.load(std::memory_order_relaxed); }
+void set_perf_extended_shown(bool on) {
+    g_perf_extended = on;
+    if (!on) g_perf_detail = false;
+    hostui::post([on] {
+        hostui::set("perfExtended", on ? "1" : "0");
+        if (!on) hostui::set("perfDetail", "0");
+    });
 }
 bool perf_detail_shown() { return g_perf_detail.load(std::memory_order_relaxed); }
 void set_perf_detail_shown(bool on) {
@@ -1925,7 +1961,12 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         prefs_read = true;
         std::string v;
         if (hostui::get("perfOverlay", v)) g_perf = v == "1";
+        std::string extended;
+        const bool haveExtended = hostui::get("perfExtended", extended);
+        if (haveExtended) g_perf_extended = extended == "1";
+        else if (g_perf) g_perf_extended = true;
         if (hostui::get("perfDetail", v)) g_perf_detail = v == "1";
+        if (g_perf_detail && !g_perf_extended) g_perf_extended = true;
         if (!env::COLLISION_VIEWER.present() && hostui::get("collisionViewer", v))
             collision_wireframe::set_enabled(v == "1");
         if (!env::HOT_RELOAD_COURSES.present() && hostui::get("hotReloadCourses", v))
@@ -2032,7 +2073,7 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
 
 #ifdef __ANDROID__
     const mobile_ui::Layout touch_ui =
-        mobile_ui::layout(g_density.load() * 160.0f, g_density.load(), mobile_ui::kAutomatic, float(pw), float(ph));
+        mobile_ui::android_settings(g_density.load() * 160.0f, g_density.load(), float(pw), float(ph));
     mobile_ui::apply_touch_style(ImGui::GetStyle(), touch_ui);
     const float scale = touch_ui.scale;
 #else
