@@ -30,12 +30,13 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Releases include a signed Android APK for arm64 (and x86_64 for emulators and Chromebooks) that sets the game up on the phone; it carries no game code.
 - Android save import/export looks for NSMBU `user/rp_personal_savedata.dat` instead of the leftover WWHD save name.
 - New [Android guide](docs/android.md) for players and an [on-device setup design](docs/android-implementation.md) for contributors; the device checklist lists the setup, touch and release checks still to run on real hardware.
-- `nsmbu apk` builds the local Android APK, installs it on a connected device, and copies the active dump unless you pass `--no-push`.
+- `nsmbu apk` builds the local Android APK, installs it on a USB device (`adb`), and copies the active dump when it is not already on the device unless you pass `--no-push`.
 - Debug builds refresh `android/app/local-res` from your active dump's `meta/iconTex.tga` when it is present (git-ignored; skipped in CI).
   Release and CI APKs keep the packaged launcher icon.
 - Android and desktop builds each keep their own `libluajit.a` under the CMake build directory so a host LuaJIT build is not linked into an APK by mistake.
 - `nsmbu apk` picks JDK 17 or 21 for Gradle when the default `java` is too new.
 - `nsmbu apk` copies the active dump after install without a prompt; use `--no-push` to skip.
+- `nsmbu apk` skips copying the active dump when it is already on the device (same version and RPX size); use `--force-push` to copy anyway.
 - PC-built APKs can choose an extracted game folder on the device (same checks as setup); the app copies it into private storage for Play.
 - Android AYANEO/Odin built-in controllers get corrected SDL gamepad mappings so analog sticks and face buttons reach the game.
 - A 30 fps choice in Graphics.

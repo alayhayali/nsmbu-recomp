@@ -102,6 +102,7 @@ const COMMANDS: CommandSpec[] = [
             { name: "stub", description: "Placeholder guest code" },
             { name: "no-push", description: "Skip copying the active dump" },
             { name: "push-game", description: "Copy dump even with --stub" },
+            { name: "force-push", description: "Copy dump even when already on device" },
             { name: "yes", description: "Skip prompts (needs --device if several devices)" },
         ],
     },
