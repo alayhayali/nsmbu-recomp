@@ -9,6 +9,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Added
 
+- Press **R3** (right stick click) on a controller to open or close the settings overlay, like **Home** and hold **Select** (−).
 - A 30 fps choice in Graphics.
   It draws half as often and runs two logic steps per picture, so the game keeps its speed.
 - Graphics can set any frame rate from 60 to 1000.

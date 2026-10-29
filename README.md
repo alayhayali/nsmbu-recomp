@@ -11,7 +11,9 @@ You must supply your own copy of the game files, disc image, and encryption keys
 
 ## Controls
 
-Press `F12` to open the settings overlay.  
+Press `F12` to open the settings overlay.
+Press **Home** or click the right stick (**R3**) on a controller to open or close Settings.
+Hold **Select** (−) for half a second to open Settings when the overlay is closed; press **Select** again to close it.  
 **F1**–**F5** load save states; **Shift+F1**–**F5** save.  
 Open **Audio** for mute, volume, and TV / GamePad output.  
 Open **Controls** to change keys and controller buttons.  
