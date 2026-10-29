@@ -61,6 +61,23 @@ If the data folder is not writable, it falls back to:
 
 ## Source and developer overrides
 
+In a source checkout the current run log is `nsmbu/logs/nsmbu.log`.
+The previous run is `nsmbu/logs/nsmbu-previous.log`.
+Crash dumps in that folder are `crash-YYYYMMDD-HHMMSS.log`.
+Issue attachments download into `.tmp/issues/`.
+
+Guest `lr`, `ctr`, call-chain, and aux values in a crash log are addresses of the **running** build.
+USA 1.3.0 is the identity: those code addresses are already the canonical ids in [builds.md](builds.md).
+
+1. Save the log under `.tmp/issues/`.
+2. Read the `[boot] game version` line.
+   The name in parentheses is the build (`USA`, `USA_V0`, `EU`, `EU_V0`, `NSMBU_NSLU_USA`, `NSMBU_NSLU_EU`), next to the title id and title version.
+3. Load that build from `tools/recomp/builds.py` with `by_name`, or with `by_title_version` when you have the title id and title version.
+4. `Build.canon_code(addr)` is the USA code id.
+   A data address uses `build._data.unapply(addr)`.
+5. The nearest lower line in `tools/recomp/headers_names.txt` names the symbol ([names.md](names.md)).
+6. Match `CHANGELOG.md` Unreleased and `nsmbu test --list` summaries that cite the issue before starting a new repro.
+
 `NSMBU_USER_DIR` (set by the `nsmbu` CLI to `<repo>/nsmbu`) moves settings and the logs folder with it.
 `portable.txt` next to the game binary wins over `NSMBU_USER_DIR` and keeps logs under that release's `nsmbu/logs`.
 Profile and replay tools may set `NSMBU_LOG_FILE` to a path under `.tmp/` (see [performance.md](performance.md) and [automation.md](automation.md)).

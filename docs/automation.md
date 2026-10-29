@@ -66,14 +66,16 @@ The repo `nsmbu/save` stays unread by the game.
 
 | Variable | Value | Role |
 | --- | --- | --- |
-| `NSMBU_USER_DIR` | `nsmbu/` (or `user/` if that is the only userdata folder) | Settings and logs stay in the repo userdata tree |
+| `NSMBU_USER_DIR` | `.tmp/<name>/user` unless already set | Settings and controls are copied from the repo userdata tree; the shader cache starts empty |
 | `NSMBU_HIDDEN_WINDOWS` | `1` | Keeps game windows off screen |
 | `NSMBU_NO_HOST_INPUT` | `1` | Ignores keyboard, mouse, and gamepad; scripted input only |
 | `NSMBU_VK_PRESENT_MODE` | `immediate` | Uncapped present for faster boots |
 | `NSMBU_NO_AUDIO` | `1` | Skips opening an audio output device |
-| `NSMBU_RES_SCALE` | `1` unless already set | Internal resolution scale (1–4) |
+| `NSMBU_RES_SCALE` | `1` unless already set | Internal resolution scale (0.5–4) |
 
-The binary also receives `--game` set to the active dump under `game/<id>/` and `--save .tmp/<name>/save`.
+The binary also receives `--game` set to `game/` and `--save .tmp/<name>/save`.
+That `game/` folder has no `red-pro2.rpx`, so the process exits before the first frame.
+A hidden boot that must draw uses `build/debug/nsmbu --game game/usa-1.3.0`.
 
 ### Environment you set
 
@@ -104,6 +106,12 @@ from-to:hexbits,from-to:hexbits,…
 `8000` is A.
 Use a short pulse, about 20 frames.
 A hold that is already down when a dialog opens does not press the button again.
+Combine bits with a sum.
+
+- A `8000`, B `4000`, X `2000`, Y `1000`
+- L `0020`, R `0010`, ZL `0080`, ZR `0040`
+- Plus `0008`, Minus `0004`, Home `0002`
+- Up `0200`, Down `0100`, Left `0800`, Right `0400`
 
 ### Scripted sticks
 
@@ -132,13 +140,115 @@ tools/run/scripted-run.sh w11
 
 Frame 7000 is the course.
 The picture is the big tree, the bricks, and Mario on the ground.
-A world-map boot that stops before that last A is in `.agents/skills/shortcuts/SKILL.md`.
+A world-map boot that stops before that last A is in Boot recipes below.
+
+### Compare two scripted runs
+
+`tools/gametest/run_scenario.sh OUT [VAR=value ...]` is the compare path.
+It boots hidden and muted on a copy of the save, with the user folder, the shader cache, and the states under `OUT`.
+It waits for the first logic step of scene `ALIGN` (default `Title`; others are `Map` and `CourseTask`), then records `STEPS` more logic steps (default 300).
+A boot that never reaches the scene is retried (`BOOT_TRIES`, default 3) and its log stays next to `OUT` as `OUT.bootfailN.log`.
+
+`OUT/status.txt` has one line per logic step: step, scene, map, course, pack, and player x, y, z.
+`-` marks a value the game does not have yet.
+The runtime writes it when `NSMBU_TEST_STATUS_TRACE` is set.
+
+`tools/gametest/compare.py RUN_A RUN_B --scene CourseTask` aligns both runs on the log line `[test] align at logic step N scene=NAME`, rebases the step numbers, and diffs the lines.
+It prints the first differing step.
+The exit status is 0 for identical runs, 1 for a difference, and 2 when a run never reached the scene.
+
+```
+ALIGN=CourseTask tools/gametest/run_scenario.sh .tmp/runs/a NSMBU_PRESS='1800-1820:8000'
+ALIGN=CourseTask tools/gametest/run_scenario.sh .tmp/runs/b NSMBU_PRESS='1800-1820:8000'
+python3 tools/gametest/compare.py .tmp/runs/a .tmp/runs/b --scene CourseTask
+```
+
+With `NSMBU_TEST_FIXED_SEED=1` (the runner default) `NSMBU_PRESS`, `NSMBU_KEYS`, `NSMBU_STICK`, `NSMBU_RSTICK`, and `NSMBU_DUMP_FRAMES` count from the align scene.
+The TV frame of that logic step counts as frame 1800.
+Frames before it stay raw TV frames, so keep boot presses below 1800.
+Dumped files are named with the rebased frame.
+`NSMBU_EXIT_AT_FRAME` stays on raw TV frames.
+The switch changes no guest state; it only rebases those frame numbers.
 
 ### Mute
 
 The script sets `NSMBU_NO_AUDIO=1` so no output device is opened.
 The mix still runs.
 Interactive mute is in the settings overlay (` or F12) > Audio.
+
+## Boot recipes
+
+Add a recipe here when a boot, pad timeline, or profile command works a second time.
+Each entry is the command, the log line that shows it worked, and what a later press would do.
+Full variable lists stay in [env.md](env.md).
+Course replay benchmarks stay in [performance.md](performance.md).
+
+### World map
+
+Launch `build/debug/nsmbu` yourself when the run must use `nsmbu/settings.ini` (165 fps interpolation, resolution scale, present mode).
+`nsmbu scripted` forces an immediate present, resolution scale 1, hidden windows, and a copy of the save.
+
+`NSMBU_USER_DIR` must be the repo `nsmbu/` directory.
+A `portable.txt` beside the binary wins over that variable.
+Without either one, settings and the shader cache come from `~/.config/nsmbu`.
+
+On a 165 Hz debug boot from `nsmbu/save` (file 0 on the Acorn Plains map), 200 frames between pulses is enough.
+The slower 800-frame list in the scripted example above is for walking into a course.
+
+```bash
+NSMBU_USER_DIR="$PWD/nsmbu" \
+NSMBU_LOG_FILE="$PWD/.tmp/repro/map.log" \
+NSMBU_PRESS='600-620:8000,800-820:8000,1000-1020:8000,1200-1220:8000,1400-1420:8000,1600-1620:8000,1800-1820:8000,2000-2020:8000,2200-2220:8000,2400-2420:8000' \
+NSMBU_EXIT_AT_FRAME=5600 \
+NSMBU_PROFILE=1 NSMBU_VK_STATS=1 NSMBU_NO_AUDIO=1 NSMBU_INTERP_PASS_STATS=1 \
+./build/debug/nsmbu --game "$PWD/game/usa-1.3.0" --save "$PWD/nsmbu/save"
+```
+
+Done when the log contains `[scene] CourseSelect from save` and later `[prof]` lines are the map.
+File select appears around frame 600.
+Course select is up before frame 3000.
+A settled debug map is about 165 swaps/s, acquire 1.00 per frame, about 60 hold frames out of 120, and about 82 logic steps/s.
+Another A after that scene enters the course.
+The stick and final A in the scripted example do that on purpose.
+
+`NSMBU_STATE_LOAD_AT` at TV frame 700 does not reach this save.
+The guest thread in the state is not alive yet, and a portable load of `slot1.nsstate` fails its checksum against the current save.
+
+### Title and file select
+
+Same save and hidden-window setup as the world-map boot.
+`--game` is `game/usa-1.3.0`.
+`NSMBU_ASPECT=21:9` makes the TV target 1707×720.
+`NSMBU_DUMP_FRAMES` writes `frame_<n>.png` in the working directory.
+`NSMBU_VK_PRESENT_MODE=immediate`, `NSMBU_HIDDEN_WINDOWS=1`, `NSMBU_NO_HOST_INPUT=1`, `NSMBU_NO_AUDIO=1`, and `NSMBU_RES_SCALE=1` keep the boot short.
+
+The controller screen is up by frame 200.
+The title picture is up by frame 480.
+“Press 2!” is on screen from about frame 760 through 920.
+One A at frames 860–880 (`8000`) opens the file select by frame 1000.
+
+```bash
+NSMBU_USER_DIR="$PWD/nsmbu" \
+NSMBU_HIDDEN_WINDOWS=1 NSMBU_NO_HOST_INPUT=1 NSMBU_VK_PRESENT_MODE=immediate \
+NSMBU_NO_AUDIO=1 NSMBU_RES_SCALE=1 NSMBU_ASPECT=21:9 \
+NSMBU_PRESS='860-880:8000' \
+NSMBU_DUMP_FRAMES=1000 NSMBU_EXIT_AT_FRAME=1040 \
+./build/debug/nsmbu --game "$PWD/game/usa-1.3.0" --save "$PWD/.tmp/file-select/save"
+```
+
+Copy `nsmbu/save` into `.tmp/file-select/save` first.
+Done when `frame_1000.png` is the file-select menu.
+A menu check should enter `FileSelect` directly instead of waiting out this title.
+
+### Other boots
+
+- `nsmbu replay --release 1-1` is the course benchmark.
+  The baseline is in [performance.md](performance.md).
+- `nsmbu status` is the live scene line.
+  `scene=CourseSelect` with `map=1` is the world map.
+- `NSMBU_LOG_FILE=0` skips the log file.
+  Any other path replaces `nsmbu/logs/nsmbu.log`.
+  Profile logs belong under `.tmp/`.
 
 ## Related test aids
 

@@ -41,6 +41,15 @@ inline bool projected_root_name(std::string_view name) {
 
     return name == "N_EnemyHP_00" || name == "T_CommandA_00" || name == "P_SetSeatASpecial_00";
 }
+inline bool edge_anchor(std::string_view name) {
+    constexpr std::string_view names[] = {
+        "N_L_00", "N_R_00",
+        "P_ArrowL_00", "P_ArrowR_00", "P_ArrowT_00", "P_ArrowU_00",
+        "N_ZankiAll_00", "N_Coin_00", "N_TimerScore_00", "N_Scroll_00",
+        "N_Free_00", "N_VSPlayer_00", "N_FreeZanki_00"};
+    for (auto n : names) if (name == n) return true;
+    return false;
+}
 
 inline void clip(uint32_t w, uint32_t h, float kx, float ky,
                  uint32_t& x, uint32_t& y, uint32_t& ex, uint32_t& ey) {

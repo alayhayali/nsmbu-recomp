@@ -7,6 +7,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Added
+
 - Android-hosted LLVM toolchain packaging scripts, unit tests, and CI compiler cache action.
 - Android extractor packaging installs a verified `nsmbu-extract` as an APK native library for on-device setup.
 - Android runtime SDK packaging ships the runtime objects and link recipe (no game code) so the phone links its own `libgame.so`; the installer's link step accepts an alternate recipe.
@@ -23,6 +25,120 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Releases include a signed Android APK for arm64 (and x86_64 for emulators and Chromebooks) that sets the game up on the phone; it carries no game code.
 - Android save import/export looks for NSMBU `user/rp_personal_savedata.dat` instead of the leftover WWHD save name.
 - New [Android guide](docs/android.md) for players and an [on-device setup design](docs/android-implementation.md) for contributors; the device checklist lists the setup, touch and release checks still to run on real hardware.
+- A 30 fps choice in Graphics.
+  It draws half as often and runs two logic steps per picture, so the game keeps its speed.
+- Graphics can set any frame rate from 60 to 1000.
+  30 fps is only the preset.
+  Fast forward runs the game as fast as the computer can, with one game step per picture and no frame limit.
+- `nsmbu installer --no-open` packages the installer and returns without opening setup.
+- Scene checks for agents live in the `scenes` skill.
+  The world map, a course pack, and the file menu each have a short boot that stops on `nsmbu status`.
+
+### Changed
+
+- `nsmbu build` and `nsmbu run` skip CMake configure when the build cache is already up to date, and use a quiet log level when configure does run.
+- Graphics frame rate: Custom is a preset radio on its own row with a number field beside it.
+  Preset rates stay selectable while Custom is active.
+- The performance overlay averages fps and logic steps/s over the same 120 frames as the frame-time graph, not since you opened the overlay or reset.
+- Performance overlay controls moved from Graphics to the top of Debug.
+- Graphics card choice moved from Graphics to the bottom of Debug.
+- The performance overlay shows GPU name, driver, and Vulkan version on separate lines.
+- The performance overlay background is slightly less transparent.
+- High frame rates use a present cap with a wall-clock accumulator: logic stays at 60 steps/s, and blend time comes from the open step instead of a per-rate frame ladder.
+- Guest-code notes live in the docs.
+  The guest skill is gone.
+- The GamePad screen starts off.
+  Off is the first choice in Settings.
+- Internal resolution adds 360p and 540p for slower machines.
+  The choices read 360p, 540p, 720p, 1080p, 1440p, and 2160p/4K.
+  720p is the Wii U picture.
+  Lower choices draw fewer pixels and are scaled up to the window.
+  R cycles the list.
+- Translating the game to C uses every CPU core, so install and a full recompile finish sooner.
+- The TV window title shows the NSMBU release version and the installed game build (for example `v0.7.2 - USA v64`, or `0.7.2 git - EU v0` on a local build).
+- A later release tag reuses the Linux compiler cache, so that build compiles less.
+- Each ctest runs with its own `NSMBU_USER_DIR` under `test-users/`, so tests no longer write the `nsmbu/` folder.
+  A new `user_folder_isolation` test checks that a saved `controls.json` lands there and not in the home folder.
+- Each `nsmbu test` case runs with its own user folder (`.tmp/playtest/<name>/user`) for settings, controls, and the shader cache.
+  Cases that use the repo save also get a copy of `settings.ini` and `controls.json`.
+- `tools/run/scripted-run.sh` now uses its own user folder under the run folder (`.tmp/<name>/user`) unless `NSMBU_USER_DIR` is set.
+- Recompiling an unchanged game no longer rewrites every generated C file, so a normal rebuild skips guest code that did not change.
+- Hooked game functions and instruction-level hook sites keep plain register form in the recompiled C (the runtime hook can read and write the Cpu mid-function).
+- `tools/gametest/run_scenario.sh` and `compare.py` compare two scripted runs.
+  The runtime writes a status line per logic step (scene, course, pack, player position) with `NSMBU_TEST_STATUS_TRACE`, and the compare tool aligns the runs on a named scene and prints the first differing step.
+  `NSMBU_TEST_ALIGN_SCENE` names the scene, and `NSMBU_TEST_FIXED_SEED=1` counts scripted presses, sticks, keys, and frame dumps from that scene.
+  A boot that misses the scene is retried and its log is kept.
+- Linux and Windows CI run the benchmark tooling tests, new `tools/test_shaderprep.py` shader preparation tests, and the compare tool tests.
+  CI runs on every branch push only (no separate `pull_request` run); tag pushes do not start it.
+- Windows on ARM64 release: `NSMBU-<version>-windows-arm64.zip`, built and tested on a `windows-11-arm` runner with llvm-mingw `aarch64-w64-mingw32` and the embeddable `python.windows-arm64`.
+  `guard.py` checks its Python files against `tools/release/python-windows-arm64-files.json`.
+- Rolling development build: a nightly check of `main` publishes the `devel-build` pre-release (`<last release>-devel.<sha>`, never marked latest) when `main` moved since the last one.
+  Its notes are the `## [Unreleased]` block (`notes.py --devel`).
+- Windows setup stops before any download when the install folder is too deep for the game (more than 179 characters), and unpacks the compiler with long-path (`\\?\`) paths.
+  `windows.yml` runs `test_setup.py LongPaths` on MSYS2 Python and python.org Python 3.14, and `release.yml` repeats the check in a deep release folder and in one character past the limit.
+- The Windows executables declare `longPathAware`.
+- The Linux AppImage pins the type2 runtime by SHA-256 (`appimage.py` `RUNTIME`, passed to appimagetool with `--runtime-file`) and ships its license texts, which `guard.py` checks.
+  `appimage.py --extract-runtime` recovers the runtime from a built AppImage, and the release workflow checks that the AppImage reports the pinned runtime commit.
+- `nsmbu installer --no-open` packages the installer and returns without opening setup.
+- Decompiled `SndAudioMgr::startSound` / `startSystemSe`, `CourseSelectLayerMgr::createLayers`, and `ReflectionRenderObjLayer::render_` in `vendor/decomp/src`.
+  The frame-loop, map-shadow, and soft-restart notes answer their open claims: the draw-context lock and unlock, the task-manager `afterCalc`, the eleven-node `DualScreenMethodTreeMgr` layout, the TV `"DepthShadow"` creation sites, and the `0x1017C814` `SndAudioMgr` method table.
+
+### Fixed
+
+- Settings text fields (including the custom frame rate) accept keyboard input while the overlay is open.
+- 30 fps runs a full game step for each picture update, including the wait that finishes the previous picture.
+  Clearing the render list twice without that wait crashed the render thread.
+- 60 fps stays at 60 when a higher rate was used earlier.
+  The performance overlay no longer reports that higher rate.
+- Vulkan prefers a dedicated GPU when one can draw the game windows.
+  Graphics (` or F12) can prefer dedicated, prefer integrated, or one listed card.
+  The choice applies on the next start.
+  `NSMBU_VK_GPU` overrides it for that start.
+- The TV window title uses ASCII separators so punctuation no longer shows as garbled text on some systems.
+- Metal: a new render target starts with the texels already in guest memory.
+  A course's static tiles drawn from its working tileset, such as the used block after hitting a ? block, were invisible.
+- A 165 Hz present cap stays on 165.
+  The present wait was keeping the time it actually woke, so each short overrun started the next frame late and the overlay sat near 162.
+- A late world-map frame no longer starts a second present slot while it waits for the previous flip.
+  That extra wait held the overworld near 108 fps.
+- Frame time stays on the present cap when a light frame would otherwise show early and the next full draw shows late.
+  The present wait keeps running queued GPU loads, so the boot screen can finish.
+- Install and recomp tools find generated code and hook lists when the install path contains square brackets.
+- High present caps keep their cadence when a frame runs late, so the world map no longer drifts well below the selected rate.
+- Logic presents at high frame rates draw the finished step (blend t = 1) instead of the open-step leftover, so Mario no longer jitters while running at 120/165.
+- World-map presents no longer defer or idle-repeat against the present-cap wake schedule, so the overworld can hold the same host frame rate as courses.
+- A hitch can run up to four guest logic steps on one present, and the leftover time stays in the accumulator so the game slows under load.
+- Hold frames blend the course camera across the open logic step, and logic frames still draw the finished step.
+
+## [0.7.2] - 2026-10-27
+
+### Fixed
+
+- On 21:9, enemies, blocks, bushes, and other course scenery no longer pop in at the old 16:9 edge.
+  The title parade stays centered.
+
+## [0.7.1] - 2026-10-27
+
+### Changed
+
+- Aspect ratio is under Settings → Display and is marked experimental.
+- Ultrawide layouts keep edge HUD on the screen with the same side margin as 16:9.
+  Centered menus and title UI stay in a 16:9 frame while the world view expands.
+
+### Fixed
+
+- The aspect ratio chosen in Settings is restored on the next launch.
+  A set `NSMBU_ASPECT` value still overrides the saved choice.
+- Setup lets you choose **Copy saves and settings from another NSMBU folder** when no earlier install is detected.
+- Install and setup work when the install path contains square brackets.
+- On 21:9, world-map Menu, Map View, and Items labels stay on their buttons instead of clipping at the screen edge.
+- On 21:9, title characters stay centered under the logo.
+- On 21:9, fades fill the wide picture.
+- On 21:9, file-select full-width art fills the frame; buttons and cards stay 16:9.
+- On 21:9, title-screen scenery at the edges no longer pops in late.
+- On 21:9, the title screen no longer shows a one-pixel bright column on the far right.
+- On 21:9, the world map no longer shows dark bars just outside the old 16:9 frame.
+- Ultrawide no longer stretches the GamePad picture; only the TV view grows.
 
 ## [0.7.0] - 2026-10-26
 
@@ -256,7 +372,9 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - The TV and GamePad present together on one vsync.
 
-[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.1...v0.7.2
+[0.7.1]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.3...v0.7.0
 [0.6.3]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.1...v0.6.2

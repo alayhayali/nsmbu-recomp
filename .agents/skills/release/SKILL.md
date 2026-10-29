@@ -1,84 +1,52 @@
 ---
 name: release
-description: "Cut an NSMBU GitHub release: merge the version branch into main, move CHANGELOG Unreleased to a version, local verify (ctest, installer test_setup, test_builds, nsmbu test, nsmbu installer smoke), commit on main, push tag v*, and watch the release workflow. Use when the user asks to release, prepare a release, cut a version, push a release tag, watch release CI, or rerun a release until it is published and green."
+description: "Cut an NSMBU GitHub release. Use when the user asks to release, cut a version, push a v* tag, or watch a release workflow until it is published."
 ---
 
 # Release
 
-Ship a versioned GitHub Release by pushing a `v*` tag that points at `main` after the version branch is merged.
+Ship a versioned GitHub Release by pushing a `v*` tag on the tip of `main`.
 The workflow is `.github/workflows/release.yml`.
-It publishes on the tag push.
-It does not care which branch the tag points at, but this project tags the tip of `main`.
-Local pushes run `.git-hooks/pre-push`, which builds and runs the full `ctest` suite (path-alias tests such as `mod_content_startup` first), then `tools/installer/test_setup.py` and `tools/recomp/test_builds.py`.
-
-**Default:** keep fixing and retagging until the release workflow is green and the GitHub Release exists.
-Only stop on failure without retagging when the user explicitly says to watch only, report only, or not retag.
-
-The version branch holds release work until it lands on `main` (name is the version without `v`, e.g. `0.6.2`).
-Do not start changelog cleanup, local verify, or tagging until that branch is merged into `main` and you are on an up-to-date `main`.
-The changelog heading and release commit live on `main`.
-The tag is the tip of `main`.
+It publishes on that tag push.
+Run every command in `/home/econn/git/nsmbu-recomp` on `main`.
+Keep fixing and retagging until the workflow conclusion is `success` and the GitHub Release exists and is not a draft.
+Stop without retagging only when the user asks to watch or report.
 
 ## Steps
 
-0. Merge the version branch into `main` before any release step below.
-   Open a pull request from the version branch into `main` and merge it, or merge locally and push `main`.
-   If `/release` was invoked on the version branch only, stop and complete this merge first.
-   Check out `main`, pull, and confirm it contains the intended release code.
-1. Confirm the version string with the user if they did not name one (example `0.4.0`).
+0. Merge the version branch into `main` before changelog, verify, or tagging.
+   The version branch is the open pull request whose head is `X.Y.Z`, or the branch the user names.
+   With no such branch, release the current `main`.
+   Leave other open pull requests as they are.
+   Check out `main`, pull, and confirm that checkout contains the release.
+1. Confirm the version string with the user when they did not name one (example `0.4.0`).
    The git tag is `v` plus that string (`v0.4.0`).
-   The CHANGELOG heading is Keep a Changelog form without `v` (`## [0.4.0] - YYYY-MM-DD`).
-   The version branch name is the same string without `v` (`0.4.0`).
-2. On `main`:
-   - Follow the `changelog` skill to clean and order Unreleased, then move that block under a new `## [X.Y.Z] - YYYY-MM-DD` heading (ISO date).
-   - Leave `## [Unreleased]` empty above it.
-   - Update the compare links at the bottom of `CHANGELOG.md`.
-   - Fold any further commits meant for this version into the same `## [X.Y.Z]` block before tagging.
-   - Commit that change with any other release-ready files the user asked to include.
-3. Local verify (required before push or tag).
-   Prefer a configure with `-DNSMBU_SETUP_GUI=ON` (`build/linux` from pre-push shape, or `build/release-upload` after `nsmbu installer`).
-   Run the same post-`ctest` scripts as pre-push and CI:
-
-   ```bash
-   ctest --test-dir <build> --output-on-failure
-   python3 tools/installer/test_setup.py
-   python3 tools/recomp/test_builds.py
-   ```
-
-   Then run the playtests when `game/` and a debug build are on this machine:
-
-   ```bash
-   nsmbu test
-   ```
-
-   That boots the course-open and opening-cinematic cases from `docs/automation.md`.
-
-   Then build a release-shaped installer package and open setup:
-
-   ```bash
-   nsmbu installer
-   ```
-
-   That builds the Linux release package at `build/installer` (the folder the zip would contain) and opens `nsmbu-launcher --setup`.
-   Smoke the setup window: welcome or home actions, Keys paste fields when a disc image is in play, and that controls fit without clipping.
-   Quit the window when done.
-   Stop the release if any command fails or the setup smoke looks wrong.
+   The changelog heading is `## [0.4.0] - YYYY-MM-DD`.
+2. On `main`, follow the `changelog` skill.
+   Move the cleaned Unreleased block under `## [X.Y.Z] - YYYY-MM-DD` and leave `## [Unreleased]` empty above it.
+   Fold any later commits for this version into that same block before tagging.
+   Commit on `main`.
+   `tools/release/notes.py` copies that block when the tag workflow publishes, so the heading is in the tagged commit.
+   A changelog commit after the tag is published needs `gh release edit` to change the GitHub Release body.
+3. From this checkout, run `nsmbu test`, then `nsmbu installer --no-open`.
+   Follow the `nsmbu` skill when a case fails.
+   A failure from any other checkout, or from a binary that does not match `game/`, is a checkout mistake.
+   Use this checkout and rerun.
+   Leave the setup window to the person at the machine.
+   Pushing `main` is the unit-test gate.
+   `.git-hooks/pre-push` runs `ctest`, `tools/installer/test_setup.py`, and `tools/recomp/test_builds.py`.
+   Linux does not compile the macOS or Windows package jobs.
+   Those failures show up in `gh run view <id> --log-failed`.
 4. Push `main`.
    The release commit is the tip of `main`.
-5. Create the tag on that tip: `git tag vX.Y.Z`.
-   Push only that tag: `git push origin vX.Y.Z`.
-   If the tag already exists on `origin` from a failed attempt, retag as in step 8.
-6. Find the new `release` workflow run for the tag (`gh run list --workflow=release.yml --limit 3`).
-   Watch it: `gh run watch <id> --exit-status`.
-7. On success: report the run URL and the GitHub Release URL (`gh release view vX.Y.Z --json url -q .url`).
-   Confirm the release is not a draft (`gh release view vX.Y.Z --json isDraft -q .isDraft` is `false`).
-8. On failure:
-   - Report the run URL, which jobs failed, and the failing test or step from `gh run view <id> --log-failed`.
-   - Fix the failure on `main`, push `main`, retag its new tip (`git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, `git tag vX.Y.Z`, `git push origin vX.Y.Z`), and return to step 6.
-   - Repeat until the run succeeds and the release is published.
-   - Only skip retagging when the user explicitly asked to watch or report without fixing.
+5. Tag that tip and push the tag: `git tag vX.Y.Z`, then `git push origin vX.Y.Z`.
+   When the tag already exists on `origin`, replace it: `git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, `git tag vX.Y.Z`, `git push origin vX.Y.Z`.
+6. Find the run with `gh run list --workflow=release.yml --limit 3` and wait with `gh run watch <id> --exit-status`.
+   On success, report the run URL and `gh release view vX.Y.Z --json url -q .url`.
+   Confirm `gh release view vX.Y.Z --json isDraft -q .isDraft` is `false`.
+   On failure, report the run URL and the failing step from `gh run view <id> --log-failed`, fix on `main`, push `main`, replace the tag as in step 5, and return to this step.
 
-Done when the version branch is merged into `main`, local verify passed on `main`, the tag is on `origin`, the release workflow conclusion is `success`, and the GitHub Release exists and is not a draft.
+Done when the version branch is on `main` in this checkout, `nsmbu test` and `nsmbu installer --no-open` have passed here, the tag is on `origin`, the release workflow conclusion is `success`, and the GitHub Release exists and is not a draft.
 
 ## Rules
 
@@ -95,8 +63,8 @@ Done when the version branch is merged into `main`, local verify passed on `main
 
 | Job | Role |
 | --- | --- |
-| version | Sets `VERSION` from the tag |
-| macos / windows / linux-x86_64 / linux-aarch64 | Build, package, unit tests |
+| version | Sets `VERSION` from the tag; on the nightly schedule starts a development build when `main` moved since the `devel-build` tag |
+| macos / windows-x86_64 / windows-arm64 / linux-x86_64 / linux-aarch64 | Build, package, unit tests |
 | android-arm64 / android-x86_64 | Signed setup APK without game code (`ANDROID_KEYSTORE_B64` secrets) |
 | publish | Upload zips / AppImage / APKs and `gh release create` |
 

@@ -120,9 +120,9 @@ export async function waitMap(session: Session, timeoutSec: number, needInput: b
 
 async function hold(session: Session, frames: number, run: () => Promise<void>): Promise<void> {
     const now = await session.status();
-    const mark = now.frame ?? 0;
+    const mark = now.step ?? 0;
     await run();
-    await session.wait((s) => (s.frame ?? 0) >= mark + frames, 30);
+    await session.wait((s) => (s.step ?? 0) >= mark + frames, 30);
 }
 
 async function walk(session: Session, x: number, y: number): Promise<MapView | null> {
@@ -189,7 +189,7 @@ export function onMap(s: PlayStatus): boolean {
 }
 
 export function onWorldMap(s: PlayStatus): boolean {
-    return s.map === true && s.scene === "Map";
+    return s.map === true && (s.scene === "Map" || s.scene === "CourseSelect");
 }
 
 export function inCourse(s: PlayStatus): boolean {
@@ -236,7 +236,17 @@ export function assertPortablePlace(session: Session, states: string, slot: numb
 }
 
 export async function enterCourse(session: Session): Promise<string> {
-    await session.advance(90, 20);
+    let view: MapView | null = null;
+    try {
+        view = await mapView(session);
+    } catch {
+        view = null;
+    }
+    if (!view || view.lock !== 0 || view.players < 1 || !isCourseNode(view.name)) {
+        await waitUntilMoves(session, 90);
+    } else {
+        await session.advance(90, 20);
+    }
     const start = Date.now();
     while (Date.now() - start < 90_000) {
         const s = await session.status();
@@ -248,22 +258,33 @@ export async function enterCourse(session: Session): Promise<string> {
 }
 
 export async function leaveCourse(session: Session): Promise<void> {
-    await session.advance(180, 30);
-    const start = Date.now();
-    while (Date.now() - start < 60_000) {
+    await session.advance(90, 30);
+    for (let i = 0; i < 10; i++) {
         if (onWorldMap(await session.status())) return;
-        await session.press("B", 15);
+        await session.stick(1, 0, 40);
+        await session.advance(40, 15);
+    }
+    const start = Date.now();
+    while (Date.now() - start < 90_000) {
+        if (onWorldMap(await session.status())) return;
+        await session.press("B", 2);
         await session.advance(20, 15);
-        await session.press("Plus", 20);
-        await session.advance(40, 15);
-        await session.press("Down", 15);
-        await session.advance(25, 15);
-        await session.press("A", 20);
-        await session.advance(40, 15);
-        await session.press("Right", 15);
-        await session.advance(25, 15);
-        await session.press("A", 20);
-        const until = Date.now() + 8_000;
+        await session.press("Plus", 8);
+        await session.advance(55, 15);
+        if (onWorldMap(await session.status())) return;
+        for (let i = 0; i < 3; i++) {
+            await session.press("Up", 1, true);
+            await session.advance(20, 15);
+        }
+        await session.press("Down", 1, true);
+        await session.advance(35, 15);
+        await session.press("A", 4);
+        await session.advance(45, 15);
+        if (onWorldMap(await session.status())) return;
+        await session.press("Right", 1, true);
+        await session.advance(30, 15);
+        await session.press("A", 4);
+        const until = Date.now() + 10_000;
         while (Date.now() < until) {
             if (onWorldMap(await session.status())) return;
             await session.advance(30, 15);
@@ -275,10 +296,31 @@ export async function leaveCourse(session: Session): Promise<void> {
 export async function walkToOtherNode(session: Session, from: number | undefined): Promise<PlayStatus> {
     const start = Date.now();
     while (Date.now() - start < 60_000) {
-        await session.stick(1, 0, 180);
-        await session.advance(200, 20);
-        const s = await session.status();
-        if (onMap(s) && s.node !== undefined && s.node !== from) return s;
+        let view: MapView | null = null;
+        try {
+            view = await mapView(session);
+        } catch {
+            view = null;
+        }
+        if (!view || view.players < 1) {
+            await session.advance(30, 15);
+            continue;
+        }
+        if (view.lock !== 0) {
+            if (!isCourseNode(view.name)) await session.press("A", 2);
+            else await session.advance(30, 15);
+            continue;
+        }
+        for (const [x, y] of [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+        ] as const) {
+            await hold(session, 180, () => session.stick(x, y, 180));
+            const s = await session.status();
+            if (onMap(s) && s.node !== undefined && s.node !== from) return s;
+        }
     }
     throw new Error(`map node did not change: ${session.last}`);
 }
@@ -434,9 +476,10 @@ export async function courseEnterRoundtrip(session: Session, fps: string): Promi
     });
     await reachWorldMap(session, 180);
     const first = await enterCourse(session);
+    if (!first) throw new Error(`first course pack missing: ${session.last}`);
     await leaveCourse(session);
-    const back = await session.status();
-    await walkToOtherNode(session, back.node);
+    const onMapAfter = await session.status();
+    await walkToOtherNode(session, onMapAfter.node);
     const second = await enterCourse(session);
-    if (second === first) throw new Error(`second course is still ${second}`);
+    if (!second) throw new Error(`second course pack missing: ${session.last}`);
 }

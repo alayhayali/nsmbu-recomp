@@ -17,11 +17,13 @@
 #include "crash/crashrec.h"
 #include "gfx/aspect.h"
 #include "gfx/renderer.h"
+#include "gfx/res_presets.h"
 #ifdef NSMBU_HAS_VULKAN
 #include "gfx/vulkan/settings.h"
 #endif
 #include "core/runtime.h"
 #include "core/build_info.h"
+#include "core/window_title.h"
 
 namespace gfx {
 bool drc_window_available();
@@ -31,16 +33,10 @@ void install_display_menu(NSMenu* bar);
 void set_host_setting(const char* key, const std::string& value);
 }
 
-static const float kResScales[] = {1.0f, 1.5f, 2.0f, 3.0f};
 static float g_res_shown = 0;
 static float current_res_scale() { return g_res_shown ? g_res_shown : render::res_scale(); }
 static void set_res(float f) { g_res_shown = f; render::set_res_scale(f); }
-static void cycle_res() {
-    float cur = current_res_scale();
-    size_t n = sizeof kResScales / sizeof *kResScales, i = 0;
-    while (i < n && kResScales[i] <= cur + 0.01f) i++;
-    set_res(kResScales[i % n]);
-}
+static void cycle_res() { set_res(gfx::next_res_preset(current_res_scale())); }
 
 namespace gx2 { bool uncapped(); }
 #include "../../mods/mods.h"
@@ -49,7 +45,6 @@ namespace ax { void start_sound_trace(const char* path, double seconds); }
 namespace gfx { bool menu_hotkey(uint16_t code); NSMenuItem* controls_menu_item();  void install_overlay_input(); }
 
 static NSWindow* g_tv;
-static NSString* const kTitle = @"New Super Mario Bros. U (recompiled)";
 
 static const bool g_prefs = env::NO_HOST_INPUT() == nullptr;
 static bool g_prefs_loaded = false;
@@ -91,6 +86,7 @@ static void load_prefs() {
     if (saved(@"fps60", {env::INTERP, env::INTERP_FPS})) interp::set_mode([pref(@"fps60") intValue]);
     if (saved(@"fps60Paced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(60, [pref(@"fps60Paced") boolValue]);
     if (saved(@"fpsHighPaced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(120, [pref(@"fpsHighPaced") boolValue]);
+    if (saved(@"aspect", {env::ASPECT})) aspect::apply_choice([pref(@"aspect") UTF8String]);
 #ifdef NSMBU_HAS_VULKAN
     if (saved(@"vkPresentMode", {env::VK_PRESENT_MODE})) gfxvk::set_present_mode([pref(@"vkPresentMode") intValue]);
 #endif
@@ -102,6 +98,11 @@ static void save_prefs() {
     if (!env_set({env::FXAA})) set_pref(@"fxaa", @(render::fxaa()));
     if (!env_set({env::INTERP, env::INTERP_FPS})) set_pref(@"fps60", @(interp::mode()));
     if (!env_set({env::INTERP_FPS})) set_pref(@"interpFps", @(interp::fps()));
+    if (!env_set({env::ASPECT})) {
+        char aspect[32];
+        aspect::choice_text(aspect, sizeof aspect);
+        set_pref(@"aspect", @(aspect));
+    }
     if (!env_set({env::INTERP_PACED})) {
         set_pref(@"fps60Paced", @(interp::paced_interpolation_at(60)));
         set_pref(@"fpsHighPaced", @(interp::paced_interpolation_at(120)));
@@ -114,11 +115,14 @@ static void save_prefs() {
 
 static void update_title() {
     save_prefs();
-    NSString* t = kTitle;
+    char base[window_title::kCap];
+    window_title::format_base(base, sizeof base);
+    NSString* baseTitle = @(base);
+    NSString* t = baseTitle;
     if (build::dev() && gx2::uncapped())
-        t = [t stringByAppendingString:@" \u00b7 UNCAPPED (debug)"];
+        t = [t stringByAppendingString:@" - UNCAPPED (debug)"];
     std::string msg = ss::last_message();
-    if (!msg.empty()) t = [NSString stringWithFormat:@"%@ \u2014 %s", kTitle, msg.c_str()];
+    if (!msg.empty()) t = [NSString stringWithFormat:@"%@ - %s", baseTitle, msg.c_str()];
     if (env::LOG_TITLE() && ![t isEqualToString:g_tv.title]) {
         static NSString* last;
         if (![t isEqualToString:last]) LOG("[display] title: %s", t.UTF8String);
@@ -240,12 +244,10 @@ static NsmbuStateMenu* g_state_menu;
 - (void)toggleInterpFps:(NSMenuItem*)item { interp::toggle_fps((int)item.tag); update_title(); }
 - (void)toggleDrcWindow:(NSMenuItem*)item { gfx::show_drc_window(!gfx::drc_window_shown()); }
 - (void)toggleFxaa:(NSMenuItem*)item { render::set_fxaa(!render::fxaa()); update_title(); }
-- (void)setRes:(NSMenuItem*)item { set_res(kResScales[item.tag]); update_title(); }
-- (void)setAspect:(NSMenuItem*)item { aspect::set_mode((int)item.tag); update_title(); }
+- (void)setRes:(NSMenuItem*)item { set_res(gfx::kResPresets[item.tag].scale); update_title(); }
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
     if (item.action == @selector(setRes:))
-        item.state = fabsf(kResScales[item.tag] - current_res_scale()) < 0.01f ? NSControlStateValueOn : NSControlStateValueOff;
-    if (item.action == @selector(setAspect:)) item.state = item.tag == aspect::mode() ? NSControlStateValueOn : NSControlStateValueOff;
+        item.state = fabsf(gfx::kResPresets[item.tag].scale - current_res_scale()) < 0.01f ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(setRenderer:)) {
         render::Api a = (render::Api)item.tag;
         item.state = a == render::preferred() ? NSControlStateValueOn : NSControlStateValueOff;
@@ -330,18 +332,12 @@ void install_menu(NSWindow* tv) {
         [g addItem:[NSMenuItem separatorItem]];
     }
     [g addItemWithTitle:@"Internal resolution (R cycles)" action:nil keyEquivalent:@""].enabled = NO;
-    add(g, @"    1x (1280x720, as on Wii U)", @selector(setRes:), @"R", 0);
-    add(g, @"    1.5x (1920x1080)", @selector(setRes:), @"R", 1);
-    add(g, @"    2x (2560x1440)", @selector(setRes:), @"R", 2);
-    add(g, @"    3x (3840x2160)", @selector(setRes:), @"R", 3);
-    [g addItem:[NSMenuItem separatorItem]];
-    [g addItemWithTitle:@"Aspect ratio" action:nil keyEquivalent:@""].enabled = NO;
-    add(g, @"    16:9 (original)", @selector(setAspect:), @"", aspect::kOriginal);
-    add(g, @"    Match window", @selector(setAspect:), @"", aspect::kWindow).toolTip =
-        @"The picture takes the shape of the TV window (or the screen in full screen): wider shows more to the sides";
-    add(g, @"    16:10", @selector(setAspect:), @"", aspect::k16x10);
-    add(g, @"    21:9", @selector(setAspect:), @"", aspect::k21x9);
-    add(g, @"    32:9", @selector(setAspect:), @"", aspect::k32x9);
+    for (size_t i = 0; i < gfx::res_preset_count(); i++) {
+        NSString* title = [NSString stringWithFormat:@"    %s", gfx::kResPresets[i].label];
+        NSMenuItem* item = add(g, title, @selector(setRes:), @"R", (NSInteger)i);
+        if (gfx::kResPresets[i].scale == 1.0f)
+            item.toolTip = @"The Wii U picture. Shortcut in game: R";
+    }
     [g addItem:[NSMenuItem separatorItem]];
     add(g, @"16x anisotropic filtering (N)", @selector(toggleAniso:), @"N");
     add(g, @"Edge smoothing, FXAA (8)", @selector(toggleFxaa:), @"8");

@@ -135,7 +135,7 @@ class _Shift:
 
 def all_builds():
     builds = [canonical_build()]
-    for path in sorted(glob.glob(os.path.join(HERE, "builds", "*.json"))):
+    for path in sorted(glob.glob(os.path.join(glob.escape(HERE), "builds", "*.json"))):
         with open(path, encoding="utf-8") as source:
             builds.append(Build(json.load(source)))
     return builds
@@ -257,4 +257,4 @@ def _parse_hook(text, where):
 
 def hook_files(directory=None):
     d = directory or HERE
-    return [os.path.join(d, "hooks.txt")] + sorted(glob.glob(os.path.join(d, "hooks_*.txt")))
+    return [os.path.join(d, "hooks.txt")] + sorted(glob.glob(os.path.join(glob.escape(d), "hooks_*.txt")))

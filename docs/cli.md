@@ -84,7 +84,7 @@ The CLI exports `NSMBU_CLI=1` and `NSMBU_USER_DIR=<repo>/nsmbu` on every dev com
 | `nsmbu save <save.dat\|save.json> [output] [--output PATH]` | convert `rp_savedata.dat` to JSON and back |
 | `nsmbu record <course> [name]` / `replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name>` | env + launch (see [automation.md](automation.md)) |
 | `nsmbu profile` / `perf` | profiling helpers |
-| `nsmbu installer [--version VERSION]` | builds this Linux host's GitHub Release folder (the zip contents) at `build/installer` with the release workflow's pinned zig toolchain, then opens that folder's setup window; does not publish |
+| `nsmbu installer [--version VERSION] [--no-open]` | builds this Linux host's GitHub Release folder (the zip contents) at `build/installer` with the release workflow's pinned zig toolchain, then opens that folder's setup window; `--no-open` returns after the package is ready; does not publish |
 | `nsmbu lint` / `recomp` | TypeScript mod build, recomp only |
 | `nsmbu scripted <name>` | wraps `tools/run/scripted-run.sh` |
 | `nsmbu test [--list] [name…]` | boots a game per playtest and runs selected cases in parallel ([automation.md](automation.md)); only `--list` is a valid flag |
@@ -105,6 +105,62 @@ nsmbu save in.dat out.json
 The JSON keeps every unknown and padding byte, so a JSON to `.dat` to JSON round trip is lossless.
 No CRC32 fields appear in the JSON; the structural checksums are recomputed when writing the `.dat` file so the game still accepts it.
 Non-finite `f32` values (star coin coordinates) are written as `0x`-prefixed 32-bit hex.
+
+## Compile
+
+Generated C uses `musttail`, so the build uses Clang.
+On Linux, `tools/build/build.py` adds the `libstdc++` path when it finds `libstdc++.so` under `/usr/lib/gcc/`.
+
+`nsmbu build` runs the recompiler when `game/code/red-pro2.rpx` is newer than `build/gen`.
+When that RPX is absent, the build fills `build/gen` with `tools/recomp/stubgen.py` so the tree still links.
+
+Set `NSMBU_VERBOSE_BUILD=1` to print full CMake configure output (pkg-config checks and other `--` status lines).
+
+An RPX from a disc that lacks the 1.3.0 update has different addresses.
+Those addresses miss `references/headers` and `tools/recomp/headers_names.txt`.
+
+A warm `nsmbu build` skips `cmake -S` when the build cache already matches the compiler flags and CMake options.
+Regenerate guest stubs only when `hooks.txt`, `hooks_*.txt`, or the recomp inputs changed.
+The `0 hooks` line from stub generation is normal.
+Hooks live in `build/gen`.
+`tools/recomp/guest_stubs.py` writes weak stubs for guest symbols the runtime still names.
+CMake runs that script on every build.
+A generated game function with the same name replaces the stub.
+
+## Launch
+
+`nsmbu launch` sets `NSMBU_PROFILE`, `NSMBU_VK_STATS`, `NSMBU_SYNC_STATS`, and `NSMBU_CRASH_RECOVERY` when those variables are unset.
+`nsmbu launch --no-debug` and `nsmbu run --release` leave those variables unset.
+
+`nsmbu launch` and `nsmbu run` symlink each package under `modding/examples/` into `nsmbu/mods/<id>/`.
+Existing real folders in that mods directory stay in place.
+Set `NSMBU_NO_EXAMPLE_MODS=1` to skip those links.
+
+## Host tests
+
+Host tests are CTest targets in `CMakeLists.txt`.
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+Linux CI also runs these scripts after that `ctest`.
+
+```bash
+python3 tools/installer/test_setup.py
+python3 tools/recomp/test_builds.py
+```
+
+`.git-hooks/pre-push` runs a full local `ctest` before a push.
+Profiling follows [performance.md](performance.md).
+
+## Local userdata
+
+The `nsmbu` CLI points `NSMBU_USER_DIR` at the gitignored `nsmbu/` folder on dev commands.
+A portable release uses the same layout under `data/nsmbu/` when `portable.txt` sits next to the binary.
+
+The run log is `nsmbu/logs/nsmbu.log`.
+`nsmbu/mods.json` stores the enabled mods and their options.
 
 ## Live look
 
@@ -146,7 +202,7 @@ No change to the replay file format or `NSMBU_PRESS` start-only tables except co
 
 ## Docs and agent skills
 
-`CONTRIBUTING.md`, `docs/nsmbu/port.md`, `docs/automation.md`, `AGENTS.md`, and `.agents/skills/build/SKILL.md` use `nsmbu …` for CLI invocations.
+`CONTRIBUTING.md`, `docs/nsmbu/port.md`, `docs/automation.md`, and `AGENTS.md` use `nsmbu …` for CLI invocations.
 `.agents/skills/nsmbu/SKILL.md` steers agents to playtest cases first, with live look commands for short checks.
 Complex input stays on `record` / `replay`.
 

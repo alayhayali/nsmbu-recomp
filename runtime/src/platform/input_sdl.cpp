@@ -12,6 +12,7 @@
 #include "gfx/screenshot.h"
 #include "../gfx/vulkan/settings.h"
 #include "agent/agent_ctl.h"
+#include "test/script_frame.h"
 #include "../overlay/hostui.h"
 #include "../overlay/overlay.h"
 #include "../overlay/text_entry.h"
@@ -216,6 +217,11 @@ static bool overlay_event(const SDL_Event& event){
   if(event.wheel.windowID!=tv)return false;
   float y=event.wheel.y,x=event.wheel.x;if(event.wheel.direction==SDL_MOUSEWHEEL_FLIPPED){x=-x;y=-y;}
   return overlay::mouse_wheel(x,y);
+ }
+ case SDL_EVENT_TEXT_INPUT:{
+  if(event.text.windowID!=tv)return false;
+  if(!overlay::is_open())return false;
+  return overlay::text(event.text.text);
  }
  default:return false;
  }
@@ -563,6 +569,15 @@ void update(){
     SDL_SetTextInputArea(ws[i],&area,0);SDL_StartTextInput(ws[i]);
    }
    SDL_free(ws);
+  }
+ }
+ static bool overlay_text=false;
+ const bool overlay_wants_text=overlay::is_open()&&!text_entry::active()&&!g_done;
+ if(overlay_wants_text!=overlay_text){
+  overlay_text=overlay_wants_text;
+  if(g_prompt_window){
+   if(overlay_text)SDL_StartTextInput(g_prompt_window);
+   else if(!text_entry::active()&&!g_done)SDL_StopTextInput(g_prompt_window);
   }
  }
  post_test_keys();
@@ -1360,19 +1375,20 @@ PadState read(int player) {
     PadState s = g_pads[player];
     if (no_host) s = PadState{};
     if (player == 0) {
+        const uint64_t sf = script_frame::frame(render::frame_count());
         if (!keys.empty()) {
             memset(g_script_keys, 0, sizeof g_script_keys);
             for (auto& p : keys)
-                if (render::frame_count() >= p.from && render::frame_count() <= p.to)
+                if (sf >= p.from && sf <= p.to)
                     for (int c : p.codes) g_script_keys[c] = true;
         }
         PadState k = keyboard_state(!no_host);
         for (auto& p : script)
-            if (render::frame_count() >= p.from && render::frame_count() <= p.to) s.buttons |= p.bits;
+            if (sf >= p.from && sf <= p.to) s.buttons |= p.bits;
         for (auto& p : sticks)
-            if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.lx = p.x; s.ly = p.y; }
+            if (sf >= p.from && sf <= p.to) { s.lx = p.x; s.ly = p.y; }
         for (auto& p : rsticks)
-            if (render::frame_count() >= p.from && render::frame_count() <= p.to) { s.rx = p.x; s.ry = p.y; }
+            if (sf >= p.from && sf <= p.to) { s.rx = p.x; s.ry = p.y; }
         apply_scenario(s);
         s.buttons |= k.buttons;
         if (k.lx || k.ly) { s.lx = k.lx; s.ly = k.ly; }

@@ -1,5 +1,4 @@
 
-
 #pragma once
 #include <algorithm>
 #include <cmath>
@@ -34,31 +33,34 @@ inline void slerp_weights(float cosang, float t, float& wa, float& wb) {
     }
 }
 
-inline float pass_fraction(int phase, int n, bool exact) {
-    if (phase == 0) return exact ? 1.0f : 1.0f / float(n + 1);
-    return phase < n ? float(phase + 1) / float(n + 1) : 1.0f;
-}
-
-inline float even_fraction(uint64_t present, uint64_t logic_step, int fps) {
-    if (fps <= 0 || logic_step == 0 || present == 0) return 1.f;
-    const double t = double(present) * 60.0 / double(fps) - double(logic_step - 1);
-    if (t <= 0.0) return 0.f;
-    if (t >= 1.0) return 1.f;
-    return float(t);
-}
-
 inline const int* fps_ladder(int& n) {
-    static const int rates[] = {60, 120, 144, 165, 240};
+    static const int rates[] = {30, 60, 120, 144, 165, 240};
     n = int(sizeof rates / sizeof rates[0]);
     return rates;
 }
 
+constexpr int kCustomFpsMin = 60;
+constexpr int kCustomFpsMax = 1000;
+
+inline int clamp_custom_fps(int f) {
+    if (f < kCustomFpsMin) return kCustomFpsMin;
+    if (f > kCustomFpsMax) return kCustomFpsMax;
+    return f;
+}
+
 inline int valid_fps(int f) {
+    if (f <= 0) return 60;
     int n = 0;
     const int* rates = fps_ladder(n);
-    int best = rates[0];
-    for (int i = 0; i < n; i++)
-        if (std::abs(rates[i] - f) < std::abs(best - f)) best = rates[i];
+    int best = 60;
+    int best_d = std::abs(best - f);
+    for (int i = 0; i < n; i++) {
+        const int d = std::abs(rates[i] - f);
+        if (d < best_d) {
+            best = rates[i];
+            best_d = d;
+        }
+    }
     return best;
 }
 
@@ -71,29 +73,82 @@ inline int display_fps(int hz) {
     return shown;
 }
 
-inline bool logic_wait_matches_presents(int fps) {
-    return valid_fps(fps) % 60 == 0;
-}
-
-inline bool fixed_output_slot(int fps) {
+inline int cap_fps(int fps, int hz, bool vsync) {
     fps = valid_fps(fps);
-    return fps > 60 && fps % 60 != 0;
+    if (!vsync || hz <= 0) return fps;
+    return std::min(fps, display_fps(hz));
 }
 
-inline int64_t output_slot_ns(int fps) {
-    if (!fixed_output_slot(fps)) return 0;
-    return 1000000000LL / valid_fps(fps);
+constexpr int64_t kLogicStepNs = 1'000'000'000LL / 60;
+constexpr int64_t kMaxDtNs = 100'000'000LL;
+constexpr int kMaxLogicStepsPerWake = 4;
+
+inline int64_t clamp_dt_ns(int64_t dt_ns) { return std::clamp(dt_ns, int64_t{0}, kMaxDtNs); }
+
+inline float blend_t(int64_t acc_ns) {
+    if (acc_ns <= 0) return 0.f;
+    if (acc_ns >= kLogicStepNs) return 1.f;
+    return float(double(acc_ns) / double(kLogicStepNs));
 }
 
-inline bool pad_logic_step(int fps, int step_n, int shown_frames, int full_frames) {
-    if (step_n <= 0) return true;
-    if (logic_wait_matches_presents(fps)) return step_n > 1;
-    return full_frames > 1 && shown_frames < full_frames;
+inline float present_t(int logic_steps, float open_t) { return logic_steps > 0 ? 1.f : open_t; }
+
+struct WakePlan {
+    int logic_steps = 0;
+    float t = 1.f;
+    int64_t acc_ns = 0;
+};
+
+inline WakePlan advance_accumulator(int64_t acc_ns, int64_t dt_ns, bool interpolate, int max_steps = kMaxLogicStepsPerWake) {
+    WakePlan out;
+    out.acc_ns = acc_ns;
+    if (!interpolate) {
+        out.logic_steps = 1;
+        out.t = 1.f;
+        out.acc_ns = 0;
+        return out;
+    }
+    out.acc_ns += clamp_dt_ns(dt_ns);
+    max_steps = std::max(1, max_steps);
+    while (out.acc_ns >= kLogicStepNs && out.logic_steps < max_steps) {
+        out.acc_ns -= kLogicStepNs;
+        out.logic_steps++;
+    }
+    out.t = present_t(out.logic_steps, blend_t(out.acc_ns));
+    return out;
 }
 
-inline int64_t pass_budget_ns(int64_t work_ns, int64_t slot_ns) {
-    if (slot_ns <= 0) return work_ns;
-    return std::max(work_ns, slot_ns);
+inline int64_t present_period_ns(int present_cap) {
+    present_cap = std::max(1, present_cap);
+    return 1'000'000'000LL / present_cap;
+}
+
+inline int present_granule(int present_cap) {
+    present_cap = std::max(1, present_cap);
+    if (present_cap <= 60) return 4;
+    return std::max(1, (4 * 60 + present_cap / 2) / present_cap);
+}
+
+inline int64_t repeat_period_ns(bool course_play, int output_fps) {
+    (void)course_play;
+    (void)output_fps;
+    return 0;
+}
+
+inline int64_t bunched_present_delay_ns(bool course_play, int output_fps, int64_t since_ns) {
+    (void)course_play;
+    (void)output_fps;
+    (void)since_ns;
+    return 0;
+}
+inline bool skip_bunched_present(bool course_play, int output_fps, int64_t since_ns) {
+    return bunched_present_delay_ns(course_play, output_fps, since_ns) > 0;
+}
+
+inline bool collapse_duplicate_vsync(bool presented_since_wake, bool wake_valid, int64_t since_wake_ns) {
+    (void)since_wake_ns;
+    if (presented_since_wake || !wake_valid) return false;
+    return true;
 }
 
 inline int64_t absorb_late_wake(int64_t last_ns, int64_t now_ns, int64_t period_ns) {
@@ -102,69 +157,42 @@ inline int64_t absorb_late_wake(int64_t last_ns, int64_t now_ns, int64_t period_
     return last_ns + slots * period_ns;
 }
 
-inline int64_t repeat_period_ns(bool course_play, int output_fps) {
-    if (course_play) return 0;
-    const int fps = valid_fps(output_fps);
-    if (fps <= 60) return 0;
-    return 1000000000LL / fps;
-}
-
-inline int64_t bunched_present_delay_ns(bool course_play, int output_fps, int64_t since_ns) {
-    const int64_t period = repeat_period_ns(course_play, output_fps);
-    if (period <= 0 || since_ns < 0 || since_ns * 2 >= period) return 0;
-    return period - since_ns;
-}
-inline bool skip_bunched_present(bool course_play, int output_fps, int64_t since_ns) {
-    return bunched_present_delay_ns(course_play, output_fps, since_ns) > 0;
-}
-
-inline bool collapse_duplicate_vsync(bool presented_since_wake, bool wake_valid, int64_t since_wake_ns) {
-    if (presented_since_wake || !wake_valid) return false;
-    return since_wake_ns < 2'000'000;
-}
-
-inline int cap_fps(int fps, int hz, bool vsync) {
-    fps = valid_fps(fps);
-    if (!vsync || hz <= 0) return fps;
-    return std::min(fps, display_fps(hz));
-}
-
-inline int frames_for_step(int fps, uint64_t step) {
-    const int64_t rate = valid_fps(fps);
-    return int(rate * int64_t(step + 1) / 60 - rate * int64_t(step) / 60);
-}
-
-inline int granule_quarter(int frames, int phase) {
-    frames = std::max(1, frames);
-    phase = std::clamp(phase, 0, frames - 1);
-    return int(int64_t(phase + 1) * 4 / frames - int64_t(phase) * 4 / frames);
-}
-
-inline int plan_in_between(int n_max, int64_t budget, int64_t logic_pass, int64_t hold_pass) {
-    n_max = std::max(1, n_max);
-    hold_pass = std::max<int64_t>(hold_pass, 1);
-    const int64_t fit = (budget - std::max<int64_t>(logic_pass, 0)) / hold_pass;
-    return int(std::clamp<int64_t>(fit, 1, n_max));
-}
-
-inline int64_t update_average(int64_t avg, int64_t sample) {
-    if (avg > 0) sample = std::min(sample, 2 * avg);
-    return (avg * 3 + sample) / 4;
-}
-
-enum class Next {
-    kStepDone,
-    kHold,
-    kRecord,
-    kDrop,
+struct SwapAlign {
+    int64_t sleep_ns = 0;
+    int64_t offset_ns = 0;
 };
-inline Next next_pass(int phase, int n, int64_t elapsed, int64_t pass, int64_t budget) {
-    if (phase >= n) return Next::kStepDone;
-    const int remaining = n - phase;
-    if (elapsed + pass * remaining <= budget) return Next::kHold;
 
-    if (remaining > 1 && elapsed + pass <= budget) return Next::kRecord;
-    return Next::kDrop;
+struct PresentGap {
+    int64_t sleep_ns = 0;
+    int64_t swap_ns = 0;
+};
+
+inline PresentGap pace_present(int64_t now_ns, int64_t last_swap_ns, bool last_valid, int64_t period_ns) {
+    PresentGap out;
+    out.swap_ns = now_ns;
+    if (!last_valid || period_ns <= 0 || now_ns < 0) return out;
+    const int64_t target = last_swap_ns + period_ns;
+    if (now_ns < target) {
+        out.sleep_ns = target - now_ns;
+        out.swap_ns = target;
+    }
+    return out;
+}
+
+inline SwapAlign align_swap(int64_t elapsed_ns, int64_t period_ns, int64_t offset_ns) {
+    SwapAlign out;
+    out.offset_ns = offset_ns;
+    if (period_ns <= 0 || elapsed_ns < 0 || elapsed_ns > period_ns / 2) return out;
+    int64_t offset_us = offset_ns / 1000;
+    const int64_t want_us = elapsed_ns / 1000 + 1800;
+    if (want_us > offset_us) offset_us = want_us;
+    const int64_t cap_us = (period_ns / 3) / 1000;
+    if (offset_us < 1500) offset_us = 1500;
+    if (cap_us > 0 && offset_us > cap_us) offset_us = cap_us;
+    out.offset_ns = offset_us * 1000;
+    const int64_t elapsed_us = elapsed_ns / 1000;
+    if (elapsed_us < offset_us) out.sleep_ns = (offset_us - elapsed_us) * 1000;
+    return out;
 }
 
 }

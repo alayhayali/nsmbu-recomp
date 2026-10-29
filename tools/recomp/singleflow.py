@@ -14,7 +14,9 @@ Across functions, this module adds:
 Both are solved together as a greatest fixpoint (must-analysis: start from "everything known" and
 remove until stable). NSMBU_RECOMP_SINGLE_IP=0 keeps the per-function analysis alone.
 """
+import ctypes
 import os
+import sys
 
 import ppc2c
 
@@ -49,6 +51,105 @@ def _fp_written(w):
             return 0
         return m
     return 0
+
+
+class _ArrMap:
+    __slots__ = ("arr", "index")
+
+    def __init__(self, arr, index):
+        self.arr = arr
+        self.index = index
+
+    def __getitem__(self, key):
+        return self.arr[self.index[key]]
+
+    def get(self, key, default=0):
+        i = self.index.get(key)
+        return default if i is None else self.arr[i]
+
+
+def _fork_ok():
+    if os.environ.get("NSMBU_RECOMP_SPAWN") == "1" or sys.platform == "win32":
+        return False
+    import multiprocessing as mp
+    try:
+        mp.get_context("fork")
+    except ValueError:
+        return False
+    return True
+
+
+def _split_weighted(items, jobs, funcs):
+    jobs = max(1, min(jobs, len(items)))
+    if jobs == 1:
+        return [list(items)]
+    weights = []
+    total = 0
+    for s in items:
+        w = len(funcs[s].words) or 1
+        weights.append(w)
+        total += w
+    target = max(1, (total + jobs - 1) // jobs)
+    chunks, cur, n = [], [], 0
+    for s, w in zip(items, weights):
+        if cur and n >= target and len(chunks) + 1 < jobs:
+            chunks.append(cur)
+            cur, n = [], 0
+        cur.append(s)
+        n += w
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+_SOL = None
+_SHM_NAME = None
+_N = 0
+_LOCAL = None
+
+
+def _masks():
+    global _LOCAL
+    if _LOCAL is None:
+        from multiprocessing import shared_memory
+        shm = shared_memory.SharedMemory(name=_SHM_NAME)
+        entry_c = (ctypes.c_uint64 * _N).from_buffer(shm.buf)
+        ret_c = (ctypes.c_uint64 * _N).from_buffer(shm.buf, _N * 8)
+        _LOCAL = (shm, entry_c, ret_c)
+    return _LOCAL[1], _LOCAL[2]
+
+
+def _sweep(chunk):
+    sol = _SOL
+    entry_c, ret_c = _masks()
+    saved_entry, saved_ret = sol.entry, sol.ret
+    sol.entry = _ArrMap(entry_c, sol._index)
+    sol.ret = _ArrMap(ret_c, sol._index)
+    ret_delta = {}
+    entry_delta = {}
+    try:
+        for s in chunk:
+            f = sol.funcs[s]
+            i = sol._index[s]
+            _, sites, retv = sol.run(f, entry_c[i])
+            cur = ret_c[i]
+            new = cur & retv
+            if new != cur:
+                ret_delta[i] = new
+            for t, st in sites.items():
+                j = sol._index.get(t)
+                if j is None:
+                    continue
+                cur_e = entry_c[j]
+                if cur_e == 0:
+                    continue
+                new_e = cur_e & st
+                if new_e != cur_e:
+                    prev = entry_delta.get(j)
+                    entry_delta[j] = new_e if prev is None else prev & new_e
+    finally:
+        sol.entry, sol.ret = saved_entry, saved_ret
+    return ret_delta, entry_delta
 
 
 class Func:
@@ -240,7 +341,12 @@ class Solver:
             ret &= self.after_call(out, "direct", f.end)
         return state, sites, ret
 
-    def solve(self):
+    def solve(self, jobs=1):
+        if jobs > 1 and len(self.funcs) >= 256 and _fork_ok():
+            return self._solve_parallel(jobs)
+        return self._solve_worklist()
+
+    def _solve_worklist(self):
         work = list(self.funcs)
         queued = set(work)
         rounds = 0
@@ -267,6 +373,63 @@ class Solver:
                         queued.add(t)
                         work.append(t)
         self.rounds = rounds
+        return self
+
+    def _solve_parallel(self, jobs):
+        """Same fixpoint as _solve_worklist, one sweep at a time across processes.
+
+        Each sweep reads the masks from the sweep before it. A mask only loses bits, so the
+        settled masks match the one-at-a-time worklist.
+        """
+        import multiprocessing as mp
+        from multiprocessing import shared_memory
+        global _SOL, _SHM_NAME, _N, _LOCAL
+        starts = list(self.funcs)
+        n = len(starts)
+        self._index = {s: i for i, s in enumerate(starts)}
+        shm = shared_memory.SharedMemory(create=True, size=n * 16)
+        entry_c = (ctypes.c_uint64 * n).from_buffer(shm.buf)
+        ret_c = (ctypes.c_uint64 * n).from_buffer(shm.buf, n * 8)
+        for i, s in enumerate(starts):
+            entry_c[i] = self.entry[s]
+            ret_c[i] = self.ret[s]
+        _SOL = self
+        _SHM_NAME = shm.name
+        _N = n
+        _LOCAL = None
+        rounds = 0
+        dirty = starts
+        ctx = mp.get_context("fork")
+        try:
+            with ctx.Pool(jobs) as pool:
+                sweeps = 0
+                while dirty:
+                    sweeps += 1
+                    if sweeps > 64:
+                        raise RuntimeError("single-precision fixpoint did not settle")
+                    chunks = _split_weighted(dirty, jobs, self.funcs)
+                    rounds += sum(len(c) for c in chunks)
+                    next_dirty = set()
+                    for ret_delta, entry_delta in pool.map(_sweep, chunks, chunksize=1):
+                        for i, new in ret_delta.items():
+                            merged = ret_c[i] & new
+                            if merged != ret_c[i]:
+                                ret_c[i] = merged
+                                next_dirty.update(self.funcs[starts[i]].callers)
+                        for j, new in entry_delta.items():
+                            merged = entry_c[j] & new
+                            if merged != entry_c[j]:
+                                entry_c[j] = merged
+                                next_dirty.add(starts[j])
+                    dirty = [s for s in starts if s in next_dirty]
+            self.entry = {s: int(entry_c[i]) for i, s in enumerate(starts)}
+            self.ret = {s: int(ret_c[i]) for i, s in enumerate(starts)}
+        finally:
+            del entry_c, ret_c
+            shm.close()
+            shm.unlink()
+        self.rounds = rounds
+        del self._index
         return self
 
     def states(self, start):

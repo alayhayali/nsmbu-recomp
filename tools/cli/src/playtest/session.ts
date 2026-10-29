@@ -1,4 +1,5 @@
-import { cpSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { AgentClient } from "../agent/client.ts";
 import { parseButtonBits } from "../agent/buttons.ts";
@@ -74,6 +75,7 @@ export class Session {
     readonly name: string;
     readonly workDir: string;
     readonly saveDir: string;
+    readonly userDir: string;
     readonly logPath: string;
     private client: AgentClient | null = null;
     private pid: number | null = null;
@@ -86,6 +88,7 @@ export class Session {
         this.name = name;
         this.workDir = join(repo, ".tmp", "playtest", name);
         this.saveDir = join(this.workDir, "save");
+        this.userDir = join(this.workDir, "user");
         this.logPath = join(this.workDir, "nsmbu.log");
     }
 
@@ -93,7 +96,9 @@ export class Session {
         if (process.platform === "win32") {
             return `\\\\.\\pipe\\nsmbu-playtest-${this.name}`;
         }
-        return join(this.workDir, "ctl.sock");
+        const preferred = join(this.workDir, "ctl.sock");
+        if (preferred.length < 108) return preferred;
+        return join(tmpdir(), "nsmbu-playtest", this.name, "ctl.sock");
     }
 
     private pidPath(): string {
@@ -165,18 +170,25 @@ export class Session {
         if (opts.save !== "keep") {
             rmSync(this.workDir, { recursive: true, force: true });
             mkdirSync(this.saveDir, { recursive: true });
+            mkdirSync(this.userDir, { recursive: true });
             if (opts.save === "repo") {
                 cpSync(join(this.repo, "nsmbu", "save"), this.saveDir, { recursive: true });
+                for (const file of ["settings.ini", "controls.json"]) {
+                    const from = join(this.repo, "nsmbu", file);
+                    if (existsSync(from)) cpSync(from, join(this.userDir, file));
+                }
             }
         } else {
             mkdirSync(this.saveDir, { recursive: true });
+            mkdirSync(this.userDir, { recursive: true });
         }
         this.openPack = opts.open;
         this.env = opts.env ?? {};
         await this.launch();
     }
 
-    async restart(): Promise<void> {
+    async restart(env?: Record<string, string>): Promise<void> {
+        if (env) this.env = { ...this.env, ...env };
         await this.stop();
         await this.launch();
     }
@@ -185,12 +197,14 @@ export class Session {
         await this.ensureOwnIdle();
         mkdirSync(this.workDir, { recursive: true });
         mkdirSync(dirname(this.logPath), { recursive: true });
+        mkdirSync(dirname(this.sockPath()), { recursive: true });
         const sock = this.sockPath();
         const args = ["--save", this.saveDir];
         if (this.openPack) args.push(this.openPack);
         const extraEnv: Record<string, string> = {
             NSMBU_LOG_FILE: this.logPath,
             NSMBU_AGENT_SOCK: sock,
+            NSMBU_USER_DIR: this.userDir,
             NSMBU_HIDDEN_WINDOWS: "1",
             NSMBU_NO_HOST_INPUT: "1",
             NSMBU_NO_AUDIO: "1",
@@ -245,9 +259,14 @@ export class Session {
         return (r.output ?? "").trim();
     }
 
-    async press(button: string, frames = 20): Promise<void> {
+    async screenshot(path: string): Promise<void> {
+        const r = await withTimeout(this.live().request({ cmd: "screenshot", path }), 20_000, "screenshot");
+        if (!r.ok) throw new Error(r.error ?? "screenshot failed");
+    }
+
+    async press(button: string, frames = 20, tap = false): Promise<void> {
         const r = await withTimeout(
-            this.live().request({ cmd: "press", bits: parseButtonBits(button), frames }),
+            this.live().request({ cmd: "press", bits: parseButtonBits(button), frames, tap }),
             Math.max(15000, frames * 50),
             "press",
         );

@@ -3,8 +3,10 @@
 #include "core/env.h"
 #ifdef NSMBU_SDL_HOST
 #include "backend.h"
+#include "gfx/aspect.h"
 #include "gfx/display_modes.h"
 #include "settings.h"
+#include "device_choice.h"
 #include "input/input.h"
 #include "hooks/interp.h"
 #include "overlay/hostui.h"
@@ -205,12 +207,20 @@ void graphics_changed() {
     put("fps60", {env::INTERP, env::INTERP_FPS}, std::to_string(interp::mode()));
 #endif
 
-    put("interpFps", {env::INTERP_FPS}, std::to_string(interp::fps()));
+    put("fpsCustom", {env::INTERP_FPS}, interp::custom_on() ? "1" : "0");
+    put("interpFps", {env::INTERP_FPS}, std::to_string(interp::custom_on() ? interp::custom_fps() : interp::fps()));
     put("fps60Paced", {env::INTERP_PACED}, interp::paced_interpolation_at(60) ? "1" : "0");
     put("scaleFilter", {env::SCALE_FILTER}, std::to_string(gfxvk::scale_filter()));
+    char aspect[32];
+    aspect::choice_text(aspect, sizeof aspect);
+    put("aspect", {env::ASPECT}, aspect);
     if (!env_set({env::VK_PRESENT_MODE}) && gfxvk::present_mode_user_set()) {
         g_values["vkPresentMode"] = std::to_string(gfxvk::present_mode());
         g_values["vkPresentChosen"] = "1";
+    }
+    if (!env_set({env::VK_GPU}) && !gfxvk::device_inventory.empty()) {
+        const std::string gpu = gfxvk::device_setting();
+        g_values["gpu"] = gpu.empty() ? "dedicated" : gpu;
     }
     save_locked();
 }
@@ -227,13 +237,16 @@ void load_saved_options() {
     if (saved("resScale", {env::RES_SCALE})) gfxvk::set_res_scale((float)num("resScale"));
     if (saved("aniso", {env::ANISO})) gfxvk::set_aniso(num("aniso") != 0);
     if (saved("fxaa", {env::FXAA})) gfxvk::set_fxaa(num("fxaa") != 0);
-    if (saved("interpFps", {env::INTERP_FPS})) interp::set_fps((int)num("interpFps"));
+    if (saved("fpsCustom", {env::INTERP_FPS}) && num("fpsCustom") != 0 && v.count("interpFps"))
+        interp::set_custom_fps((int)num("interpFps"));
+    else if (saved("interpFps", {env::INTERP_FPS})) interp::set_fps((int)num("interpFps"));
     if (saved("fps60", {env::INTERP, env::INTERP_FPS})) interp::set_mode((int)num("fps60"));
     if (saved("fps60Paced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(60, num("fps60Paced") != 0);
 #ifdef __ANDROID__
     if (saved("heatGuard", {env::HEAT_GUARD})) heat_guard::choice = heat_guard::parse(v["heatGuard"].c_str());
 #endif
     if (saved("scaleFilter", {env::SCALE_FILTER})) gfxvk::set_scale_filter((int)num("scaleFilter"));
+    if (saved("aspect", {env::ASPECT})) aspect::apply_choice(v["aspect"].c_str());
     if (saved("vkPresentMode", {env::VK_PRESENT_MODE})) {
         const int mode = (int)num("vkPresentMode");
         const bool chosen = v.count("vkPresentChosen") && v["vkPresentChosen"] == "1";

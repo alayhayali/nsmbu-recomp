@@ -5,8 +5,8 @@ name: linux
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    # Tag pushes do not start this workflow; a release tag points at a commit CI already tested.
+    branches: ["**"]
 
 jobs:
   build:
@@ -57,6 +57,13 @@ jobs:
           ctest --test-dir build/linux --output-on-failure
           python3 tools/installer/test_setup.py
           python3 tools/recomp/test_builds.py
+          python3 tools/recomp/test_output.py
+
+      - name: Shader preparation and benchmark tooling unit tests
+        run: |
+          python3 tools/test_shaderprep.py
+          python3 -m unittest discover -s tools/bench -p "test_*.py"
+          python3 -m unittest discover -s tools/gametest -p "test_*.py"
 
       - name: Configure synchronization validation coverage
         run: |

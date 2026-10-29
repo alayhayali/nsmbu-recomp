@@ -1,3 +1,4 @@
+#include "gfx/aspect_view.h"
 #include "gfx/render_mips.h"
 #include "mods/cemu_pack.h"
 #include <tuple>
@@ -15,6 +16,7 @@
 #include "core/runtime.h"
 #include "core/write_watch.h"
 #include "core/env.h"
+#include "gfx/res_presets.h"
 #define XXH_INLINE_ALL
 #include "../../../third_party/xxhash/xxhash.h"
 
@@ -39,15 +41,14 @@ uint64_t next_write_seq() {
 }
 
 static float parse_scale(const char* e) {
-    float f = e ? (float)atof(e) : 1.0f;
-    return std::clamp(f > 0 ? f : 1.0f, 1.0f, 4.0f);
+    return clamp_res_scale(e ? (float)atof(e) : 1.0f);
 }
 static std::atomic<float> g_res_requested{parse_scale(env::RES_SCALE())};
 static float g_res_frame = g_res_requested.load();
 static void latch_aspect();
 float res_scale() { return g_res_frame; }
 void set_res_scale(float f) {
-    g_res_requested = std::clamp(f, 1.0f, 4.0f);
+    g_res_requested = clamp_res_scale(f);
     LOG("[gfx] internal resolution %gx", g_res_requested.load());
 }
 void latch_res_scale() {
@@ -82,6 +83,7 @@ static void latch_aspect() {
 
 static bool screen_shaped(const Surface* s) {
     if (s->fmt.compressed || s->mips > 1 || s->slices > 1 || s->width < 32) return false;
+    if (aspect::view::gamepad_target(s->width, s->height)) return false;
     float r = (float)s->width * 9.0f / ((float)s->height * 16.0f);
     return r > 0.97f && r < 1.03f;
 }
@@ -385,6 +387,13 @@ Surface* find_or_create_surface(const SurfaceDesc& d, bool forRendering) {
             s->isDepth ? " depth" : "", (unsigned long)s->tex.width, (unsigned long)s->tex.height);
     Surface* raw = s.get();
     R.surfaces.emplace(d.addr, std::move(s));
+    // a new colour target starts with what the guest memory holds, as on the console where the target
+    // is that memory: texels the CPU put there first would otherwise be missing. A course's working
+    // tileset is filled by the CPU and then gets its animated tiles drawn into it every frame; its
+    // static tiles (the used block) were blank. Unscaled single images only.
+    if (forRendering && !raw->isDepth && raw->slices == 1 && raw->tex.textureType == MTLTextureType2D &&
+        raw->tex.width == raw->width && raw->tex.height == raw->height && !raw->fmt.compressed)
+        upload_surface(raw);
     // format views of one guest surface (adopt_newer_alias): flag them once, so lookups stay cheap
     if (!raw->isDepth && !raw->fmt.compressed && raw->fmt.convert == Convert::NONE) {
         auto views = R.surfaces.equal_range(d.addr);

@@ -23,10 +23,16 @@ struct PlayerSnapshot {
 bool player_snapshot(PlayerSnapshot& out, int player = 0);
 bool set_player_mode(int player, int mode);
 uint64_t logic_steps();
+bool hold_pass();
 int mode();
 void set_mode(int m);
 int fps();
 void set_fps(int f);
+bool custom_on();
+int custom_fps();
+void set_custom_fps(int f);
+void set_fast_forward(bool on);
+bool fast_forward();
 void toggle_fps(int f);
 const char* mode_name();
 int output_fps();

@@ -1722,7 +1722,7 @@ static void screen_save() {
     if (A.save_exists) colored(MUTED, "A save is already installed. Importing replaces it; the current save is backed up first.");
     int kind = A.save_kind;
     if (kind == 4) kind = 3;
-    else if (kind == 3 && !A.legacy) kind = 1;
+    else if (kind == 2 && !A.legacy) kind = 1;
     radio("Start with a new save", &kind, 0);
     radio("NSMBU save (a folder with cking.sav, from Cemu or a Wii U)", &kind, 1);
     if (A.save_kind == 1) {

@@ -664,6 +664,10 @@ static void execute_op(Op op, const uint32* p, uint32 n) {
     }
     case OP_LAYOUT_CONTENT:
         aspect::set_content_clip(n && p[0]);
+        aspect::set_edge_hud(n > 1 && p[1]);
+        break;
+    case OP_COVER_DRAW:
+        aspect::set_cover_draw(n && p[0]);
         break;
     case OP_LAYOUT_ROOT: {
         float kx, ky;
@@ -794,8 +798,7 @@ static bool g_presented_since_wake = false;
 static std::chrono::nanoseconds capped_vsync_wait_period(uint64_t granule) {
     if (interp::mode() == 1) {
         const int fps = interp::output_fps();
-        if (fps > 0 && fps % 60 != 0)
-            return std::chrono::nanoseconds(1'000'000'000LL / fps);
+        if (fps > 0) return std::chrono::nanoseconds(interp::pacing::present_period_ns(fps));
     }
     return std::chrono::nanoseconds(uint64_t(vsync_period_ns()) * granule / kTicksPerVsync);
 }
@@ -814,10 +817,15 @@ static void capped_vsync_note_wake(uint64_t granule) {
     }
     g_paced_vsync += granule;
 }
+static std::chrono::steady_clock::time_point g_last_paced_swap{};
+static bool g_last_paced_swap_valid = false;
+static int64_t g_paced_swap_period = 0;
 static void capped_vsync_reset_pace() {
     g_capped_vsync_last_wake_valid = false;
     g_paced_vsync_valid = false;
     g_presented_since_wake = false;
+    g_last_paced_swap_valid = false;
+    g_paced_swap_period = 0;
 }
 static uint64_t flip_clock() { return g_paced_vsync_valid ? g_paced_vsync : vsync_index(); }
 static void capped_vsync_ready_flip_last_wake(uint64_t granule) {
@@ -829,7 +837,14 @@ static void capped_vsync_ready_flip_last_wake(uint64_t granule) {
 }
 static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void (*before_resume)()) {
     const auto now = std::chrono::steady_clock::now();
-    if (capped_vsync_same_frame(granule, now)) return;
+    if (capped_vsync_same_frame(granule, now)) {
+        const int64_t since = g_capped_vsync_last_wake_valid
+            ? std::chrono::duration_cast<std::chrono::nanoseconds>(now - g_capped_vsync_last_wake).count()
+            : 0;
+        if (since > 2'000'000)
+            threads::park_sleep_until(now + std::chrono::microseconds(200), false, nullptr);
+        return;
+    }
     const auto period = capped_vsync_wait_period(granule);
     if (!g_capped_vsync_last_wake_valid) {
         g_capped_vsync_last_wake = now;
@@ -839,7 +854,7 @@ static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void
     }
     const auto target = g_capped_vsync_last_wake + period;
     if (now >= target) {
-        if (interp::pacing::output_slot_ns(interp::output_fps()) > 0 && period.count() > 0) {
+        if (period.count() > 0) {
             const int64_t last = std::chrono::duration_cast<std::chrono::nanoseconds>(g_capped_vsync_last_wake.time_since_epoch()).count();
             const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
             const int64_t absorbed = interp::pacing::absorb_late_wake(last, now_ns, period.count());
@@ -855,6 +870,59 @@ static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void
     capped_vsync_note_wake(granule);
 }
 
+static bool g_pacing_present = false;
+
+static bool drain_before_swap() {
+    std::vector<uint32> chunk;
+    {
+        std::lock_guard<std::mutex> lk(g_q_mutex);
+        size_t i = 0;
+        while (i < g_q_pending.size()) {
+            const uint32 hdr = g_q_pending[i];
+            const Op op = (Op)(hdr & 0xFF);
+            const uint32 n = hdr >> 8;
+            if (op >= OP_COUNT || i + 1 + n > g_q_pending.size() || op == OP_SWAP) break;
+            i += 1 + n;
+        }
+        if (!i) return false;
+        chunk.assign(g_q_pending.begin(), g_q_pending.begin() + (std::ptrdiff_t)i);
+        g_q_pending.erase(g_q_pending.begin(), g_q_pending.begin() + (std::ptrdiff_t)i);
+        g_q_space_cv.notify_all();
+    }
+    execute(chunk.data(), (uint32)chunk.size());
+    return true;
+}
+
+void gx2::pace_host_present() {
+    if (uncapped() || g_pacing_present) return;
+    const auto period = capped_vsync_wait_period(vsync_granule());
+    if (period.count() <= 0 || period.count() > 10'000'000) return;
+    if (g_paced_swap_period != period.count()) {
+        g_paced_swap_period = period.count();
+        g_last_paced_swap_valid = false;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+    const int64_t last_ns = g_last_paced_swap_valid
+        ? std::chrono::duration_cast<std::chrono::nanoseconds>(g_last_paced_swap.time_since_epoch()).count()
+        : 0;
+    const interp::pacing::PresentGap gap = interp::pacing::pace_present(now_ns, last_ns, g_last_paced_swap_valid, period.count());
+    const auto target = now + std::chrono::nanoseconds(gap.sleep_ns);
+    g_pacing_present = true;
+    while (std::chrono::steady_clock::now() < target) {
+        if (drain_before_swap()) continue;
+        std::unique_lock<std::mutex> lk(g_q_mutex);
+        if (!g_q_pending.empty()) continue;
+        g_q_waiting = true;
+        g_q_cv.wait_until(lk, target, [] { return !g_q_pending.empty(); });
+        g_q_waiting = false;
+    }
+    while (drain_before_swap()) {}
+    g_pacing_present = false;
+    g_last_paced_swap = std::chrono::steady_clock::time_point(std::chrono::nanoseconds(gap.swap_ns));
+    g_last_paced_swap_valid = true;
+}
+
 static void align_swap_after_wake() {
     if (gx2::uncapped() || !g_capped_vsync_last_wake_valid) return;
     static std::chrono::steady_clock::time_point seen_wake{};
@@ -865,19 +933,14 @@ static void align_swap_after_wake() {
     }
     if (used) return;
     const auto now = std::chrono::steady_clock::now();
-    const auto elapsed = now - g_capped_vsync_last_wake;
+    const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - g_capped_vsync_last_wake);
     const auto period = capped_vsync_wait_period(vsync_granule());
-    if (elapsed < std::chrono::nanoseconds(0) || elapsed > period / 2) return;
+    static int64_t offset_ns = 2'500'000;
+    const interp::pacing::SwapAlign plan = interp::pacing::align_swap(elapsed.count(), period.count(), offset_ns);
+    offset_ns = plan.offset_ns;
+    if (plan.sleep_ns <= 0) return;
     used = true;
-    using us = std::chrono::microseconds;
-    static us offset{2500};
-    const us want = std::chrono::duration_cast<us>(elapsed) + us{1800};
-    if (want > offset) offset = want;
-    const us cap = std::chrono::duration_cast<us>(period / 3);
-    if (offset < us{1500}) offset = us{1500};
-    if (cap > us{0} && offset > cap) offset = cap;
-    const auto deadline = g_capped_vsync_last_wake + offset;
-    if (now < deadline) threads::park_sleep_until(deadline, true, nullptr);
+    threads::park_sleep_until(g_capped_vsync_last_wake + elapsed + std::chrono::nanoseconds(plan.sleep_ns), true, nullptr);
 }
 
 static uint64_t flip_due(const PendingFlip& f) {
@@ -906,7 +969,7 @@ void gx2::set_uncapped(bool on) {
         reset_uncapped_guest_pace();
         capped_vsync_reset_pace();
     }
-    LOG("[gx2] uncapped %s", on ? "on (debug: no frame limit, no vsync; the game runs faster than real time)" : "off");
+    LOG("[gx2] fast forward %s", on ? "on (the game runs as fast as it can)" : "off");
 }
 static bool uncapped_benchmark() { return gx2::uncapped(); }
 
@@ -1055,7 +1118,6 @@ HLE(gx2, GX2DrawDone) {
 }
 HLE(gx2, GX2SwapScanBuffers) {
     g_presented_since_wake = true;
-    align_swap_after_wake();
 
     static int trace = env::TRACE_SWAP.integer_or(0);
     if (trace > 0) {
@@ -1107,6 +1169,7 @@ HLE(gx2, GX2SwapScanBuffers) {
                 captureStep ? "logic step" : "game counter",(unsigned long long)offset,counter);
         }
     }
+    align_swap_after_wake();
     if (capture) emit_host(OP_SWAP, {ab, hold ? 1u : 0u, 1u});
     else emit_host(OP_SWAP, {ab, hold ? 1u : 0u});
     {

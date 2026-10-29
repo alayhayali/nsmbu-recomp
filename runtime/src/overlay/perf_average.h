@@ -1,7 +1,30 @@
 #pragma once
+#include <algorithm>
 #include <cstdint>
 
 namespace overlay {
+
+struct FrameHistoryAverages {
+    static constexpr int kFrames = 120;
+    static void compute(const float ms[kFrames], const uint32_t logic[kFrames], float& avg_ms, float& worst_ms,
+                        float& fps, double& logic_rate) {
+        double sum = 0;
+        uint64_t logic_sum = 0;
+        worst_ms = 0;
+        for (int i = 0; i < kFrames; ++i) {
+            sum += ms[i];
+            worst_ms = std::max(worst_ms, ms[i]);
+            logic_sum += logic[i];
+        }
+        avg_ms = (float)(sum / kFrames);
+        fps = 0;
+        logic_rate = 0;
+        if (sum > 0) {
+            fps = (float)(1000.0 * kFrames / sum);
+            logic_rate = logic_sum / (sum / 1000.0);
+        }
+    }
+};
 
 struct PerfAverage {
     bool started = false;

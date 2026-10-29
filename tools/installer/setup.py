@@ -60,6 +60,89 @@ IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform.startswith("win")
 IS_LINUX = not IS_MAC and not IS_WIN
 EXE_SUFFIX = ".exe" if IS_WIN else ""
+
+LONGPATH_PREFIX = "\\\\?\\"
+WINDOWS_MAX_PATH = 259
+DEEPEST_DATA_PATH = 79
+MAX_DATA_DIR_CHARS = WINDOWS_MAX_PATH - 1 - DEEPEST_DATA_PATH
+NATIVE_WINDOWS_PATHS = IS_WIN and os.path.join("a", "b") == "a\\b"
+
+def windows_path(p):
+    """p as a normalised Windows path with backslashes, whatever separator the Python flavour uses (MSYS2's
+    Python writes "/"): no "." or ".." components, no doubled separators; a drive root keeps its backslash."""
+    p = os.fspath(p).replace("/", "\\")
+    if p.startswith("\\\\"):
+        parts = p[2:].split("\\")
+        root, rest = "\\\\" + "\\".join(parts[:2]) + "\\", parts[2:]
+    elif len(p) >= 2 and p[1] == ":":
+        root, rest = p[:2] + "\\", p[2:].split("\\")
+    else:
+        root, rest = "", p.split("\\")
+    out = []
+    for part in rest:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if out:
+                out.pop()
+            continue
+        out.append(part)
+    return (root + "\\".join(out)) if (root or out) else "."
+
+def longpath(p, windows=None):
+    """p for Windows file APIs without the MAX_PATH limit: the absolute, normalised path with backslashes
+    and the extended-length prefix (\\\\?\\C:\\..., \\\\?\\UNC\\server\\share\\... for a network share).
+    Unchanged on other platforms and with a Python that joins paths with "/" (NATIVE_WINDOWS_PATHS).
+    windows=True: the string form only (tests simulate Windows anywhere). Use it only for the file operation
+    itself, never in messages."""
+    if not (NATIVE_WINDOWS_PATHS if windows is None else windows):
+        return p
+    p = os.fspath(p)
+    if p.startswith(LONGPATH_PREFIX) or p.startswith("\\\\.\\"):
+        return p
+    p = windows_path(os.path.abspath(p) if windows is None else p)
+    if p.startswith("\\\\"):
+        return LONGPATH_PREFIX + "UNC\\" + p[2:]
+    return LONGPATH_PREFIX + p
+
+def plain_path(p):
+    """The normal form of a path longpath() made (for messages and the log)."""
+    p = os.fspath(p)
+    if p.startswith(LONGPATH_PREFIX + "UNC\\"):
+        return "\\\\" + p[len(LONGPATH_PREFIX) + 4:]
+    if p.startswith(LONGPATH_PREFIX):
+        return p[len(LONGPATH_PREFIX):]
+    return p
+
+def plain_text(text):
+    """text (an error message) with every extended-length path shown in its normal form."""
+    text = str(text)
+    for bs in ("\\\\", "\\"):
+        prefix = bs * 2 + "?" + bs
+        text = text.replace(prefix + "UNC" + bs, bs * 2).replace(prefix, "")
+    return text
+
+def path_length_problem(data_dir, package=None, windows=None):
+    """None, or the message that stops setup before it downloads anything when the data folder is too
+    deep for Windows: the game and its tools use ordinary paths (no \\\\?\\), and the deepest names below the
+    data folder are the shader cache nsmbu\\shadercache\\vulkan-<8 hex>-<8 hex>-<32 hex>.bin (79 characters,
+    DEEPEST_DATA_PATH), the compiler's toolchain\\llvm-mingw-...-aarch64\\bin\\aarch64-w64-mingw32-clang++.exe
+    (78) and the game files (64). Setup itself unpacks, moves and deletes the compiler with longpath().
+    package: the release folder; when the data folder is inside it (a portable release), that is the folder
+    the player moves."""
+    if not (IS_WIN if windows is None else windows):
+        return None
+    data_dir = windows_path(plain_path(data_dir))
+    if len(data_dir) <= MAX_DATA_DIR_CHARS:
+        return None
+    if package and data_dir.rsplit("\\", 1)[0].lower() == windows_path(package).lower():
+        package = windows_path(package)
+        limit = MAX_DATA_DIR_CHARS - (len(data_dir) - len(package))
+        return ("This folder's path is too long for Windows (%d characters, at most %d work). Move the NSMBU "
+                "folder to a shorter place such as C:\\Games\\NSMBU and start it again."
+                % (len(package), limit))
+    return ("The install folder's path is too long for Windows (%d characters, at most %d work). Choose a "
+            "shorter place such as C:\\Games\\NSMBU and start it again." % (len(data_dir), MAX_DATA_DIR_CHARS))
 APP_NAME = "NSMBU"
 TITLE_IDS = {
     "0005000010101d00": "USA",
@@ -120,7 +203,7 @@ class Log:
 
     def write(self, text):
         if self.f:
-            self.f.write(text.rstrip("\n") + "\n")
+            self.f.write(plain_text(text).rstrip("\n") + "\n")
             self.f.flush()
 
 LOG = Log()
@@ -142,6 +225,7 @@ class Protocol:
 GUI = None
 
 def say(text=""):
+    text = plain_text(text)
     if GUI:
         GUI.emit({"event": "log", "text": text})
     else:
@@ -671,29 +755,30 @@ def get_toolchain(name, data_dir, ui):
         arc = os.path.join(root, os.path.basename(tc["url"].split("?")[0]))
         download(tc["url"], arc, tc["sha256"], tc.get("size"), "compiler")
         tmp = os.path.join(root, "unpack.tmp")
-        shutil.rmtree(tmp, ignore_errors=True)
-        os.makedirs(tmp)
+        shutil.rmtree(longpath(tmp), ignore_errors=True)
+        os.makedirs(longpath(tmp))
         say("  Unpacking...")
         if arc.endswith(".zip"):
             with zipfile.ZipFile(arc) as z:
-                z.extractall(tmp)
+                z.extractall(longpath(tmp))
         elif shutil.which("tar"):
             run_logged(["tar", "-xf", arc, "-C", tmp], what="unpacking the compiler")
         else:
             with tarfile.open(arc) as t:
-                t.extractall(tmp)
+                t.extractall(longpath(tmp))
         src = os.path.join(tmp, tc["dir"])
-        if not os.path.isdir(src):
+        if not os.path.isdir(longpath(src)):
             raise SetupError("unexpected compiler archive layout")
-        shutil.rmtree(tdir, ignore_errors=True)
-        os.replace(src, tdir)
-        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(longpath(tdir), ignore_errors=True)
+        os.replace(longpath(src), longpath(tdir))
+        shutil.rmtree(longpath(tmp), ignore_errors=True)
         os.remove(arc)
         with open(marker, "w") as f:
             f.write(tc["sha256"] + "\n")
     if kind == "llvm-mingw":
         b = os.path.join(tdir, "bin")
-        return Toolchain([os.path.join(b, "x86_64-w64-mingw32-clang.exe")], [os.path.join(b, "x86_64-w64-mingw32-clang++.exe")],
+        triple = tc.get("triple", "x86_64-w64-mingw32")
+        return Toolchain([os.path.join(b, triple + "-clang.exe")], [os.path.join(b, triple + "-clang++.exe")],
                          [os.path.join(b, "llvm-ar.exe")], rsp=True, desc="llvm-mingw " + tc["dir"])
     if kind == "zig":
         z = os.path.join(tdir, "zig")
@@ -1041,7 +1126,7 @@ def get_update_dir(image, ui, args):
 
 def folder_size(path):
     total = 0
-    for dp, _, fns in os.walk(path):
+    for dp, _, fns in os.walk(longpath(path)):
         for fn in fns:
             try:
                 total += os.path.getsize(os.path.join(dp, fn))
@@ -1228,7 +1313,7 @@ def recompile(game_dir, gen_dir):
     if rc != 0:
         tail = "\n".join(out_lines[-25:])
         raise SetupError("translating the game code failed (exit code %d):\n%s" % (rc, tail))
-    n = len(glob.glob(os.path.join(gen_dir, "code_*.c")))
+    n = len(glob.glob(os.path.join(glob.escape(gen_dir), "code_*.c")))
     if n == 0:
         raise SetupError("the recompiler wrote no code")
     pr.done("%d source files" % n)
@@ -1269,7 +1354,7 @@ def fwd(p):
 
 def compile_gamecode(tc, manifest, gen_dir, obj_dir, jobs, cancel=None, progress=None):
     os.makedirs(obj_dir, exist_ok=True)
-    srcs = sorted(glob.glob(os.path.join(gen_dir, "code_*.c")))
+    srcs = sorted(glob.glob(os.path.join(glob.escape(gen_dir), "code_*.c")))
     srcs += [os.path.join(gen_dir, f) for f in ("table.c", "imports.c")]
     srcs.sort(key=lambda s: -os.path.getsize(s))
     m = {"sdk": fwd(os.path.join(PKG, "sdk")), "gen": fwd(gen_dir)}
@@ -1490,7 +1575,7 @@ def remove_toolchain(data_dir):
     """Deletes the downloaded compiler (repair needs setup to restore it)."""
     d = toolchain_dir(data_dir)
     n = folder_size(d) if os.path.isdir(d) else 0
-    shutil.rmtree(d, ignore_errors=True)
+    shutil.rmtree(longpath(d), ignore_errors=True)
     say("  Removed the downloaded compiler (%s)" % human(n))
     return n
 
@@ -1747,6 +1832,10 @@ class Ctx:
         self.exe = os.path.join(self.exe_dir, self.manifest["exe"])
         os.makedirs(self.data_dir, exist_ok=True)
         LOG.open(os.path.join(self.data_dir, "setup.log"))
+        problem = path_length_problem(self.data_dir, PKG)
+        if problem:
+            LOG.write("data folder %s: %s" % (self.data_dir, problem))
+            raise SetupError(problem)
         self.game_dir = self.state().get("game_dir") or os.path.join(self.data_dir, "game")
 
     def state(self):

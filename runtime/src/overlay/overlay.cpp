@@ -27,6 +27,8 @@
 #include "controls_view.h"
 #include "text_entry.h"
 #include "gfx/aspect.h"
+#include "gfx/display_modes.h"
+#include "gfx/res_presets.h"
 #include "crash/crashrec.h"
 #include "text/game_languages.h"
 #include "../gfx/renderer.h"
@@ -38,6 +40,7 @@
 #endif
 #ifdef NSMBU_HAS_VULKAN
 #include "../gfx/vulkan/settings.h"
+#include "../gfx/vulkan/device_choice.h"
 namespace gfxvk { bool buffer_cache_enabled(); }
 #endif
 #include "input/input.h"
@@ -51,6 +54,7 @@ namespace gfxvk { bool buffer_cache_enabled(); }
 #include "audio/audio_out.h"
 #include "input/rumble.h"
 #include "hooks/interp.h"
+#include "hooks/interp_pacing.h"
 #include "hooks/collision_wireframe.h"
 #include "hooks/course_hot_reload.h"
 #include "core/runtime.h"
@@ -83,11 +87,12 @@ const bool g_no_host_keys = g_no_host && !env::TEST_POST_KEYS();
 bool g_pad_b_used = false;
 
 struct Event {
-    enum Kind { Key, MousePos, MouseButton, Wheel, Focus } kind;
+    enum Kind { Key, MousePos, MouseButton, Wheel, Text, Focus } kind;
     int code = 0;
     bool down = false;
     float x = 0, y = 0;
     int mods = 0;
+    std::string text;
 };
 std::mutex g_mu;
 std::vector<Event> g_events;
@@ -160,7 +165,8 @@ struct Ui {
 
     double fps_t0 = 0, fps = 0;
     uint64_t fps_n0 = 0;
-    float frame_ms[120] = {};
+    float frame_ms[FrameHistoryAverages::kFrames] = {};
+    uint32_t frame_logic[FrameHistoryAverages::kFrames] = {};
     int frame_i = 0;
     double last_present = 0;
     double sample_restore = 0;
@@ -604,11 +610,12 @@ std::string performance_device() {
 }
 
 std::string performance_report() {
-    float sum = 0, worst = 0;
-    for (float f : U.frame_ms) { sum += f; worst = std::max(worst, f); }
+    float avg_ms = 0, worst = 0, avg_fps = 0;
+    double avg_logic = 0;
+    FrameHistoryAverages::compute(U.frame_ms, U.frame_logic, avg_ms, worst, avg_fps, avg_logic);
     char frame[180];
     snprintf(frame, sizeof frame, "FPS %.1f (average %.1f), frame %.2f ms (worst %.2f), average logic steps/s %.1f\n",
-             U.fps, g_average.fps, sum / 120.0f, worst, g_average.logic);
+             U.fps, avg_fps, avg_ms, worst, avg_logic);
     std::string report = std::string(frame) + perf::summary();
 #ifdef __ANDROID__
     static AndroidTelemetry telemetry;
@@ -686,23 +693,72 @@ void tab_graphics() {
     }
     heading("Frame rate (experimental)");
     int m = interp::mode(), f = interp::fps();
-    static const int rates[] = {60, 120, 144, 165, 240};
-    for (int r : rates) {
-        if (r != rates[0]) ImGui::SameLine();
+    const bool ff = gx2::uncapped();
+    const bool custom = interp::custom_on() && !ff;
+    static int custom_value = -1;
+    static char custom_buf[8] = "";
+    static bool was_custom = false;
+    if (custom_value < 0) custom_value = interp::custom_fps();
+    if (custom && !was_custom) custom_value = interp::custom_fps();
+    was_custom = custom;
+    int n_rates = 0;
+    const int* rates = interp::pacing::fps_ladder(n_rates);
+    ImGui::BeginDisabled(ff);
+    for (int i = 0; i < n_rates; i++) {
+        const int r = rates[i];
+        if (i) ImGui::SameLine();
         char label[16];
         snprintf(label, sizeof label, "%d fps", r);
-        const bool on = r == 60 ? m != 1 : m == 1 && f == r;
+        const bool on = !custom && (r == 60 ? m != 1 : m == 1 && f == r);
         if (radio(label, on)) post_changed([r] {
-            if (r == 60) interp::set_mode(0);
+            interp::set_fast_forward(false);
+            if (r == 60) { interp::set_fps(60); interp::set_mode(0); }
             else { interp::set_fps(r); interp::set_mode(1); }
         });
     }
-    help("60 fps is the game rate. 120, 144, 165 and 240 fps add in-between frames for the steps in between.\n"
-         "The game logic still runs at 60 steps a second.\n"
-         "The display shows at most its refresh rate. Hotkeys: 6 = 60 fps, 7 = cycle rates,\n"
-         "9 = toggle 60 fps and the last non-60 rate.");
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(ff);
+    if (radio("Custom", custom)) {
+        interp::set_fast_forward(false);
+        interp::set_custom_fps(custom_value);
+        post_changed([] {});
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("9999").x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f);
+    ImGui::InputText("##fps-custom", custom_buf, sizeof custom_buf, ImGuiInputTextFlags_CharsDecimal);
+    if (ImGui::IsItemActivated()) {
+        interp::set_fast_forward(false);
+        interp::set_custom_fps(custom_value);
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        int v = atoi(custom_buf);
+        v = interp::pacing::clamp_custom_fps(v);
+        custom_value = v;
+        snprintf(custom_buf, sizeof custom_buf, "%d", v);
+        interp::set_fast_forward(false);
+        interp::set_custom_fps(v);
+        post_changed([] {});
+    }
+    if (!ImGui::IsItemActive()) {
+        if (custom) custom_value = interp::custom_fps();
+        snprintf(custom_buf, sizeof custom_buf, "%d", custom_value);
+    }
+    ImGui::EndDisabled();
+    bool ff_ui = ff;
+    if (check("Fast forward (debug)", ff_ui, &ff_ui)) {
+        if (ff_ui) post_changed([] { interp::set_fast_forward(true); });
+        else post_changed([] { interp::set_fast_forward(false); });
+    }
+    help("30 fps draws half as often: two logic steps per picture, so the game keeps its speed.\n"
+         "60 fps is the game rate. 120, 144, 165 and 240 are present caps: more draws between\n"
+         "fixed 60 Hz logic steps, blended from wall-clock time left in the open step.\n"
+         "Custom is any rate from 60 to 1000. 30 fps is only the preset. Fast forward (debug) runs the game as fast as this\n"
+         "computer can: each picture is one game step, with no frame limit. Hotkeys: 6 = 60 fps,\n"
+         "7 = cycle caps, 9 = toggle 60 fps and the last non-60 cap.");
 
-    if (const int hz = interp::display_hz(); hz > 0) {
+    if (ff)
+        note("Fast forward runs the game as fast as this computer can.");
+    else if (const int hz = interp::display_hz(); hz > 0) {
         const int out = interp::output_fps();
         if (m == 1 && out < f)
             note("Your display: %d Hz. %d fps needs a %d Hz display; %d fps are drawn (the display cannot show more).", hz, f, f, out);
@@ -731,29 +787,14 @@ void tab_graphics() {
                       : "Set by NSMBU_HEAT_GUARD for this start.");
     }
 #endif
-    bool unc;
-    if (check("Uncapped (debug: the game runs too fast)", gx2::uncapped(), &unc)) hostui::post([unc] { gx2::set_uncapped(unc); });
-    help("Debug only, to see how many frames a second this computer can draw: no frame limit and no\n"
-         "vsync. The game counts frames, so it runs faster than normal. The frame rate is in the\n"
-         "performance overlay. Not saved. (At frame targets above 60 fps the game logic still keeps\n"
-         "60 steps a second.)");
-
     heading("Internal resolution");
-    static const float scales[] = {1.0f, 1.5f, 2.0f, 3.0f};
-    static const char* const names[] = {"1x  (1280x720)", "1.5x  (1920x1080)", "2x  (2560x1440)", "3x  (3840x2160)"};
     float cur = hostui::res_scale();
-    for (int i = 0; i < 4; i++) {
+    for (size_t i = 0; i < gfx::res_preset_count(); i++) {
         if (i) ImGui::SameLine();
-        float s = scales[i];
-        if (radio(names[i], std::fabs(cur - s) < 0.01f)) post_changed([s] { hostui::set_res_scale(s); });
+        const float s = gfx::kResPresets[i].scale;
+        if (radio(gfx::kResPresets[i].label, std::fabs(cur - s) < 0.01f)) post_changed([s] { hostui::set_res_scale(s); });
     }
-
-    heading("Aspect ratio");
-    int am = aspect::mode();
-    for (int i = aspect::kOriginal; i <= aspect::k32x9; i++) {
-        if (i) ImGui::SameLine();
-        if (radio(aspect::mode_name(i), am == i)) post_changed([i] { aspect::set_mode(i); });
-    }
+    note("720p is the Wii U picture. Lower options draw fewer pixels and are scaled up to the window.");
 
     heading("Effects");
     bool v;
@@ -794,23 +835,6 @@ void tab_graphics() {
     ImGui::EndDisabled();
     note("This build has no Vulkan renderer.");
 #endif
-    heading("Overlay");
-    if (check("Performance overlay (FPS, frame time)", perf_shown(), &v)) set_perf_shown(v);
-    if (check("Performance overlay detail (lag breakdown)", perf_detail_shown(), &v, perf_shown())) set_perf_detail_shown(v);
-    if (!perf_shown()) help("Needs the performance overlay on");
-    if (ImGui::Button("Reset performance averages")) { g_average.reset(); perf::reset(); }
-
-    static double copiedAt = -10;
-    if (ImGui::Button("Copy performance report")) {
-        std::string report = performance_report();
-        hostui::post([report] { hostui::set_clipboard(report); });
-        copiedAt = ImGui::GetTime();
-    }
-    if (ImGui::GetTime() - copiedAt < 2.0) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("Copied");
-    }
-    help("Where the renderer spends its time over the last few seconds, as text for a bug report");
 }
 
 void tab_audio() {
@@ -876,6 +900,12 @@ void tab_display() {
         hostui::post([v] { hostui::set_run_in_background(v); });
     help("Keeps the game at full speed when another window is in front.\n"
          "Turn this off to pause the game when the window loses focus.");
+    heading("Aspect ratio (experimental)");
+    int am = aspect::mode();
+    for (int i = aspect::kOriginal; i <= aspect::k32x9; i++) {
+        if (i) ImGui::SameLine();
+        if (radio(aspect::mode_name(i), am == i)) post_changed([i] { aspect::set_mode(i); });
+    }
     heading("Picture scaling");
     static const char* const f[] = {"Smooth", "Sharp", "Integer scale (pixel exact)"};
     const bool fok = hostui::scale_filter_available();
@@ -890,7 +920,8 @@ void tab_display() {
         static const char* const modes[] = {"Separate window", "Picture-in-picture", "Automatic picture-in-picture", "Off",
                                             "GamePad only"};
         bool first = true;
-        for (int i = 0; i < hostui::drc_modes() && i < 5; i++) {
+        for (int i : gfx::kDrcUiOrder) {
+            if (i >= hostui::drc_modes()) continue;
             if (!hostui::drc_mode_offered(i)) continue;
             if (!first) ImGui::SameLine();
             first = false;
@@ -1466,8 +1497,32 @@ void restart_button(const char* why) {
 }
 
 void tab_debug() {
-    heading("Course debug");
+    heading("Overlay");
     bool v;
+    if (check("Performance overlay (FPS, frame time)", perf_shown(), &v)) set_perf_shown(v);
+    if (check("Performance overlay detail (lag breakdown)", perf_detail_shown(), &v, perf_shown())) set_perf_detail_shown(v);
+    if (!perf_shown()) help("Needs the performance overlay on");
+    if (ImGui::Button("Reset performance averages")) {
+        g_average.reset();
+        perf::reset();
+        std::memset(U.frame_ms, 0, sizeof U.frame_ms);
+        std::memset(U.frame_logic, 0, sizeof U.frame_logic);
+        U.frame_i = 0;
+    }
+
+    static double copiedAt = -10;
+    if (ImGui::Button("Copy performance report")) {
+        std::string report = performance_report();
+        hostui::post([report] { hostui::set_clipboard(report); });
+        copiedAt = ImGui::GetTime();
+    }
+    if (ImGui::GetTime() - copiedAt < 2.0) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("Copied");
+    }
+    help("Where the renderer spends its time over the last few seconds, as text for a bug report");
+
+    heading("Course debug");
     const bool env_locked = env::COLLISION_VIEWER.present();
     if (check("Collision Viewer", collision_wireframe::enabled(), &v, !env_locked)) {
         collision_wireframe::set_enabled(v);
@@ -1494,6 +1549,51 @@ void tab_debug() {
         if (ImGui::Button("Reload now")) course_hot_reload::request_reload();
         help("Rebuilds the active course from disk and restarts it at the course entrance.");
     }
+#ifdef NSMBU_HAS_VULKAN
+    if (render::vulkan() && !gfxvk::device_inventory.empty()) {
+        heading("Graphics card (next start)");
+        const bool env = env::VK_GPU() != nullptr;
+        const std::string saved = gfxvk::device_setting();
+        const bool dedicated = saved.empty() || saved == "dedicated" || saved == "discrete";
+        bool haveDiscrete = false, haveIntegrated = false;
+        for (const auto& gpu : gfxvk::device_inventory) {
+            if (!gpu.usable()) continue;
+            if (gpu.kind == gfxvk::kGpuDiscrete) haveDiscrete = true;
+            if (gpu.kind == gfxvk::kGpuIntegrated) haveIntegrated = true;
+        }
+        auto choose = [](const std::string& value) {
+            gfxvk::set_device_setting(value);
+            hostui::set("gpu", value.empty() ? "dedicated" : value);
+        };
+        if (radio("Prefer dedicated", dedicated, !env)) post_changed([choose] { choose(""); });
+        ImGui::SameLine();
+        if (radio("Prefer integrated", saved == "integrated", !env)) post_changed([choose] { choose("integrated"); });
+        for (size_t i = 0; i < gfxvk::device_inventory.size(); i++) {
+            const auto& gpu = gfxvk::device_inventory[i];
+            ImGui::PushID(int(i));
+            const std::string label = gpu.name + " (" + gfxvk::gpu_kind_name(gpu.kind) + ")";
+            if (radio(label.c_str(), saved == gpu.identity, !env && gpu.usable())) {
+                const std::string identity = gpu.identity;
+                post_changed([choose, identity] { choose(identity); });
+            }
+            if (!gpu.usable()) note("%s", gpu.unavailable.c_str());
+            ImGui::PopID();
+        }
+        note("This start uses %s. A different choice applies the next time the game starts.",
+             gfxvk::active_gpu_name.c_str());
+        if (env) note("NSMBU_VK_GPU=%s is set for this start and takes precedence.", env::VK_GPU());
+#ifndef _WIN32
+        else if (gfxvk::gpu_restart_pending(saved, gfxvk::active_gpu_identity, gfxvk::active_gpu_kind, haveDiscrete, haveIntegrated)) {
+            note("Progress since your last save is lost if you restart now.");
+            if (ImGui::Button("Restart now##gpu")) hostui::post([] { render::restart(); });
+        }
+#endif
+        if (!gfxvk::gpu_fallback.empty()) note("%s", gfxvk::gpu_fallback.c_str());
+        help("Prefer dedicated uses a separate graphics card when one can draw the game windows.\n"
+             "Prefer integrated keeps the GPU built into the processor.\n"
+             "A listed card is used on the next start when it is still available.");
+    }
+#endif
 }
 
 void tab_about() {
@@ -1540,6 +1640,24 @@ static void lag_row(const char* name, double ms, double frameMs, const ImVec4& c
     ImGui::Text("%.1f ms %s", ms, name);
 }
 
+static void perf_device_lines(const std::string& device) {
+    const size_t driver = device.find(", driver ");
+    const size_t vulkan = device.find(", Vulkan ");
+    if (driver != std::string::npos && vulkan != std::string::npos && driver < vulkan) {
+        ImGui::TextUnformatted(device.substr(0, driver).c_str());
+        ImGui::TextUnformatted(device.substr(driver + 2, vulkan - driver - 2).c_str());
+        ImGui::TextUnformatted(device.substr(vulkan + 2).c_str());
+        return;
+    }
+    const size_t driver_colon = device.find(", driver: ");
+    if (driver_colon != std::string::npos) {
+        ImGui::TextUnformatted(device.substr(0, driver_colon).c_str());
+        ImGui::TextUnformatted(device.substr(driver_colon + 2).c_str());
+        return;
+    }
+    ImGui::TextUnformatted(device.c_str());
+}
+
 void perf_window(bool menu_open) {
     const double t = now_s();
     static std::string metrics;
@@ -1553,15 +1671,16 @@ void perf_window(bool menu_open) {
         metrics = perf::summary();
         device = performance_device();
     }
-    float worst = 0, sum = 0;
-    for (float f : U.frame_ms) { worst = std::max(worst, f); sum += f; }
+    float avg_ms = 0, worst = 0, avg_fps = 0;
+    double avg_logic = 0;
+    FrameHistoryAverages::compute(U.frame_ms, U.frame_logic, avg_ms, worst, avg_fps, avg_logic);
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.55f);
+    ImGui::SetNextWindowBgAlpha(0.70f);
     ImGuiWindowFlags fl = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                           ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##perf", nullptr, fl)) {
-        ImGui::Text("%.0f fps   %.1f ms (worst %.1f)", U.fps, sum / 120.0f, worst);
-        ImGui::Text("Average %.1f fps   %.1f logic steps/s", g_average.fps, g_average.logic);
+        ImGui::Text("%.0f fps   %.1f ms (worst %.1f)", U.fps, avg_ms, worst);
+        ImGui::Text("Average %.1f fps   %.1f logic steps/s", avg_fps, avg_logic);
         {
             static double t0 = 0; static uint64_t s0 = 0; static double rate = 60;
             static int slowWindows = 0;
@@ -1586,9 +1705,10 @@ void perf_window(bool menu_open) {
         ImGui::Separator();
         if (device.empty()) device = performance_device();
         if (metrics.empty()) metrics = perf::summary();
-        ImGui::TextUnformatted(device.c_str());
+        perf_device_lines(device);
         ImGui::TextUnformatted(metrics.c_str());
-        ImGui::PlotLines("##ft", U.frame_ms, 120, U.frame_i, nullptr, 0.0f, 50.0f, ImVec2(220, 36));
+        ImGui::PlotLines("##ft", U.frame_ms, FrameHistoryAverages::kFrames, U.frame_i, nullptr, 0.0f, 50.0f,
+                         ImVec2(220, 36));
         rprof::Breakdown b;
         if (perf_detail_shown() && rprof::latest_breakdown(b)) {
             ImGui::SeparatorText("Lag breakdown");
@@ -1761,12 +1881,21 @@ bool mouse_wheel(float dx, float dy) {
     push({Event::Wheel, 0, false, dx, dy, 0});
     return true;
 }
+bool text(const char* utf8) {
+    if (!utf8 || !*utf8 || !is_open() || g_no_host) return false;
+    Event e;
+    e.kind = Event::Text;
+    e.text = utf8;
+    push(e);
+    return true;
+}
 void set_density(float d) { g_density = d > 0.5f ? d : 1.0f; }
 
 void undo_frame_sample() {
     if (U.sample_undo) {
-        U.frame_i = (U.frame_i + 119) % 120;
+        U.frame_i = (U.frame_i + FrameHistoryAverages::kFrames - 1) % FrameHistoryAverages::kFrames;
         U.frame_ms[U.frame_i] = 0;
+        U.frame_logic[U.frame_i] = 0;
     }
     U.last_present = U.sample_restore;
     U.sample_undo = false;
@@ -1844,17 +1973,22 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
     }
 #endif
     const double t = now_s();
+    static uint64_t prev_logic_steps = 0;
+    const uint64_t logic_steps = interp::logic_steps();
     if (U.last_present > 0) {
         U.frame_ms[U.frame_i] = (float)((t - U.last_present) * 1000.0);
-        U.frame_i = (U.frame_i + 1) % 120;
+        const uint64_t prev = prev_logic_steps;
+        U.frame_logic[U.frame_i] = prev ? (uint32_t)(logic_steps - prev) : 0;
+        U.frame_i = (U.frame_i + 1) % FrameHistoryAverages::kFrames;
         U.sample_undo = true;
     } else {
         U.sample_undo = false;
     }
     U.sample_restore = U.last_present;
     U.last_present = t;
+    prev_logic_steps = logic_steps;
     g_last_frame = t;
-    g_average.sample(t, gx2::flips_presented(), interp::logic_steps(), int(render::active()),
+    g_average.sample(t, gx2::flips_presented(), logic_steps, int(render::active()),
                      interp::mode(), interp::fps(), hostui::res_scale());
     read_controller();
 
@@ -1901,6 +2035,7 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         case Event::MousePos: io.AddMousePosEvent(e.x * io.DisplaySize.x, e.y * io.DisplaySize.y); break;
         case Event::MouseButton: io.AddMouseButtonEvent(e.code, e.down); break;
         case Event::Wheel: io.AddMouseWheelEvent(e.x, e.y); break;
+        case Event::Text: io.AddInputCharactersUTF8(e.text.c_str()); break;
         default: break;
         }
     }

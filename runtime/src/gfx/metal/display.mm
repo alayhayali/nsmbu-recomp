@@ -21,6 +21,7 @@
 namespace gfx { uint64_t shader_warm_activity(); }
 #include "gfx/renderer.h"
 #include "core/runtime.h"
+#include "core/window_title.h"
 #include "hooks/interp.h"
 #ifdef NSMBU_HAS_VULKAN
 #include "gfx/vulkan/api.h"
@@ -91,7 +92,7 @@ static void save_options() {
     save_settings();
 }
 static void load_options() {
-    g_mode = find_name(kModeNames, kDrcModeCount, g_settings[@"drcMode"], kDrcWindow);
+    g_mode = find_name(kModeNames, kDrcModeCount, g_settings[@"drcMode"], kDrcDefaultMode);
     if (!drc_mode_offered(g_mode)) g_mode = kDrcWindow;
     g_corner = find_name(kCornerNames, 4, g_settings[@"pipCorner"], 3);
     g_filter = find_name(kFilterNames, 3, g_settings[@"scaleFilter"], kSmooth);
@@ -364,7 +365,9 @@ static void create_windows() {
     for (NSNotificationName n in @[ NSApplicationDidBecomeActiveNotification, NSApplicationDidResignActiveNotification ])
         [[NSNotificationCenter defaultCenter] addObserverForName:n object:NSApp queue:nil
                                                       usingBlock:^(NSNotification*) { update_app_focus(); }];
-    NSWindow* tv = make_window(0, @"New Super Mario Bros. U (recompiled)",
+    char tvTitle[window_title::kCap];
+    window_title::format_base(tvTitle, sizeof tvTitle);
+    NSWindow* tv = make_window(0, @(tvTitle),
                                [[NsmbuTvView alloc] initWithFrame:NSMakeRect(0, 0, 1280, 720)], 1280, 720, NSMakePoint(0, 0));
     g_tv_window = tv;
     install_menu(tv);
@@ -977,12 +980,14 @@ bool drc_overlay_hit(void* window, double wx, double wy) {
 }
 
 // ---------------------------------------------------------------- Display menu
+void menu_options_changed();
 }  // namespace gfx
 
 @interface NsmbuDisplayMenu : NSObject <NSMenuItemValidation, NSMenuDelegate>
 @end
 @implementation NsmbuDisplayMenu
 - (void)fullScreen:(NSMenuItem*)item { [gfx::g_tv_window toggleFullScreen:nil]; }
+- (void)setAspect:(NSMenuItem*)item { aspect::set_mode((int)item.tag); gfx::menu_options_changed(); }
 - (void)setFilter:(NSMenuItem*)item { gfx::g_filter = (int)item.tag; gfx::save_options(); }
 - (void)setMode:(NSMenuItem*)item { gfx::set_drc_mode((int)item.tag); }
 - (void)toggleDrc:(NSMenuItem*)item { gfx::toggle_drc_screen(); }
@@ -1017,6 +1022,7 @@ bool drc_overlay_hit(void* window, double wx, double wy) {
     auto on = [&](bool b) { item.state = b ? NSControlStateValueOn : NSControlStateValueOff; };
     SEL a = item.action;
     if (a == @selector(fullScreen:)) item.title = gfx::tv_fullscreen() ? @"Exit Full Screen" : @"Enter Full Screen";
+    if (a == @selector(setAspect:)) on(item.tag == aspect::mode());
     if (a == @selector(setFilter:)) on(gfx::g_filter == item.tag);
     if (a == @selector(setMode:)) {
         on(gfx::g_mode == item.tag);
@@ -1065,6 +1071,14 @@ void install_display_menu(NSMenu* bar) {
     NSMenuItem* alt = add(m, @"Enter Full Screen", @selector(fullScreen:), 0, @"f", NSEventModifierFlagCommand | NSEventModifierFlagControl);
     alt.alternate = YES;  // Ctrl+Cmd+F, the system's full-screen shortcut, does the same
     [m addItem:[NSMenuItem separatorItem]];
+    header(m, @"Aspect ratio (experimental)");
+    add(m, @"    16:9 (original)", @selector(setAspect:), aspect::kOriginal);
+    add(m, @"    Match window", @selector(setAspect:), aspect::kWindow).toolTip =
+        @"The picture takes the shape of the TV window (or the screen in full screen): wider shows more to the sides";
+    add(m, @"    16:10", @selector(setAspect:), aspect::k16x10);
+    add(m, @"    21:9", @selector(setAspect:), aspect::k21x9);
+    add(m, @"    32:9", @selector(setAspect:), aspect::k32x9);
+    [m addItem:[NSMenuItem separatorItem]];
     header(m, @"Picture scaling");
     add(m, @"    Smooth (bilinear)", @selector(setFilter:), kSmooth).toolTip = @"Bilinear filtering, box-filtered when the picture is shrunk";
     add(m, @"    Sharp", @selector(setFilter:), kSharp).toolTip = @"Crisp pixel edges at any scale (sharp bilinear)";
@@ -1072,11 +1086,11 @@ void install_display_menu(NSMenu* bar) {
         @"Whole-number scale with a border; falls back to Smooth when the picture is larger than the window";
     [m addItem:[NSMenuItem separatorItem]];
     header(m, @"GamePad screen");
+    add(m, @"    Off", @selector(setMode:), kDrcOff).toolTip = @"Not shown; the game keeps drawing it";
     add(m, @"    Separate window", @selector(setMode:), kDrcWindow);
     add(m, @"    Picture-in-picture in the TV window", @selector(setMode:), kDrcPip).toolTip = @"Click the overlay to touch";
     add(m, @"    Automatic picture-in-picture", @selector(setMode:), kDrcAuto).toolTip =
         @"The overlay appears for a few seconds when the GamePad picture changes a lot (a menu opens); Cmd+G keeps it up";
-    add(m, @"    Off", @selector(setMode:), kDrcOff).toolTip = @"Not shown; the game keeps drawing it";
     add(m, @"    GamePad only", @selector(setMode:), kDrcGamePad).toolTip =
         @"Only the GamePad picture in the TV window (click it to touch); in the game, Minus switches to Off-TV Play";
     add(m, @"Show GamePad screen", @selector(toggleDrc:), 0, @"g");
