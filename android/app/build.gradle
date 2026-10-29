@@ -39,6 +39,7 @@ android {
         release {
             minifyEnabled false
             signingConfig releaseKeystore != null ? signingConfigs.release : signingConfigs.debug
+            manifestPlaceholders = [appIcon: '@mipmap/ic_launcher']
         }
     }
     sourceSets.main.jniLibs.srcDirs = ['libs']
@@ -59,8 +60,10 @@ android {
     }
 
     def gameIcon = file('local-res').exists()
-    if (gameIcon) sourceSets.main.res.srcDirs += ['local-res']
-    defaultConfig.manifestPlaceholders = [appIcon: gameIcon ? '@mipmap/ic_game' : '@mipmap/ic_launcher']
+    if (gameIcon) {
+        sourceSets.debug.res.srcDirs += ['local-res']
+    }
+    android.buildTypes.debug.manifestPlaceholders = [appIcon: gameIcon ? '@mipmap/ic_game' : '@mipmap/ic_launcher']
     packaging {
         jniLibs {
             useLegacyPackaging = true

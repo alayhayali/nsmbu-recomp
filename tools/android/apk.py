@@ -12,6 +12,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "tools", "lib"))
 import game_versions as gv
+import dev_game_icon
 
 NDK_VERSION = "30.0.16248370"
 PACKAGE = "org.nsmbrecomp.nsmbu"
@@ -206,6 +207,7 @@ def build_apk(*, abi, gen_dir, jobs):
             'install NDK %s: sdkmanager --install "ndk;%s"' % (NDK_VERSION, NDK_VERSION)
         )
     ensure_luajit()
+    dev_game_icon.refresh_android_local_icon()
     env = os.environ.copy()
     env["ANDROID_SDK"] = sdk
     env["ABI"] = abi

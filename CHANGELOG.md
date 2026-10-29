@@ -12,6 +12,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Decomp UI stack for native mod hooks: `Multi2D`, `AnimLayoutBase`, `LayoutAllocator`, `TagProcessor`, and `UtilCursorButtonMgr` in `vendor/decomp/src/layout_sys/`; screen units `AttentionScreen`, `ChangePlayerNum`, `CommonWindowMgr`, `CommonWindow`, `PaCursor`, and `GamesceneBase` in `vendor/decomp/src/layout/`; architecture notes in `vendor/decomp/docs/ui-system.md`.
 
 - Press Start and Select together (+ and − on the GamePad, or the matching controller buttons) to open or close the settings overlay, on PC and Android as well as `` ` `` or F12.
+- Original cel-shaded app icon for Android and Linux packages (`android/icon/app_icon_1024.png`), in the same full-bleed style as the WWHD port's launcher art, with `android/bake_app_icon.py` to refresh the mipmaps.
 - The settings overlay uses larger touch targets on Android, direct touch on the menu, and controller navigation that follows your face-button layout (A confirms, B goes back, LB/RB change tabs).
 - Android-hosted LLVM toolchain packaging scripts, unit tests, and CI compiler cache action.
 - Android extractor packaging installs a verified `nsmbu-extract` as an APK native library for on-device setup.
@@ -30,6 +31,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Android save import/export looks for NSMBU `user/rp_personal_savedata.dat` instead of the leftover WWHD save name.
 - New [Android guide](docs/android.md) for players and an [on-device setup design](docs/android-implementation.md) for contributors; the device checklist lists the setup, touch and release checks still to run on real hardware.
 - `nsmbu apk` builds the local Android APK, installs it on a connected device, and copies the active dump unless you pass `--no-push`.
+- Debug builds refresh `android/app/local-res` from your active dump's `meta/iconTex.tga` when it is present (git-ignored; skipped in CI).
+  Release and CI APKs keep the packaged launcher icon.
 - Android and desktop builds each keep their own `libluajit.a` under the CMake build directory so a host LuaJIT build is not linked into an APK by mistake.
 - `nsmbu apk` picks JDK 17 or 21 for Gradle when the default `java` is too new.
 - `nsmbu apk` copies the active dump after install without a prompt; use `--no-push` to skip.
