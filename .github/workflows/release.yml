@@ -268,6 +268,15 @@ jobs:
             -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX="$HOME/sdl3"
           cmake --build sdl3-build
           cmake --install sdl3-build
+          cp SDL3-3.4.18/LICENSE.txt "$HOME/sdl3/LICENSE.txt"
+
+      - name: SDL3 license for release packaging
+        run: |
+          if [ ! -f "$HOME/sdl3/LICENSE.txt" ]; then
+            curl -fsSL -o sdl3.tar.gz "$SDL3_URL"
+            echo "$SDL3_SHA256  sdl3.tar.gz" | sha256sum -c -
+            tar -xOf sdl3.tar.gz SDL3-3.4.18/LICENSE.txt > "$HOME/sdl3/LICENSE.txt"
+          fi
 
       - name: Vulkan headers
         run: |
@@ -303,7 +312,7 @@ jobs:
             --out dist --toolchain "$TOOLCHAIN" --setup-gui build/rel/nsmbu-setup \
             --runtime-file "$HOME/sdl3/lib/libSDL3.so.0" \
             --linkonly-lib "/usr/lib/$ARCH-linux-gnu/libvulkan.so.1" \
-            --license "SDL3 (zlib)=$PWD/SDL3-3.4.18/LICENSE.txt" \
+            --license "SDL3 (zlib)=$HOME/sdl3/LICENSE.txt" \
             --license "Vulkan-Headers (Apache-2.0)=$HOME/vulkan/LICENSE.md" \
             --license "glslang (BSD-3-Clause and others)=$PWD/build/rel/_deps/glslang-src/LICENSE.txt" \
             --license "zlib (zlib)=$PWD/build/rel/_deps/zlib-src/LICENSE" \

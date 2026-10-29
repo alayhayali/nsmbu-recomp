@@ -19,6 +19,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Scene checks for agents live in the `scenes` skill.
   The world map, a course pack, and the file menu each have a short boot that stops on `nsmbu status`.
 
+### Fixed
+
+- Linux release packaging keeps the SDL3 license next to the cached SDL3 install so a cache hit no longer fails the Package step.
+
 ### Changed
 
 - `nsmbu build` and `nsmbu run` skip CMake configure when the build cache is already up to date, and use a quiet log level when configure does run.
