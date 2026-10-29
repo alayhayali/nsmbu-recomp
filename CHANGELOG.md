@@ -69,6 +69,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- Windows on ARM64 crash logs list the faulting instruction first in the host backtrace (same CONTEXT unwind as x64), so release CI `crash_log_module` passes on `windows-arm64`.
 - Settings text fields (including the custom frame rate) accept keyboard input while the overlay is open.
 - 30 fps runs a full game step for each picture update, including the wait that finishes the previous picture.
   Clearing the render list twice without that wait crashed the render thread.
