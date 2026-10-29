@@ -9,6 +9,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Added
 
+- Press Start and Select together (+ and − on the GamePad, or the matching controller buttons) to open or close the settings overlay, on PC and Android as well as `` ` `` or F12.
+- The settings overlay uses larger touch targets on Android, direct touch on the menu, and controller navigation that follows your face-button layout (A confirms, B goes back, LB/RB change tabs).
 - Android-hosted LLVM toolchain packaging scripts, unit tests, and CI compiler cache action.
 - Android extractor packaging installs a verified `nsmbu-extract` as an APK native library for on-device setup.
 - Android runtime SDK packaging ships the runtime objects and link recipe (no game code) so the phone links its own `libgame.so`; the installer's link step accepts an alternate recipe.
@@ -25,6 +27,12 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Releases include a signed Android APK for arm64 (and x86_64 for emulators and Chromebooks) that sets the game up on the phone; it carries no game code.
 - Android save import/export looks for NSMBU `user/rp_personal_savedata.dat` instead of the leftover WWHD save name.
 - New [Android guide](docs/android.md) for players and an [on-device setup design](docs/android-implementation.md) for contributors; the device checklist lists the setup, touch and release checks still to run on real hardware.
+- `nsmbu apk` builds the local Android APK, installs it on a connected device, and copies the active dump unless you pass `--no-push`.
+- Android and desktop builds each keep their own `libluajit.a` under the CMake build directory so a host LuaJIT build is not linked into an APK by mistake.
+- `nsmbu apk` picks JDK 17 or 21 for Gradle when the default `java` is too new.
+- `nsmbu apk` copies the active dump after install without a prompt; use `--no-push` to skip.
+- PC-built APKs can choose an extracted game folder on the device (same checks as setup); the app copies it into private storage for Play.
+- Android AYANEO/Odin built-in controllers get corrected SDL gamepad mappings so analog sticks and face buttons reach the game.
 - A 30 fps choice in Graphics.
   It draws half as often and runs two logic steps per picture, so the game keeps its speed.
 - Graphics can set any frame rate from 60 to 1000.

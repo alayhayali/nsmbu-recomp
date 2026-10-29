@@ -36,6 +36,8 @@
 #include <jni.h>
 #include "phone_rumble.h"
 #include "touch_buttons.h"
+#include "android_controller.h"
+#include "../overlay/hostui.h"
 #endif
 namespace render { uint64_t frame_count(); }
 namespace gfxvk { bool graphics_hotkey(char key, bool activate); }
@@ -377,9 +379,30 @@ static void open_controller(SDL_JoystickID id){
 #endif
  std::lock_guard lk(g_pads_mu);
  if(g_controllers.contains(id))return;
+#ifdef __ANDROID__
+ const uint16_t vendor=SDL_GetGamepadVendorForID(id);
+ const uint16_t product=SDL_GetGamepadProductForID(id);
+ if(android_controller::ayaneo(vendor)) {
+  if(char* original=SDL_GetGamepadMappingForID(id)) {
+   LOG("[input] AYANEO SDL mapping before correction: %s",original);
+   const auto corrected=android_controller::mapping(vendor,product,original);
+   if(SDL_AddGamepadMapping(corrected.c_str())>=0)LOG("[input] applied AYANEO %04X:%04X gamepad mapping",(unsigned)vendor,(unsigned)product);
+   else LOG("[input] AYANEO mapping correction failed: %s",SDL_GetError());
+   SDL_free(original);
+  }
+ }
+#endif
  if(auto* pad=SDL_OpenGamepad(id)){g_controllers[id]=pad;
   const int slot=free_slot_locked();
   if(slot>=0){g_slot[slot]=id;const char* name=SDL_GetGamepadName(pad);g_slot_name[slot]=name?name:"";}
+#ifdef __ANDROID__
+  LOG("[input] controller connected: %s (id %u, vendor %04X, product %04X, type %d)",SDL_GetGamepadName(pad)?SDL_GetGamepadName(pad):"?",(unsigned)id,
+      SDL_GetGamepadVendor(pad),SDL_GetGamepadProduct(pad),(int)SDL_GetGamepadType(pad));
+  if(char* map=SDL_GetGamepadMapping(pad)){
+   LOG("[input] SDL gamepad mapping: %s",map);
+   SDL_free(map);
+  }
+#endif
   if(SDL_RumbleGamepad(pad,0,0,0))g_rumble_controllers.insert(id);
   if(g_sensors_on)set_sensors_locked(pad,true);}
 }

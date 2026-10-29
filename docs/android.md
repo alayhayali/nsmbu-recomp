@@ -41,11 +41,11 @@ The game that you can already play stays until the new one is ready.
 
 ### Or: build it on your PC
 
-1. Install the Android SDK and NDK, JDK 17 or newer, CMake, Ninja and Python 3.
+1. Install the Android SDK and NDK, JDK 17 or 21, CMake, Ninja and Python 3.
 2. Extract your game and generate its code, as in the *Building* steps of the [README](../README.md).
-3. Run `android/build_native.sh`, then `./gradlew assembleRelease` in `android/`.
-4. Install the APK with `adb install -r app/build/outputs/apk/release/app-release.apk`.
-5. Copy the game into the app's `game` folder (`Android/data/org.nsmbrecomp.nsmbu/files/game`), for example with `adb push`.
+3. Run `nsmbu apk`, or `android/build_native.sh` then `./gradlew assembleRelease` in `android/`.
+4. On the phone, open the app and tap **Choose your game**, then pick the folder that contains `code`, `content` and `meta` (for example a copy under Download). The app copies it privately and **Play** uses that copy. You can still use `nsmbu apk` over USB instead.
+5. If you built manually and skipped both, install the APK and copy the game into `Android/data/org.nsmbrecomp.nsmbu/files/game/` with `adb push`.
 
 An APK that you build on your PC contains your recompiled game.
 Keep it for your own device and never share it.
@@ -63,6 +63,9 @@ Keep it for your own device and never share it.
   **Reset** restores the original layout.
   The layout is saved on this device.
 - **Settings**: the Back button or gesture opens and closes Settings.
+  Press + and − together on the on-screen controls or a controller for the same menu.
+
+  While Settings is open, touch the menu or use a controller: D-pad or left stick to move, A to activate, B to go back, LB/RB for tabs, Start+Select to close.
   The Home button of a controller opens them too.
 - **Phone vibration**: **Settings > Controls > Phone vibration** is **Touch controls** by default, so game rumble vibrates the phone while you play with the on-screen controls.
   **No controller motor** also vibrates the phone while the connected controller has no motor.

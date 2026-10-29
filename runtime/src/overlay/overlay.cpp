@@ -45,6 +45,9 @@ namespace gfxvk { bool buffer_cache_enabled(); }
 #endif
 #include "input/input.h"
 #include "input/input_map.h"
+#include "controller_shortcuts.h"
+#include "gamepad_nav.h"
+#include "mobile_ui.h"
 #include "../mods/mods.h"
 #include "../mods/sdk/nsmbu.h"
 #include "../mods/lua_gui.h"
@@ -92,6 +95,7 @@ struct Event {
     bool down = false;
     float x = 0, y = 0;
     int mods = 0;
+    bool touch = false;
     std::string text;
 };
 std::mutex g_mu;
@@ -150,6 +154,10 @@ struct Ui {
 
     float values[input_map::kPadCount] = {};
     float prev[input_map::kPadCount] = {};
+    float nav_values[input_map::kPadCount] = {};
+    float nav_prev[input_map::kPadCount] = {};
+    GamepadNavigation gamepad_navigation;
+    ImVec2 mouse_position = {};
     double options_since = -1;
     bool options_latched = false;
 
@@ -355,7 +363,26 @@ void read_controller() {
     const double t = now_s();
 
     if (controller_pressed(kPadHome)) set_open(!is_open());
-    if (controller_down(kPadOptions)) {
+
+    const bool menu = controller_down(kPadMenu);
+    const bool options = controller_down(kPadOptions);
+    const bool prev_menu = U.prev[kPadMenu] > 0.5f;
+    const bool prev_options = U.prev[kPadOptions] > 0.5f;
+    const bool pad_combo = overlay_shortcuts::combo_edge(menu, options, prev_menu, prev_options);
+
+    bool keys[256];
+    input::held_keys(keys);
+    const bool kb_combo = overlay_shortcuts::keyboard_start_select(input_map::current(), keys);
+    static bool prev_kb_combo = false;
+    const bool kb_edge = kb_combo && !prev_kb_combo;
+    prev_kb_combo = kb_combo;
+
+    if (!g_capturing_keys.load() && (pad_combo || kb_edge)) set_open(!is_open());
+
+    if (menu && options) {
+        U.options_since = -1;
+        U.options_latched = true;
+    } else if (controller_down(kPadOptions)) {
         if (!U.options_latched) {
             if (is_open()) {
                 set_open(false);
@@ -379,26 +406,12 @@ void read_controller() {
     }
 }
 
-void feed_gamepad(ImGuiIO& io, bool enabled) {
-    using namespace input_map;
-    auto key = [&](ImGuiKey k, int p) { io.AddKeyAnalogEvent(k, enabled && U.values[p] > 0.5f, enabled ? U.values[p] : 0.0f); };
-    key(ImGuiKey_GamepadFaceDown, kPadA);
-    key(ImGuiKey_GamepadFaceRight, kPadB);
-    key(ImGuiKey_GamepadFaceLeft, kPadX);
-    key(ImGuiKey_GamepadFaceUp, kPadY);
-    key(ImGuiKey_GamepadDpadUp, kPadDUp);
-    key(ImGuiKey_GamepadDpadDown, kPadDDown);
-    key(ImGuiKey_GamepadDpadLeft, kPadDLeft);
-    key(ImGuiKey_GamepadDpadRight, kPadDRight);
-    key(ImGuiKey_GamepadLStickUp, kPadLSUp);
-    key(ImGuiKey_GamepadLStickDown, kPadLSDown);
-    key(ImGuiKey_GamepadLStickLeft, kPadLSLeft);
-    key(ImGuiKey_GamepadLStickRight, kPadLSRight);
-    key(ImGuiKey_GamepadRStickUp, kPadRSUp);
-    key(ImGuiKey_GamepadRStickDown, kPadRSDown);
-    key(ImGuiKey_GamepadL2, kPadLT);
-    key(ImGuiKey_GamepadR2, kPadRT);
-    key(ImGuiKey_GamepadStart, kPadMenu);
+void feed_gamepad(ImGuiIO& io, bool enabled, bool mouse_used) {
+    const int face[4] = {input_map::face_input(input_map::kA), input_map::face_input(input_map::kB),
+                         input_map::face_input(input_map::kX), input_map::face_input(input_map::kY)};
+    std::copy(std::begin(U.prev), std::end(U.prev), std::begin(U.nav_prev));
+    std::copy(std::begin(U.values), std::end(U.values), std::begin(U.nav_values));
+    U.gamepad_navigation.feed(io, U.nav_values, U.nav_prev, enabled, mouse_used, face);
 }
 
 void wrapped_tooltip(const char* text) {
@@ -1757,6 +1770,8 @@ void settings_window() {
     const bool begun = ImGui::Begin(app_title::kSettings, &open, fl);
     ImGui::PopStyleVar();
     if (begun) {
+        note("Touch or point at the menu, or use a controller: D-pad or left stick to move, A to activate, B to go back, "
+             "LB/RB change tabs, Start+Select closes.");
         const ImVec2 wp = ImGui::GetWindowPos();
         const float th = ImGui::GetFrameHeight();
         ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(wp.x, wp.y + th - 2),
@@ -1796,7 +1811,8 @@ void settings_window() {
     ImGui::End();
 
     if (!open) set_open(false);
-    if (U.cap_action < 0 && controller_pressed(input_map::kPadB) && !g_pad_b_used && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId))
+    if (U.cap_action < 0 && controller_pressed(input_map::face_input(input_map::kB)) && !g_pad_b_used &&
+        !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId))
         set_open(false);
     g_pad_b_used = false;
 }
@@ -1813,6 +1829,7 @@ void set_open(bool open) {
         mods::mouse_release();
         U.just_opened = true;
         U.slots_time = -1;
+        U.gamepad_navigation.reset();
     }
     LOG("[overlay] %s", open ? "opened" : "closed");
 }
@@ -1866,14 +1883,14 @@ bool key(int code, bool down, bool repeat, int mods) {
     push({Event::Key, code, down, 0, 0, mods});
     return true;
 }
-bool mouse_move(float nx, float ny) {
+bool mouse_move(float nx, float ny, bool touch) {
     if (!captures() || g_no_host) return false;
-    push({Event::MousePos, 0, false, nx, ny, 0});
+    push({Event::MousePos, 0, false, nx, ny, 0, touch});
     return true;
 }
-bool mouse_button(int button, bool down) {
+bool mouse_button(int button, bool down, bool touch) {
     if (!captures() || g_no_host) return false;
-    push({Event::MouseButton, button, down, 0, 0, 0});
+    push({Event::MouseButton, button, down, 0, 0, 0, touch});
     return true;
 }
 bool mouse_wheel(float dx, float dy) {
@@ -2013,7 +2030,14 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
     }
     ImGuiIO& io = ImGui::GetIO();
 
-    const float scale = std::max({1.0f, g_density.load(), ph / 820.0f});
+#ifdef __ANDROID__
+    const mobile_ui::Layout touch_ui =
+        mobile_ui::layout(g_density.load() * 160.0f, g_density.load(), mobile_ui::kAutomatic, float(pw), float(ph));
+    mobile_ui::apply_touch_style(ImGui::GetStyle(), touch_ui);
+    const float scale = touch_ui.scale;
+#else
+    const float scale = mobile_ui::desktop_scale(g_density.load(), float(ph));
+#endif
     io.DisplaySize = ImVec2(pw / scale, ph / scale);
     io.DisplayFramebufferScale = ImVec2(scale, scale);
     io.DeltaTime = U.last_time > 0 ? (float)std::clamp(t - U.last_time, 1e-4, 0.25) : 1.0f / 60.0f;
@@ -2023,6 +2047,7 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         std::lock_guard<std::mutex> lk(g_mu);
         events.swap(g_events);
     }
+    bool mouse_used = false;
     for (const Event& e : events) {
         switch (e.kind) {
         case Event::Key:
@@ -2032,15 +2057,27 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
             io.AddKeyEvent(ImGuiMod_Super, e.mods & kSuper);
             if (ImGuiKey k = imgui_key(e.code); k != ImGuiKey_None) io.AddKeyEvent(k, e.down);
             break;
-        case Event::MousePos: io.AddMousePosEvent(e.x * io.DisplaySize.x, e.y * io.DisplaySize.y); break;
-        case Event::MouseButton: io.AddMouseButtonEvent(e.code, e.down); break;
-        case Event::Wheel: io.AddMouseWheelEvent(e.x, e.y); break;
+        case Event::MousePos:
+            io.AddMouseSourceEvent(e.touch ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
+            mouse_used |= e.x != U.mouse_position.x || e.y != U.mouse_position.y;
+            U.mouse_position = ImVec2(e.x, e.y);
+            io.AddMousePosEvent(e.x * io.DisplaySize.x, e.y * io.DisplaySize.y);
+            break;
+        case Event::MouseButton:
+            io.AddMouseSourceEvent(e.touch ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
+            mouse_used = true;
+            io.AddMouseButtonEvent(e.code, e.down);
+            break;
+        case Event::Wheel:
+            mouse_used |= e.x != 0 || e.y != 0;
+            io.AddMouseWheelEvent(e.x, e.y);
+            break;
         case Event::Text: io.AddInputCharactersUTF8(e.text.c_str()); break;
         default: break;
         }
     }
     apply_capture();
-    feed_gamepad(io, open && U.cap_action < 0);
+    feed_gamepad(io, open && U.cap_action < 0, mouse_used);
     ImGui::NewFrame();
     if (open) settings_window();
     if (text) {

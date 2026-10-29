@@ -1,6 +1,7 @@
 package org.nsmbrecomp.nsmbu;
 
 import android.content.Context;
+import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.DocumentsContract;
@@ -117,6 +118,50 @@ public final class SetupImport {
             }
         }
         SetupStore.write(new File(job, "job.json"), configuration);
+    }
+
+    public static void copyGameFolder(Context context, Uri tree, String startDocument, File destination, Control control) throws Exception {
+        SetupFolderCheck.Result found = checkFolder(context, tree, startDocument);
+        if (!found.usable()) throw new IOException(found.message());
+        context.getContentResolver().takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        File root = destination.getCanonicalFile();
+        File parent = root.getParentFile();
+        if (parent == null) throw new IOException("Invalid game folder destination");
+        clearDirectory(root);
+        if (!root.isDirectory() && !root.mkdirs()) throw new IOException("Cannot create game folder");
+        String prefix = root.getName();
+        JSONArray files = new JSONArray();
+        JSONArray directories = new JSONArray();
+        walk(context, tree, found.document, prefix, files, directories, new HashSet<>(), control, 0);
+        for (int index = 0; index < directories.length(); index++) {
+            File directory = inside(parent, directories.getString(index));
+            if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Cannot create game folder");
+        }
+        long total = 0;
+        for (int index = 0; index < files.length(); index++) {
+            long size = files.getJSONObject(index).getLong("size");
+            if (size < 0) { total = -1; break; }
+            total = Math.addExact(total, size);
+        }
+        long copied = 0;
+        for (int index = 0; index < files.length(); index++) {
+            control.checkpoint();
+            JSONObject entry = files.getJSONObject(index);
+            File target = inside(parent, entry.getString("path"));
+            File marker = new File(parent, ".pc-import/" + index + ".json");
+            if (!verified(target, marker, control)) {
+                final long previous = copied;
+                final long expected = total;
+                final int complete = index;
+                JSONObject receipt = copy(context, Uri.parse(entry.getString("uri")), target,
+                    new File(parent, ".pc-import-partial/" + index), entry.getLong("size"), entry.getLong("modified"),
+                    false, control, count -> control.progress(previous + count, expected, complete, files.length()));
+                SetupStore.write(marker, receipt);
+            }
+            copied = Math.addExact(copied, target.length());
+            control.progress(copied, total, index + 1, files.length());
+        }
+        control.checkpoint();
     }
 
     public static JSONObject prepare(Context context, File job, Control control) throws Exception {
@@ -348,5 +393,15 @@ public final class SetupImport {
         java.io.FileDescriptor descriptor = android.system.Os.open(directory.getPath(), android.system.OsConstants.O_RDONLY, 0);
         try { android.system.Os.fsync(descriptor); }
         finally { android.system.Os.close(descriptor); }
+    }
+
+    private static void clearDirectory(File directory) throws IOException {
+        if (!directory.isDirectory()) return;
+        File[] children = directory.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            if (child.isDirectory()) clearDirectory(child);
+            if (!child.delete()) throw new IOException("Cannot replace the previous game copy");
+        }
     }
 }

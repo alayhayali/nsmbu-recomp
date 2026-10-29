@@ -45,13 +45,11 @@ public class SetupActivity extends Activity {
     /** A chosen folder is being checked for the game (off the UI thread). */
     private volatile boolean checkingFolder;
     private String pickerJob;
-    private static final int FOLDER = 10, ARCHIVE = 11, IMAGE = 12, DISC = 13, COMMON = 14, RESTORE = 15, UPDATE = 16;
+    private static final int FOLDER = 10, ARCHIVE = 11, IMAGE = 12, DISC = 13, COMMON = 14, RESTORE = 15, UPDATE = 16, PC_FOLDER = 20;
     static final String EXTRA_SHOW_SETUP = "org.nsmbrecomp.nsmbu.SHOW_SETUP";
 
     private boolean pcGame() {
-        File external = getExternalFilesDir(null);
-        return external != null && new File(external, "game/code/red-pro2.rpx").isFile() &&
-            new File(getApplicationInfo().nativeLibraryDir, "libmain.so").isFile();
+        return PcGameFolder.ready(this);
     }
 
     /** A game is ready: an active phone build that needs no rebuild and no setup in progress, or the
@@ -185,6 +183,17 @@ public class SetupActivity extends Activity {
     private void pick(int request) {
         try {
             actionMessage = null;
+            if (request == PC_FOLDER) {
+                if (checkingFolder) throw new Exception("Still checking the chosen folder");
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                for (java.util.Map.Entry<String, Object> extra : SetupPicker.extras(true).entrySet()) {
+                    if (extra.getValue() instanceof Boolean) intent.putExtra(extra.getKey(), (Boolean)extra.getValue());
+                    else intent.putExtra(extra.getKey(), Uri.parse((String)extra.getValue()));
+                }
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                startActivityForResult(intent, request);
+                return;
+            }
             File job = SetupStore.current(this);
             if (!replaceable(job)) throw new Exception("Pause setup and wait for its checkpoint before changing input");
             if (checkingFolder) throw new Exception("Still checking the chosen folder");
@@ -209,6 +218,10 @@ public class SetupActivity extends Activity {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == PC_FOLDER) {
+            if (result == RESULT_OK && data != null && data.getData() != null) importPcFolder(data.getData());
+            return;
+        }
         if (result != RESULT_OK || data == null || data.getData() == null) return;
         try {
             actionMessage = null;
@@ -308,6 +321,45 @@ public class SetupActivity extends Activity {
         }, "nsmbu-setup-folder-check").start();
     }
 
+    private void importPcFolder(Uri uri) {
+        checkingFolder = true;
+        android.content.Context context = getApplicationContext();
+        new Thread(() -> {
+            String refusal = null;
+            try {
+                SetupFolderCheck.Result found = SetupImport.checkFolder(context,
+                    uri, android.provider.DocumentsContract.getTreeDocumentId(uri));
+                android.util.Log.i("nsmbu-pc", "chosen folder: " + found.kind + " " + found.path);
+                if (!found.usable()) refusal = folderMessage(found);
+                else {
+                    PcGameFolder.saveSource(context, uri,
+                        found.kind == SetupFolderCheck.Kind.SUBFOLDER ? found.document : null);
+                    PcGameFolder.copySaved(context, new SetupImport.Control() {
+                        @Override public void checkpoint() { }
+                        @Override public void progress(long copied, long total, int complete, int files) throws Exception {
+                            final String title = context.getString(R.string.setup_copying);
+                            final String detail = total > 0 ?
+                                context.getString(R.string.setup_copying_detail, complete, files) : title;
+                            final int progress = total > 0 ? (int)(1000L * complete / Math.max(1, files)) : -1;
+                            runOnUiThread(() -> phase(title, detail, progress));
+                        }
+                    });
+                }
+            } catch (Exception failure) {
+                refusal = getString(R.string.setup_folder_unreadable, String.valueOf(failure.getMessage()));
+            }
+            final String refused = refusal;
+            runOnUiThread(() -> {
+                checkingFolder = false;
+                actionMessage = refused;
+                if (refused != null && !isFinishing() && !isDestroyed())
+                    new android.app.AlertDialog.Builder(this).setTitle(R.string.setup_folder_wrong)
+                        .setMessage(refused).setPositiveButton(R.string.setup_folder_again, (dialog, which) -> pick(PC_FOLDER))
+                        .setNegativeButton(android.R.string.cancel, null).show();
+            });
+        }, "nsmbu-pc-folder-import").start();
+    }
+
     private void checkUpdate(File job, Uri uri) {
         checkingFolder = true;
         android.content.Context context = getApplicationContext();
@@ -388,12 +440,16 @@ public class SetupActivity extends Activity {
         return grants.contains(source.optString(key + "_uri"));
     }
 
-    private static final String CHECKPOINTS = "Setup keeps a private copy of your input. Leave room for that copy, extracted files, compiled output and at least 1 GiB working reserve. Selected key files are read only. Earlier private key copies are retained until setup completes. Choosing a different game deletes the private copy of the earlier choice; the game you can already play is kept.\n\nYou can close this screen while setup runs. Import resumes from verified complete files; an interrupted file copy or extraction restarts. Python and compiler resource preparation pause during unpacking and restart the incomplete stage. Checksum validation and translation respond to pause requests; an interrupted translation restarts. Compilation and linking also respond to pause requests. An interrupted command restarts; verified objects are kept. Saves stay in their current folder.\n\nThe optional PC route still uses the game folder copied over USB.";
+    private static final String CHECKPOINTS = "Setup keeps a private copy of your input. Leave room for that copy, extracted files, compiled output and at least 1 GiB working reserve. Selected key files are read only. Earlier private key copies are retained until setup completes. Choosing a different game deletes the private copy of the earlier choice; the game you can already play is kept.\n\nYou can close this screen while setup runs. Import resumes from verified complete files; an interrupted file copy or extraction restarts. Python and compiler resource preparation pause during unpacking and restart the incomplete stage. Checksum validation and translation respond to pause requests; an interrupted translation restarts. Compilation and linking also respond to pause requests. An interrupted command restarts; verified objects are kept. Saves stay in their current folder.\n\nA PC-built APK can also copy your extracted game folder from anywhere on the device after you choose it.";
 
     /** The top of the screen: one plain sentence, a detail line and the bar. */
     private void plainPhase(File job, JSONObject host, String state, boolean needsKeys, boolean canStart) throws Exception {
         if (checkingFolder) { phase(getString(R.string.setup_folder_checking), null, -1); return; }
-        if (!phoneSetup) { phase(getString(play.isEnabled() ? R.string.setup_ready : R.string.setup_pc_route), null, -2); return; }
+        if (!phoneSetup) {
+            phase(getString(play.isEnabled() ? R.string.setup_ready : R.string.setup_pc_route),
+                getString(play.isEnabled() ? R.string.setup_pc_ready_detail : R.string.setup_pc_route_detail), -2);
+            return;
+        }
         if (job == null) {
             phase(getString(play.isEnabled() ? R.string.setup_ready : R.string.setup_welcome), getString(R.string.setup_welcome_detail), -2);
             return;
@@ -498,10 +554,13 @@ public class SetupActivity extends Activity {
                     pcGame());
                 String hostName = hostState == null ? (job == null ? "" : "selected") : hostState.optString("state");
                 boolean working = hostName.equals("activating") || hostName.equals("importing") || hostName.equals("preparing") || hostName.equals("running");
-                show(play, play.isEnabled() && !working);
-                show(choose, phoneSetup && !working);
+                show(play, play.isEnabled() && !working && !checkingFolder);
+                show(choose, (phoneSetup && !working) || (!phoneSetup && !checkingFolder));
                 show(folderHint, phoneSetup && !working);
-                setTextIfChanged(choose, getString(job == null ? R.string.setup_choose : R.string.setup_choose_other));
+                if (!phoneSetup) {
+                    setTextIfChanged(choose, getString(play.isEnabled() ? R.string.setup_choose_other : R.string.setup_choose));
+                    choose.setOnClickListener(view -> pick(PC_FOLDER));
+                } else setTextIfChanged(choose, getString(job == null ? R.string.setup_choose : R.string.setup_choose_other));
                 show(pause, phoneSetup && working);
                 show(resume, phoneSetup && job != null && !working && !hostName.equals("complete"));
                 setTextIfChanged(resume, getString(hostName.equals("selected") ? R.string.setup_start : R.string.setup_continue));
@@ -509,7 +568,8 @@ public class SetupActivity extends Activity {
                 plainPhase(job, hostState, hostName, needsKeys, resume.isEnabled());
                 String text;
                 if (!phoneSetup) {
-                    text = "This APK supports the PC build route. Android device setup needs an APK containing Python and the compiler.";
+                    text = play.isEnabled() ? getString(R.string.setup_pc_ready) : getString(R.string.setup_pc_route);
+                    if (!play.isEnabled()) text += "\n" + getString(R.string.setup_pc_route_detail);
                 }
                 else if (job == null) text = "Choose your game dump to set up on this Android device.";
                 else {

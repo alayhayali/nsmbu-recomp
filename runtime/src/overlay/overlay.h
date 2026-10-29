@@ -24,8 +24,8 @@ enum Mods : int { kShift = 1, kCtrl = 2, kAlt = 4, kSuper = 8 };
 
 bool key(int code, bool down, bool repeat, int mods);
 
-bool mouse_move(float nx, float ny);
-bool mouse_button(int button, bool down);
+bool mouse_move(float nx, float ny, bool touch = false);
+bool mouse_button(int button, bool down, bool touch = false);
 bool mouse_wheel(float dx, float dy);
 void set_density(float pixels_per_point);
 bool text(const char* utf8);

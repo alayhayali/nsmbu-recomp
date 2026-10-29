@@ -78,6 +78,7 @@ static void test_face_layout() {
 
     CHECK(face_layout(m) == FaceLayout::kPosition);
     CHECK(m.pad[kA] == kPadB && m.pad[kB] == kPadA && m.pad[kX] == kPadY && m.pad[kY] == kPadX);
+    CHECK(face_input(kA) == kPadB && face_input(kB) == kPadA);
 
     apply_face_layout(m, FaceLayout::kLabels);
     CHECK(face_layout(m) == FaceLayout::kLabels);

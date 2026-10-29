@@ -65,6 +65,7 @@ enum class FaceLayout { kPosition, kLabels, kCustom };
 FaceLayout face_layout(const Mapping& m);
 void apply_face_layout(Mapping& m, FaceLayout layout);
 const char* face_layout_label(FaceLayout l);
+int face_input(int action);
 
 std::vector<int> key_users(const Mapping& m, int code, int except = -1);
 std::vector<int> pad_users(const Mapping& m, int pad, int except = -1);

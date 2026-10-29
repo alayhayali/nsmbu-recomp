@@ -11,8 +11,17 @@ You must supply your own copy of the game files, disc image, and encryption keys
 
 ## Controls
 
-Press `F12` to open the settings overlay.  
-**F1**–**F5** load save states; **Shift+F1**–**F5** save.  
+Press `` ` `` or `F12` to open or close the settings overlay.
+
+On a controller, press **Start** and **Select** together (Xbox **Menu** + **View**, Wii U **+** and **−**).
+
+With the default keyboard layout, press **Enter** and **Tab** together for the same menu.
+
+On Android, the system **Back** gesture also opens and closes Settings; see [New Super Mario Bros. U on Android](docs/android.md).
+
+While Settings is open, touch the menu directly or use a controller: D-pad or left stick to move, **A** to activate, **B** to go back, **LB**/**RB** for tabs, **Start+Select** to close.
+
+**F1**–**F5** load save states; **Shift+F1**–**F5** save.
 Open **Audio** for mute, volume, and TV / GamePad output.  
 Open **Controls** to change keys and controller buttons.  
 

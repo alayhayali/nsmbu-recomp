@@ -1,6 +1,6 @@
 set(NSMBU_LUAJIT_ROOT "${CMAKE_SOURCE_DIR}/vendor/luajit")
 set(NSMBU_LUAJIT_SRC "${NSMBU_LUAJIT_ROOT}/src")
-set(NSMBU_LUAJIT_LIB "${NSMBU_LUAJIT_SRC}/libluajit.a")
+set(NSMBU_LUAJIT_LIB "${CMAKE_CURRENT_BINARY_DIR}/libluajit.a")
 
 if(NOT EXISTS "${NSMBU_LUAJIT_SRC}/lua.h")
   message(FATAL_ERROR "LuaJIT submodule missing at ${NSMBU_LUAJIT_ROOT} (run git submodule update --init)")
@@ -46,7 +46,9 @@ endif()
 
 add_custom_command(
   OUTPUT "${NSMBU_LUAJIT_LIB}"
+  COMMAND "${NSMBU_LUAJIT_MAKE}" -C "${NSMBU_LUAJIT_SRC}" clean
   COMMAND "${NSMBU_LUAJIT_MAKE}" -C "${NSMBU_LUAJIT_SRC}" ${NSMBU_LUAJIT_MAKE_ARGS}
+  COMMAND ${CMAKE_COMMAND} -E copy "${NSMBU_LUAJIT_SRC}/libluajit.a" "${NSMBU_LUAJIT_LIB}"
   DEPENDS
     "${NSMBU_LUAJIT_SRC}/Makefile"
     "${NSMBU_LUAJIT_SRC}/lua.h"
@@ -67,4 +69,4 @@ if(UNIX)
   target_link_libraries(nsmbu_luajit INTERFACE m ${CMAKE_DL_LIBS})
 endif()
 
-message(STATUS "LuaJIT: vendored static (${NSMBU_LUAJIT_ROOT}, BUILDMODE=static, LUAJIT_DISABLE_FFI)")
+message(STATUS "LuaJIT: vendored static (${NSMBU_LUAJIT_ROOT} -> ${NSMBU_LUAJIT_LIB}, BUILDMODE=static, LUAJIT_DISABLE_FFI)")

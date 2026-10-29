@@ -2517,15 +2517,42 @@ static void view_button_released() {
 }
 #ifdef __ANDROID__
 static bool synthHeld = false;
-static SDL_FingerID touchFinger = 0, buttonFinger = 0;
+static SDL_FingerID touchFinger = 0, buttonFinger = 0, overlayMenuFinger = 0;
+
+static bool overlay_menu_finger(const SDL_Event& event) {
+  const SDL_TouchFingerEvent& f = event.tfinger;
+  switch (event.type) {
+  case SDL_EVENT_FINGER_DOWN:
+    if (input::touch_from_controller(f.touchID)) return true;
+    if (overlayMenuFinger) return true;
+    overlayMenuFinger = f.fingerID;
+    overlay::mouse_move(f.x, f.y, true);
+    overlay::mouse_button(0, true, true);
+    return true;
+  case SDL_EVENT_FINGER_MOTION:
+    if (!overlayMenuFinger || f.fingerID != overlayMenuFinger) return false;
+    overlay::mouse_move(f.x, f.y, true);
+    return true;
+  case SDL_EVENT_FINGER_UP:
+  case SDL_EVENT_FINGER_CANCELED:
+    if (!overlayMenuFinger || f.fingerID != overlayMenuFinger) return false;
+    overlayMenuFinger = 0;
+    overlay::mouse_move(f.x, f.y, true);
+    overlay::mouse_button(0, false, true);
+    return true;
+  default:
+    return false;
+  }
+}
+
 static bool finger_touch(const SDL_Event& event) {
   const SDL_TouchFingerEvent& f = event.tfinger;
   if (f.windowID != SDL_GetWindowID(R.tv.window)) return false;
+  if (overlay::captures()) return overlay_menu_finger(event);
   float tx = 0, ty = 0;
   switch (event.type) {
   case SDL_EVENT_FINGER_DOWN:
     if (input::touch_from_controller(f.touchID)) return true;
-    if (overlay::captures()) return false;
     if (!buttonFinger && gfx::view_button_hit(f.x, f.y)) {
       buttonFinger = f.fingerID;
       buttonDown = std::max<uint64_t>(SDL_GetTicks(), 1);

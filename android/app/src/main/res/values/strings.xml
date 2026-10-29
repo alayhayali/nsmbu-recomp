@@ -55,7 +55,10 @@
     <string name="setup_paused_battery">Paused: the battery is low</string>
     <string name="setup_paused_detail">Tap Continue when you want to go on.</string>
     <string name="setup_paused_heat">Paused: the Android device is too warm</string>
-    <string name="setup_pc_route">Copy your game folder to the Android device over USB to play.</string>
+    <string name="setup_pc_route">Choose your extracted game folder on this device.</string>
+    <string name="setup_pc_route_detail">Pick the folder that contains code, content and meta (the same layout as on your PC). The app copies it privately, then Play uses that copy. You can also copy it over USB with nsmbu apk.</string>
+    <string name="setup_pc_ready">Game folder ready.</string>
+    <string name="setup_pc_ready_detail">Tap Play, or choose a different folder.</string>
     <string name="setup_play">Play</string>
     <string name="setup_share_log">Share log</string>
     <string name="controller_settings_hint">Press Back to open Settings</string>
