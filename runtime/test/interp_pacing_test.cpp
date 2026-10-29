@@ -88,6 +88,13 @@ static void test_cap() {
     CHECK(cap_fps(240, 0, true) == 240);
     CHECK(cap_fps(240, 60, false) == 240);
     CHECK(cap_fps(100, 240, true) == 120);
+    CHECK(clamp_custom_fps(1) == 60);
+    CHECK(clamp_custom_fps(30) == 60);
+    CHECK(clamp_custom_fps(59) == 60);
+    CHECK(clamp_custom_fps(60) == 60);
+    CHECK(clamp_custom_fps(90) == 90);
+    CHECK(clamp_custom_fps(1000) == 1000);
+    CHECK(clamp_custom_fps(1001) == 1000);
     CHECK(valid_fps(0) == 60);
     CHECK(valid_fps(30) == 30);
     CHECK(valid_fps(44) == 30);

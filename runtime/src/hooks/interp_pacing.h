@@ -39,6 +39,15 @@ inline const int* fps_ladder(int& n) {
     return rates;
 }
 
+constexpr int kCustomFpsMin = 60;
+constexpr int kCustomFpsMax = 1000;
+
+inline int clamp_custom_fps(int f) {
+    if (f < kCustomFpsMin) return kCustomFpsMin;
+    if (f > kCustomFpsMax) return kCustomFpsMax;
+    return f;
+}
+
 inline int valid_fps(int f) {
     if (f <= 0) return 60;
     int n = 0;

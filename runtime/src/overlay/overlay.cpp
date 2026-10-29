@@ -736,9 +736,12 @@ void tab_graphics() {
     int m = interp::mode(), f = interp::fps();
     const bool ff = gx2::uncapped();
     const bool custom = interp::custom_on() && !ff;
+    static int custom_value = -1;
+    if (custom_value < 0) custom_value = interp::custom_fps();
+    if (custom && custom_value != interp::custom_fps()) custom_value = interp::custom_fps();
     int n_rates = 0;
     const int* rates = interp::pacing::fps_ladder(n_rates);
-    ImGui::BeginDisabled(custom || ff);
+    ImGui::BeginDisabled(ff);
     for (int i = 0; i < n_rates; i++) {
         const int r = rates[i];
         if (i) ImGui::SameLine();
@@ -751,25 +754,16 @@ void tab_graphics() {
             else { interp::set_fps(r); interp::set_mode(1); }
         });
     }
-    ImGui::EndDisabled();
-    static int custom_value = -1;
-    if (custom_value < 0) custom_value = interp::custom_fps();
-    bool custom_ui = custom;
-    ImGui::BeginDisabled(ff);
-    if (check("Custom", custom_ui, &custom_ui)) {
-        if (custom_ui) {
-            const int v = custom_value;
-            post_changed([v] { interp::set_fast_forward(false); interp::set_custom_fps(v); });
-        } else {
-            post_changed([] { interp::set_fast_forward(false); interp::set_fps(60); interp::set_mode(0); });
-        }
+    ImGui::SameLine();
+    if (radio("Custom", custom)) {
+        const int v = custom_value;
+        post_changed([v] { interp::set_fast_forward(false); interp::set_custom_fps(v); });
     }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(ImGui::CalcTextSize("999").x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f);
     ImGui::BeginDisabled(!custom);
     if (ImGui::InputInt("##fps-custom", &custom_value, 0, 0)) {
-        if (custom_value < 1) custom_value = 1;
-        if (custom_value > 1000) custom_value = 1000;
+        custom_value = interp::pacing::clamp_custom_fps(custom_value);
         const int v = custom_value;
         post_changed([v] { interp::set_fast_forward(false); interp::set_custom_fps(v); });
     }
@@ -783,7 +777,7 @@ void tab_graphics() {
     help("30 fps draws half as often: two logic steps per picture, so the game keeps its speed.\n"
          "60 fps is the game rate. 120, 144, 165 and 240 are present caps: more draws between\n"
          "fixed 60 Hz logic steps, blended from wall-clock time left in the open step.\n"
-         "Custom is any rate from 1 to 1000. Fast forward (debug) runs the game as fast as this\n"
+         "Custom is any rate from 60 to 1000. 30 fps is only the preset. Fast forward (debug) runs the game as fast as this\n"
          "computer can: each picture is one game step, with no frame limit. Hotkeys: 6 = 60 fps,\n"
          "7 = cycle caps, 9 = toggle 60 fps and the last non-60 cap.");
 
@@ -1565,6 +1559,24 @@ static void lag_row(const char* name, double ms, double frameMs, const ImVec4& c
     ImGui::Text("%.1f ms %s", ms, name);
 }
 
+static void perf_device_lines(const std::string& device) {
+    const size_t driver = device.find(", driver ");
+    const size_t vulkan = device.find(", Vulkan ");
+    if (driver != std::string::npos && vulkan != std::string::npos && driver < vulkan) {
+        ImGui::TextUnformatted(device.substr(0, driver).c_str());
+        ImGui::TextUnformatted(device.substr(driver + 2, vulkan - driver - 2).c_str());
+        ImGui::TextUnformatted(device.substr(vulkan + 2).c_str());
+        return;
+    }
+    const size_t driver_colon = device.find(", driver: ");
+    if (driver_colon != std::string::npos) {
+        ImGui::TextUnformatted(device.substr(0, driver_colon).c_str());
+        ImGui::TextUnformatted(device.substr(driver_colon + 2).c_str());
+        return;
+    }
+    ImGui::TextUnformatted(device.c_str());
+}
+
 void perf_window(bool menu_open) {
     const double t = now_s();
     static std::string metrics;
@@ -1582,7 +1594,7 @@ void perf_window(bool menu_open) {
     double avg_logic = 0;
     FrameHistoryAverages::compute(U.frame_ms, U.frame_logic, avg_ms, worst, avg_fps, avg_logic);
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.55f);
+    ImGui::SetNextWindowBgAlpha(0.70f);
     ImGuiWindowFlags fl = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                           ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##perf", nullptr, fl)) {
@@ -1612,7 +1624,7 @@ void perf_window(bool menu_open) {
         ImGui::Separator();
         if (device.empty()) device = performance_device();
         if (metrics.empty()) metrics = perf::summary();
-        ImGui::TextUnformatted(device.c_str());
+        perf_device_lines(device);
         ImGui::TextUnformatted(metrics.c_str());
         ImGui::PlotLines("##ft", U.frame_ms, FrameHistoryAverages::kFrames, U.frame_i, nullptr, 0.0f, 50.0f,
                          ImVec2(220, 36));

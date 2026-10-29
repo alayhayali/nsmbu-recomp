@@ -53,7 +53,8 @@ static int read_env_fps() {
     if (!e || !*e) return 0;
     int f = atoi(e);
     if (f < 1) return 0;
-    if (f > 1000) return 1000;
+    if (f > pacing::kCustomFpsMax) f = pacing::kCustomFpsMax;
+    if (!listed_fps(f)) f = pacing::clamp_custom_fps(f);
     return f;
 }
 static const int g_env_fps = read_env_fps();
@@ -130,8 +131,7 @@ void set_fps(int f) {
     if (g_fps.exchange(f) != f && interp_on()) LOG("[interp] frame interpolation at %s", fps_name(f));
 }
 void set_custom_fps(int f) {
-    if (f < 1) f = 1;
-    if (f > 1000) f = 1000;
+    f = pacing::clamp_custom_fps(f);
     g_custom_fps.store(f, std::memory_order_relaxed);
     g_custom_on.store(true, std::memory_order_relaxed);
     if (f == 60) {
