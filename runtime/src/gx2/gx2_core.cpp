@@ -969,7 +969,7 @@ void gx2::set_uncapped(bool on) {
         reset_uncapped_guest_pace();
         capped_vsync_reset_pace();
     }
-    LOG("[gx2] uncapped %s", on ? "on (debug: no frame limit, no vsync; the game runs faster than real time)" : "off");
+    LOG("[gx2] fast forward %s", on ? "on (the game runs as fast as it can)" : "off");
 }
 static bool uncapped_benchmark() { return gx2::uncapped(); }
 

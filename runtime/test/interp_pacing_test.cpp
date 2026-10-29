@@ -82,17 +82,26 @@ static void test_cap() {
     CHECK(cap_fps(240, 239, true) == 240);
     CHECK(cap_fps(120, 119, true) == 120);
     CHECK(cap_fps(120, 90, true) == 60);
-    CHECK(cap_fps(60, 30, true) == 60);
+    CHECK(cap_fps(60, 30, true) == 30);
+    CHECK(cap_fps(30, 165, true) == 30);
+    CHECK(cap_fps(30, 60, true) == 30);
     CHECK(cap_fps(240, 0, true) == 240);
     CHECK(cap_fps(240, 60, false) == 240);
     CHECK(cap_fps(100, 240, true) == 120);
     CHECK(valid_fps(0) == 60);
+    CHECK(valid_fps(30) == 30);
+    CHECK(valid_fps(44) == 30);
+    CHECK(valid_fps(45) == 60);
     CHECK(valid_fps(59) == 60);
     CHECK(valid_fps(100) == 120);
     CHECK(valid_fps(150) == 144);
     CHECK(valid_fps(360) == 240);
+    CHECK(present_period_ns(30) == 1'000'000'000LL / 30);
+    CHECK(present_period_ns(90) == 1'000'000'000LL / 90);
+    CHECK(present_granule(90) == 3);
     CHECK(present_period_ns(120) == 1'000'000'000LL / 120);
     CHECK(present_period_ns(165) == 1'000'000'000LL / 165);
+    CHECK(present_granule(30) == 4);
     CHECK(present_granule(60) == 4);
     CHECK(present_granule(120) == 2);
     CHECK(present_granule(240) == 1);
@@ -244,7 +253,7 @@ static void test_swap_align() {
 }
 
 static void test_present_spacing() {
-    const int caps[] = {60, 120, 144, 165, 240};
+    const int caps[] = {30, 60, 120, 144, 165, 240};
     for (int cap : caps) {
         const int64_t period = present_period_ns(cap);
         CHECK(period > 0);
@@ -254,9 +263,10 @@ static void test_present_spacing() {
         const double seconds = 2.0;
         const int frames = int(cap * seconds + 0.5);
         for (int i = 0; i < frames; i++) {
-            WakePlan p = advance_accumulator(acc, period, cap > 60);
+            WakePlan p = advance_accumulator(acc, period, cap != 60);
             acc = p.acc_ns;
             logics += p.logic_steps;
+            if (cap < 60 && p.logic_steps) CHECK(p.t == 1.f);
         }
         if (cap == 60) CHECK(logics == frames);
         else CHECK_NEAR(logics / seconds, 60.0, 1.0);

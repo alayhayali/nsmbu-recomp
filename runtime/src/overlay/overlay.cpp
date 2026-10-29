@@ -51,6 +51,7 @@ namespace gfxvk { bool buffer_cache_enabled(); }
 #include "audio/audio_out.h"
 #include "input/rumble.h"
 #include "hooks/interp.h"
+#include "hooks/interp_pacing.h"
 #include "hooks/collision_wireframe.h"
 #include "hooks/course_hot_reload.h"
 #include "core/runtime.h"
@@ -160,7 +161,8 @@ struct Ui {
 
     double fps_t0 = 0, fps = 0;
     uint64_t fps_n0 = 0;
-    float frame_ms[120] = {};
+    float frame_ms[FrameHistoryAverages::kFrames] = {};
+    uint32_t frame_logic[FrameHistoryAverages::kFrames] = {};
     int frame_i = 0;
     double last_present = 0;
     double sample_restore = 0;
@@ -604,11 +606,12 @@ std::string performance_device() {
 }
 
 std::string performance_report() {
-    float sum = 0, worst = 0;
-    for (float f : U.frame_ms) { sum += f; worst = std::max(worst, f); }
+    float avg_ms = 0, worst = 0, avg_fps = 0;
+    double avg_logic = 0;
+    FrameHistoryAverages::compute(U.frame_ms, U.frame_logic, avg_ms, worst, avg_fps, avg_logic);
     char frame[180];
     snprintf(frame, sizeof frame, "FPS %.1f (average %.1f), frame %.2f ms (worst %.2f), average logic steps/s %.1f\n",
-             U.fps, g_average.fps, sum / 120.0f, worst, g_average.logic);
+             U.fps, avg_fps, avg_ms, worst, avg_logic);
     std::string report = std::string(frame) + perf::summary();
 #ifdef __ANDROID__
     static AndroidTelemetry telemetry;
@@ -731,23 +734,62 @@ void tab_graphics() {
 #endif
     heading("Frame rate (experimental)");
     int m = interp::mode(), f = interp::fps();
-    static const int rates[] = {60, 120, 144, 165, 240};
-    for (int r : rates) {
-        if (r != rates[0]) ImGui::SameLine();
+    const bool ff = gx2::uncapped();
+    const bool custom = interp::custom_on() && !ff;
+    int n_rates = 0;
+    const int* rates = interp::pacing::fps_ladder(n_rates);
+    ImGui::BeginDisabled(custom || ff);
+    for (int i = 0; i < n_rates; i++) {
+        const int r = rates[i];
+        if (i) ImGui::SameLine();
         char label[16];
         snprintf(label, sizeof label, "%d fps", r);
-        const bool on = r == 60 ? m != 1 : m == 1 && f == r;
+        const bool on = !custom && (r == 60 ? m != 1 : m == 1 && f == r);
         if (radio(label, on)) post_changed([r] {
-            if (r == 60) interp::set_mode(0);
+            interp::set_fast_forward(false);
+            if (r == 60) { interp::set_fps(60); interp::set_mode(0); }
             else { interp::set_fps(r); interp::set_mode(1); }
         });
     }
-    help("60 fps is the game rate. 120, 144, 165 and 240 are present caps: more draws between\n"
+    ImGui::EndDisabled();
+    static int custom_value = -1;
+    if (custom_value < 0) custom_value = interp::custom_fps();
+    bool custom_ui = custom;
+    ImGui::BeginDisabled(ff);
+    if (check("Custom", custom_ui, &custom_ui)) {
+        if (custom_ui) {
+            const int v = custom_value;
+            post_changed([v] { interp::set_fast_forward(false); interp::set_custom_fps(v); });
+        } else {
+            post_changed([] { interp::set_fast_forward(false); interp::set_fps(60); interp::set_mode(0); });
+        }
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("999").x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f);
+    ImGui::BeginDisabled(!custom);
+    if (ImGui::InputInt("##fps-custom", &custom_value, 0, 0)) {
+        if (custom_value < 1) custom_value = 1;
+        if (custom_value > 1000) custom_value = 1000;
+        const int v = custom_value;
+        post_changed([v] { interp::set_fast_forward(false); interp::set_custom_fps(v); });
+    }
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    bool ff_ui = ff;
+    if (check("Fast forward (debug)", ff_ui, &ff_ui)) {
+        if (ff_ui) post_changed([] { interp::set_fast_forward(true); });
+        else post_changed([] { interp::set_fast_forward(false); });
+    }
+    help("30 fps draws half as often: two logic steps per picture, so the game keeps its speed.\n"
+         "60 fps is the game rate. 120, 144, 165 and 240 are present caps: more draws between\n"
          "fixed 60 Hz logic steps, blended from wall-clock time left in the open step.\n"
-         "The display shows at most its refresh rate. Hotkeys: 6 = 60 fps, 7 = cycle caps,\n"
-         "9 = toggle 60 fps and the last non-60 cap.");
+         "Custom is any rate from 1 to 1000. Fast forward (debug) runs the game as fast as this\n"
+         "computer can: each picture is one game step, with no frame limit. Hotkeys: 6 = 60 fps,\n"
+         "7 = cycle caps, 9 = toggle 60 fps and the last non-60 cap.");
 
-    if (const int hz = interp::display_hz(); hz > 0) {
+    if (ff)
+        note("Fast forward runs the game as fast as this computer can.");
+    else if (const int hz = interp::display_hz(); hz > 0) {
         const int out = interp::output_fps();
         if (m == 1 && out < f)
             note("Your display: %d Hz. %d fps needs a %d Hz display; %d fps are drawn (the display cannot show more).", hz, f, f, out);
@@ -758,13 +800,6 @@ void tab_graphics() {
     } else if (m == 1 && f > 60) {
         note("Display refresh rate unknown: %d fps are drawn; frames beyond the display's rate are not shown.", f);
     }
-    bool unc;
-    if (check("Uncapped (debug: the game runs too fast)", gx2::uncapped(), &unc)) hostui::post([unc] { gx2::set_uncapped(unc); });
-    help("Debug only, to see how many frames a second this computer can draw: no frame limit and no\n"
-         "vsync. The game counts frames, so it runs faster than normal. The frame rate is in the\n"
-         "performance overlay. Not saved. (At frame targets above 60 fps the game logic still keeps\n"
-         "60 steps a second.)");
-
     heading("Internal resolution");
     float cur = hostui::res_scale();
     for (size_t i = 0; i < gfx::res_preset_count(); i++) {
@@ -817,7 +852,13 @@ void tab_graphics() {
     if (check("Performance overlay (FPS, frame time)", perf_shown(), &v)) set_perf_shown(v);
     if (check("Performance overlay detail (lag breakdown)", perf_detail_shown(), &v, perf_shown())) set_perf_detail_shown(v);
     if (!perf_shown()) help("Needs the performance overlay on");
-    if (ImGui::Button("Reset performance averages")) { g_average.reset(); perf::reset(); }
+    if (ImGui::Button("Reset performance averages")) {
+        g_average.reset();
+        perf::reset();
+        std::memset(U.frame_ms, 0, sizeof U.frame_ms);
+        std::memset(U.frame_logic, 0, sizeof U.frame_logic);
+        U.frame_i = 0;
+    }
 
     static double copiedAt = -10;
     if (ImGui::Button("Copy performance report")) {
@@ -1537,15 +1578,16 @@ void perf_window(bool menu_open) {
         metrics = perf::summary();
         device = performance_device();
     }
-    float worst = 0, sum = 0;
-    for (float f : U.frame_ms) { worst = std::max(worst, f); sum += f; }
+    float avg_ms = 0, worst = 0, avg_fps = 0;
+    double avg_logic = 0;
+    FrameHistoryAverages::compute(U.frame_ms, U.frame_logic, avg_ms, worst, avg_fps, avg_logic);
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.55f);
     ImGuiWindowFlags fl = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                           ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##perf", nullptr, fl)) {
-        ImGui::Text("%.0f fps   %.1f ms (worst %.1f)", U.fps, sum / 120.0f, worst);
-        ImGui::Text("Average %.1f fps   %.1f logic steps/s", g_average.fps, g_average.logic);
+        ImGui::Text("%.0f fps   %.1f ms (worst %.1f)", U.fps, avg_ms, worst);
+        ImGui::Text("Average %.1f fps   %.1f logic steps/s", avg_fps, avg_logic);
         {
             static double t0 = 0; static uint64_t s0 = 0; static double rate = 60;
             static int slowWindows = 0;
@@ -1572,7 +1614,8 @@ void perf_window(bool menu_open) {
         if (metrics.empty()) metrics = perf::summary();
         ImGui::TextUnformatted(device.c_str());
         ImGui::TextUnformatted(metrics.c_str());
-        ImGui::PlotLines("##ft", U.frame_ms, 120, U.frame_i, nullptr, 0.0f, 50.0f, ImVec2(220, 36));
+        ImGui::PlotLines("##ft", U.frame_ms, FrameHistoryAverages::kFrames, U.frame_i, nullptr, 0.0f, 50.0f,
+                         ImVec2(220, 36));
         rprof::Breakdown b;
         if (perf_detail_shown() && rprof::latest_breakdown(b)) {
             ImGui::SeparatorText("Lag breakdown");
@@ -1749,8 +1792,9 @@ void set_density(float d) { g_density = d > 0.5f ? d : 1.0f; }
 
 void undo_frame_sample() {
     if (U.sample_undo) {
-        U.frame_i = (U.frame_i + 119) % 120;
+        U.frame_i = (U.frame_i + FrameHistoryAverages::kFrames - 1) % FrameHistoryAverages::kFrames;
         U.frame_ms[U.frame_i] = 0;
+        U.frame_logic[U.frame_i] = 0;
     }
     U.last_present = U.sample_restore;
     U.sample_undo = false;
@@ -1823,17 +1867,22 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
     }
 #endif
     const double t = now_s();
+    static uint64_t prev_logic_steps = 0;
+    const uint64_t logic_steps = interp::logic_steps();
     if (U.last_present > 0) {
         U.frame_ms[U.frame_i] = (float)((t - U.last_present) * 1000.0);
-        U.frame_i = (U.frame_i + 1) % 120;
+        const uint64_t prev = prev_logic_steps;
+        U.frame_logic[U.frame_i] = prev ? (uint32_t)(logic_steps - prev) : 0;
+        U.frame_i = (U.frame_i + 1) % FrameHistoryAverages::kFrames;
         U.sample_undo = true;
     } else {
         U.sample_undo = false;
     }
     U.sample_restore = U.last_present;
     U.last_present = t;
+    prev_logic_steps = logic_steps;
     g_last_frame = t;
-    g_average.sample(t, gx2::flips_presented(), interp::logic_steps(), int(render::active()),
+    g_average.sample(t, gx2::flips_presented(), logic_steps, int(render::active()),
                      interp::mode(), interp::fps(), hostui::res_scale());
     read_controller();
 

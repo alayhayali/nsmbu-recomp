@@ -29,7 +29,10 @@ void f_029C52CC_orig(Cpu* c);
 void f_029C4FE4_orig(Cpu* c);
 void f_024FBF6C_orig(Cpu* c);
 void f_024F30DC_orig(Cpu* c);
+void f_024E0E50(Cpu* c);
+void f_024E0F84(Cpu* c);
 void f_029C5104(Cpu* c);
+void f_02A036B8(Cpu* c);
 void f_024FA76C(Cpu* c);
 void f_02A05A9C(Cpu* c);
 void f_02AA56EC(Cpu* c);
@@ -37,11 +40,30 @@ void f_02AA56F4(Cpu* c);
 void imp_gx2_GX2DrawDone(Cpu* c);
 }
 
+namespace gx2 { bool uncapped(); void set_uncapped(bool on); }
+
 namespace interp {
 
 using pacing::valid_fps;
-static const int g_env_fps = [] { const char* e = env::INTERP_FPS(); return e ? valid_fps(atoi(e)) : 0; }();
-static std::atomic<int> g_fps{g_env_fps ? g_env_fps : 60};
+static bool listed_fps(int f) {
+    int n = 0;
+    const int* rates = pacing::fps_ladder(n);
+    for (int i = 0; i < n; i++) if (rates[i] == f) return true;
+    return false;
+}
+static int read_env_fps() {
+    const char* e = env::INTERP_FPS();
+    if (!e || !*e) return 0;
+    int f = atoi(e);
+    if (f < 1) return 0;
+    if (f > 1000) return 1000;
+    return f;
+}
+static const int g_env_fps = read_env_fps();
+static const bool g_env_custom = g_env_fps && !listed_fps(g_env_fps);
+static std::atomic<bool> g_custom_on{g_env_custom};
+static std::atomic<int> g_custom_fps{g_env_custom ? g_env_fps : 90};
+static std::atomic<int> g_fps{!g_env_fps || g_env_custom ? 60 : g_env_fps};
 static std::atomic<bool> g_on{[] {
     const char* e = env::INTERP();
     return (e ? atoi(e) != 0 : g_env_fps != 0);
@@ -51,14 +73,29 @@ bool interp_on() { return g_on.load(std::memory_order_relaxed); }
 static std::atomic<int> g_granule{4};
 
 bool enabled() { return interp_on(); }
-int fps() { return g_fps.load(std::memory_order_relaxed); }
+int fps() {
+    if (g_custom_on.load(std::memory_order_relaxed)) return g_custom_fps.load(std::memory_order_relaxed);
+    return g_fps.load(std::memory_order_relaxed);
+}
+bool custom_on() { return g_custom_on.load(std::memory_order_relaxed); }
+int custom_fps() { return g_custom_fps.load(std::memory_order_relaxed); }
+bool fast_forward() { return gx2::uncapped(); }
+void set_fast_forward(bool on) { gx2::set_uncapped(on); }
 
 static const int g_env_hz = env::DISPLAY_HZ.integer_or(-1);
 static std::atomic<int> g_display_hz{0};
 static std::atomic<bool> g_present_vsync{true};
 int display_hz() { return g_env_hz >= 0 ? g_env_hz : g_display_hz.load(std::memory_order_relaxed); }
 bool present_vsync() { return g_present_vsync.load(std::memory_order_relaxed); }
-int output_fps() { return pacing::cap_fps(fps(), display_hz(), present_vsync()); }
+int output_fps() {
+    const int f = std::max(1, fps());
+    if (g_custom_on.load(std::memory_order_relaxed)) {
+        const int hz = display_hz();
+        if (!present_vsync() || hz <= 0) return f;
+        return std::min(f, std::max(1, hz));
+    }
+    return pacing::cap_fps(f, display_hz(), present_vsync());
+}
 void set_display_hz(int hz) {
     if (hz < 0) hz = 0;
     if (!hz) return;
@@ -71,7 +108,13 @@ void set_present_vsync(bool on) {
     if (g_present_vsync.exchange(on) != on) LOG("[interp] presentation %s the display's vsync", on ? "waits for" : "does not wait for");
 }
 static const char* fps_name(int f) {
-    switch (valid_fps(f)) {
+    static char buf[32];
+    if (g_custom_on.load(std::memory_order_relaxed)) {
+        snprintf(buf, sizeof buf, "%d fps", f);
+        return buf;
+    }
+    switch (f) {
+    case 30: return "30 fps";
     case 120: return "120 fps";
     case 144: return "144 fps";
     case 165: return "165 fps";
@@ -85,8 +128,21 @@ void set_enabled(bool v) {
     LOG("[interp] frame interpolation %s", v ? fps_name(fps()) : "off");
 }
 void set_fps(int f) {
+    g_custom_on.store(false, std::memory_order_relaxed);
     f = valid_fps(f);
     if (g_fps.exchange(f) != f && interp_on()) LOG("[interp] frame interpolation at %s", fps_name(f));
+}
+void set_custom_fps(int f) {
+    if (f < 1) f = 1;
+    if (f > 1000) f = 1000;
+    g_custom_fps.store(f, std::memory_order_relaxed);
+    g_custom_on.store(true, std::memory_order_relaxed);
+    if (f == 60) {
+        g_on = false;
+        LOG("[interp] frame interpolation off");
+        return;
+    }
+    set_enabled(true);
 }
 int mode() { return interp_on() && fps() != 60 ? 1 : 0; }
 void set_mode(int m) {
@@ -104,7 +160,8 @@ void toggle_fps(int f) {
 }
 const char* mode_name() {
     static char buf[48];
-    if (mode() != 1) return "60 fps";
+    if (fast_forward()) return "fast forward";
+    if (mode() != 1 && !custom_on()) return "60 fps";
     const int f = fps(), out = output_fps();
     if (out >= f) return fps_name(f);
     snprintf(buf, sizeof buf, "%d fps (%d shown)", f, out);
@@ -625,12 +682,12 @@ static std::atomic<bool> g_paced{[] {
 }()};
 static bool paced() {
     const int f = fps();
-    if (f > 60) return true;
+    if (f != 60) return true;
     return g_paced.load(std::memory_order_relaxed);
 }
 bool paced_interpolation() { return paced(); }
 bool paced_interpolation_at(int f) {
-    if (f > 60) return true;
+    if (f != 60) return true;
     return g_paced.load(std::memory_order_relaxed);
 }
 void set_paced_interpolation_at(int f, bool on) {
@@ -739,7 +796,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
     g_last_wake = now;
     g_wake_valid = true;
 
-    const bool interpolate = interp_on() && output_fps() > 60;
+    const bool interpolate = interp_on() && output_fps() != 60 && !gx2::uncapped();
     pacing::WakePlan plan = pacing::advance_accumulator(g_acc_ns, dt, interpolate);
     if (interpolate && plan.logic_steps == 0 && g_logic_steps == 0) {
         plan.logic_steps = 1;
@@ -770,12 +827,33 @@ extern "C" void hook_029C52CC(Cpu* c) {
     g_hold_next = false;
     g_phase = 0;
     const int steps = std::max(1, plan.logic_steps);
-    for (int i = 0; i < steps; i++) {
-        g_logic_steps++;
-        g_record_passes++;
-        c->r[3] = self;
+    if (output_fps() < 60 && steps > 1) {
+        const uint32_t layer = ld32(GD(0x101D2BE4));
         PassTimer timer(0);
-        f_029C52CC_orig(c);
+        for (int i = 0; i < steps; i++) {
+            g_logic_steps++;
+            g_record_passes++;
+            if (layer) {
+                c->r[3] = layer;
+                f_024E0E50(c);
+            }
+            c->r[3] = self;
+            f_02A036B8(c);
+        }
+        if (layer) {
+            c->r[3] = layer;
+            f_024E0F84(c);
+            c->r[3] = self;
+            f_029C5104(c);
+        }
+    } else {
+        for (int i = 0; i < steps; i++) {
+            g_logic_steps++;
+            g_record_passes++;
+            c->r[3] = self;
+            PassTimer timer(0);
+            f_029C52CC_orig(c);
+        }
     }
     note_present_share(false);
     status_trace::on_logic_step(g_logic_steps);

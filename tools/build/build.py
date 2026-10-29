@@ -89,6 +89,60 @@ def link_compile_commands(build_dir):
         os.remove(dst)
     os.symlink(os.path.relpath(src, tmp), dst)
 
+def cmake_cache_get(cache_path, key):
+    needle = f"{key}:"
+    try:
+        with open(cache_path, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if line.startswith(needle):
+                    return line.split("=", 1)[1].strip()
+    except OSError:
+        return None
+    return None
+
+def cache_value_matches(key, have, want):
+    if have is None:
+        return False
+    if key.endswith("_COMPILER"):
+        try:
+            return os.path.realpath(have) == os.path.realpath(want)
+        except OSError:
+            pass
+    return have == want
+
+def cmake_define_args(extra, bundled_default, setup_gui):
+    defines = {}
+    if bundled_default and not any(a.startswith("-DNSMBU_BUNDLED_DEPS") for a in extra):
+        defines["NSMBU_BUNDLED_DEPS"] = "ON"
+    if setup_gui and not any(a.startswith("-DNSMBU_SETUP_GUI") for a in extra):
+        defines["NSMBU_SETUP_GUI"] = "ON"
+    for arg in extra:
+        if arg.startswith("-D") and "=" in arg[2:]:
+            name, value = arg[2:].split("=", 1)
+            defines[name] = value
+    return defines
+
+def cmake_configure_needed(build_dir, source_dir, cache_entries, define_entries):
+    cache = os.path.join(build_dir, "CMakeCache.txt")
+    if not os.path.isfile(cache):
+        return True
+    home = cmake_cache_get(cache, "CMAKE_HOME_DIRECTORY")
+    if home is None or os.path.normpath(home) != os.path.normpath(source_dir):
+        return True
+    for key, want in cache_entries.items():
+        if not cache_value_matches(key, cmake_cache_get(cache, key), want):
+            return True
+    for key, want in define_entries.items():
+        if not cache_value_matches(key, cmake_cache_get(cache, key), want):
+            return True
+    return False
+
+def run_cmake(argv, cwd):
+    cmd = list(argv)
+    if os.environ.get("NSMBU_VERBOSE_BUILD") != "1":
+        cmd.insert(1, "--log-level=WARNING")
+    subprocess.run(cmd, check=True, cwd=cwd)
+
 def gen_build_name(gen):
     table = os.path.join(gen, "table.c")
     if not os.path.isfile(table):
@@ -193,7 +247,25 @@ def main():
     if args.target == "nsmbu-setup" and not any(a.startswith("-DNSMBU_SETUP_GUI") for a in extra):
         cmake.append("-DNSMBU_SETUP_GUI=ON")
     cmake.extend(extra)
-    subprocess.run(cmake, check=True, cwd=ROOT)
+    build_type = "Release" if args.release else "Debug" if debug_build else "RelWithDebInfo"
+    cache_entries = {
+        "CMAKE_C_COMPILER": cc,
+        "CMAKE_CXX_COMPILER": cxx,
+        "CMAKE_C_FLAGS": compile_flags,
+        "CMAKE_CXX_FLAGS": compile_flags,
+        "CMAKE_EXE_LINKER_FLAGS": link_flags,
+        "CMAKE_SHARED_LINKER_FLAGS": link_flags,
+        "CMAKE_MODULE_LINKER_FLAGS": link_flags,
+        "CMAKE_BUILD_TYPE": build_type,
+    }
+    define_entries = cmake_define_args(
+        extra,
+        bundled_default=not any(a.startswith("-DNSMBU_BUNDLED_DEPS") for a in extra),
+        setup_gui=args.target == "nsmbu-setup"
+        and not any(a.startswith("-DNSMBU_SETUP_GUI") for a in extra),
+    )
+    if cmake_configure_needed(build_dir, ROOT, cache_entries, define_entries):
+        run_cmake(cmake, ROOT)
     link_compile_commands(build_dir)
     subprocess.run(
         ["cmake", "--build", build_dir, "--target", args.target, "-j", str(args.jobs)],

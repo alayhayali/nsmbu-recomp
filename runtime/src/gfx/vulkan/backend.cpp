@@ -2796,7 +2796,7 @@ void run_main_loop() {
       char title[window_title::kCap];
       window_title::format_base(title, sizeof title);
       if (build::dev() && gx2::uncapped())
-        std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
+        std::strncat(title, " | FAST FORWARD", sizeof title - std::strlen(title) - 1);
       static char lastTitle[window_title::kCap];
       if (strcmp(title, lastTitle)) {
         memcpy(lastTitle, title, sizeof lastTitle);

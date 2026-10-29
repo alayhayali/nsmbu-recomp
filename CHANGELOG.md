@@ -9,12 +9,20 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Added
 
+- A 30 fps choice in Graphics.
+  It draws half as often and runs two logic steps per picture, so the game keeps its speed.
+- Graphics can set any frame rate from 1 to 1000.
+  Fast forward runs the game as fast as the computer can, with one game step per picture and no frame limit.
 - `nsmbu installer --no-open` packages the installer and returns without opening setup.
 - Scene checks for agents live in the `scenes` skill.
   The world map, a course pack, and the file menu each have a short boot that stops on `nsmbu status`.
 
 ### Changed
 
+- `nsmbu build` and `nsmbu run` skip CMake configure when the build cache is already up to date, and use a quiet log level when configure does run.
+- Graphics frame rate: custom fps is a checkbox with a wider value field; it greys out the preset rates.
+  Fast forward is a separate debug checkbox below.
+- The performance overlay averages fps and logic steps/s over the same 120 frames as the frame-time graph, not since you opened the overlay or reset.
 - High frame rates use a present cap with a wall-clock accumulator: logic stays at 60 steps/s, and blend time comes from the open step instead of a per-rate frame ladder.
 - Guest-code notes live in the docs.
   The guest skill is gone.
@@ -56,6 +64,9 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- 30 fps no longer draws both game steps into one picture.
+  Each step clears the render list and runs the full task tree.
+  Only the latest step is drawn.
 - 60 fps stays at 60 when a higher rate was used earlier.
   The performance overlay no longer reports that higher rate.
 - Vulkan prefers a dedicated GPU when one can draw the game windows.

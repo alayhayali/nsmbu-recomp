@@ -114,11 +114,12 @@ On Linux, `tools/build/build.py` adds the `libstdc++` path when it finds `libstd
 `nsmbu build` runs the recompiler when `game/code/red-pro2.rpx` is newer than `build/gen`.
 When that RPX is absent, the build fills `build/gen` with `tools/recomp/stubgen.py` so the tree still links.
 
+Set `NSMBU_VERBOSE_BUILD=1` to print full CMake configure output (pkg-config checks and other `--` status lines).
+
 An RPX from a disc that lacks the 1.3.0 update has different addresses.
 Those addresses miss `references/headers` and `tools/recomp/headers_names.txt`.
 
-A warm `nsmbu build` still runs `cmake -S` and regenerates guest stubs.
-Configure only when the cache or compiler flags are missing.
+A warm `nsmbu build` skips `cmake -S` when the build cache already matches the compiler flags and CMake options.
 Regenerate guest stubs only when `hooks.txt`, `hooks_*.txt`, or the recomp inputs changed.
 The `0 hooks` line from stub generation is normal.
 Hooks live in `build/gen`.

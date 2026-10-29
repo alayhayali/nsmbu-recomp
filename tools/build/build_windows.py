@@ -172,7 +172,17 @@ def main():
         f"-DVulkan_LIBRARY={os.path.join(vulkan, 'libvulkan-1.a')}",
     ]
     cmake.extend(args.cmake_args)
-    subprocess.run(cmake, check=True, cwd=ROOT)
+    cache_entries = {
+        "CMAKE_C_COMPILER": cc,
+        "CMAKE_CXX_COMPILER": cxx,
+        "CMAKE_BUILD_TYPE": build_type,
+        "CMAKE_EXE_LINKER_FLAGS": "-static",
+    }
+    define_entries = build_mod.cmake_define_args(args.cmake_args, bundled_default=True, setup_gui=False)
+    define_entries["Vulkan_INCLUDE_DIR"] = os.path.join(vulkan, "include")
+    define_entries["Vulkan_LIBRARY"] = os.path.join(vulkan, "libvulkan-1.a")
+    if build_mod.cmake_configure_needed(BUILD_DIR, ROOT, cache_entries, define_entries):
+        build_mod.run_cmake(cmake, ROOT)
     subprocess.run(
         ["cmake", "--build", BUILD_DIR, "--target", args.target, "-j", str(args.jobs)],
         check=True,

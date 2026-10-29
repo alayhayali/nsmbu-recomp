@@ -34,17 +34,24 @@ inline void slerp_weights(float cosang, float t, float& wa, float& wb) {
 }
 
 inline const int* fps_ladder(int& n) {
-    static const int rates[] = {60, 120, 144, 165, 240};
+    static const int rates[] = {30, 60, 120, 144, 165, 240};
     n = int(sizeof rates / sizeof rates[0]);
     return rates;
 }
 
 inline int valid_fps(int f) {
+    if (f <= 0) return 60;
     int n = 0;
     const int* rates = fps_ladder(n);
-    int best = rates[0];
-    for (int i = 0; i < n; i++)
-        if (std::abs(rates[i] - f) < std::abs(best - f)) best = rates[i];
+    int best = 60;
+    int best_d = std::abs(best - f);
+    for (int i = 0; i < n; i++) {
+        const int d = std::abs(rates[i] - f);
+        if (d < best_d) {
+            best = rates[i];
+            best_d = d;
+        }
+    }
     return best;
 }
 
@@ -103,12 +110,12 @@ inline WakePlan advance_accumulator(int64_t acc_ns, int64_t dt_ns, bool interpol
 }
 
 inline int64_t present_period_ns(int present_cap) {
-    present_cap = std::max(1, valid_fps(present_cap));
+    present_cap = std::max(1, present_cap);
     return 1'000'000'000LL / present_cap;
 }
 
 inline int present_granule(int present_cap) {
-    present_cap = valid_fps(present_cap);
+    present_cap = std::max(1, present_cap);
     if (present_cap <= 60) return 4;
     return std::max(1, (4 * 60 + present_cap / 2) / present_cap);
 }
