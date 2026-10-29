@@ -64,9 +64,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
-- 30 fps no longer draws both game steps into one picture.
-  Each step clears the render list and runs the full task tree.
-  Only the latest step is drawn.
+- 30 fps runs a full game step for each picture update, including the wait that finishes the previous picture.
+  Clearing the render list twice without that wait crashed the render thread.
 - 60 fps stays at 60 when a higher rate was used earlier.
   The performance overlay no longer reports that higher rate.
 - Vulkan prefers a dedicated GPU when one can draw the game windows.

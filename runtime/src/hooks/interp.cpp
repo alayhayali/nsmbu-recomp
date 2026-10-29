@@ -29,10 +29,7 @@ void f_029C52CC_orig(Cpu* c);
 void f_029C4FE4_orig(Cpu* c);
 void f_024FBF6C_orig(Cpu* c);
 void f_024F30DC_orig(Cpu* c);
-void f_024E0E50(Cpu* c);
-void f_024E0F84(Cpu* c);
 void f_029C5104(Cpu* c);
-void f_02A036B8(Cpu* c);
 void f_024FA76C(Cpu* c);
 void f_02A05A9C(Cpu* c);
 void f_02AA56EC(Cpu* c);
@@ -827,33 +824,12 @@ extern "C" void hook_029C52CC(Cpu* c) {
     g_hold_next = false;
     g_phase = 0;
     const int steps = std::max(1, plan.logic_steps);
-    if (output_fps() < 60 && steps > 1) {
-        const uint32_t layer = ld32(GD(0x101D2BE4));
+    for (int i = 0; i < steps; i++) {
+        g_logic_steps++;
+        g_record_passes++;
+        c->r[3] = self;
         PassTimer timer(0);
-        for (int i = 0; i < steps; i++) {
-            g_logic_steps++;
-            g_record_passes++;
-            if (layer) {
-                c->r[3] = layer;
-                f_024E0E50(c);
-            }
-            c->r[3] = self;
-            f_02A036B8(c);
-        }
-        if (layer) {
-            c->r[3] = layer;
-            f_024E0F84(c);
-            c->r[3] = self;
-            f_029C5104(c);
-        }
-    } else {
-        for (int i = 0; i < steps; i++) {
-            g_logic_steps++;
-            g_record_passes++;
-            c->r[3] = self;
-            PassTimer timer(0);
-            f_029C52CC_orig(c);
-        }
+        f_029C52CC_orig(c);
     }
     note_present_share(false);
     status_trace::on_logic_step(g_logic_steps);
