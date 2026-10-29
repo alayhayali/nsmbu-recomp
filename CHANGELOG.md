@@ -95,6 +95,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- LuaJIT `make clean` uses the same compiler as the build, so an Android configure does not wipe the desktop `libluajit.a`, and a desktop configure does not wipe the Android one.
 - Settings text fields (including the custom frame rate) accept keyboard input while the overlay is open.
 - 30 fps runs a full game step for each picture update, including the wait that finishes the previous picture.
   Clearing the render list twice without that wait crashed the render thread.
