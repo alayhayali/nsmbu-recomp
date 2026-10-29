@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "recomp_table.h"
+#include "guest_addr.h"
 #include "core/runtime.h"
 #include "save/savestate.h"
 #include "core/scheduler_tick.h"
@@ -431,7 +432,7 @@ static bool park_wait(std::unique_lock<std::mutex>& lk, std::condition_variable&
         lk.unlock();
         threads::block_begin();
         lk.lock();
-        const bool draw_lock = kind == W_MUTEX && t && t->cpu.lr >= 0x02A07A54u && t->cpu.lr < 0x02A07AF8u;
+        const bool draw_lock = kind == W_MUTEX && t && t->cpu.lr >= GC(0x02A07A54) && t->cpu.lr < GC(0x02A07AF8);
         draw_lock_wait.arm(draw_lock);
         auto stop = [&] { return pred() || g_reboot_kill.load(std::memory_order_relaxed); };
         if (deadline) {
