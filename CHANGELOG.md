@@ -14,6 +14,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Document mod hook map for guest UI (pause, `Multi2D`, course HUD) in `vendor/decomp/docs/ui-system.md`; link from `docs/modding/README.md` and `docs/modding/api.md`.
 
 - Press Start and Select together (+ and − on the GamePad, or the matching controller buttons) to open or close the settings overlay, on PC and Android as well as `` ` `` or F12.
+- Press **R3** (right stick click) on a controller to open or close the settings overlay, like **Home** and hold **Select** (−).
 - Original cel-shaded app icon for Android and Linux packages (`android/icon/app_icon_1024.png`), in the same full-bleed style as the WWHD port's launcher art, with `android/bake_app_icon.py` to refresh the mipmaps.
 - The settings overlay uses larger touch targets on Android, direct touch on the menu, and controller navigation that follows your face-button layout (A confirms, B goes back, LB/RB change tabs).
 - Android-hosted LLVM toolchain packaging scripts, unit tests, and CI compiler cache action.
@@ -106,6 +107,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ### Fixed
 
 - LuaJIT `make clean` uses the same compiler as the build, so an Android configure does not wipe the desktop `libluajit.a`, and a desktop configure does not wipe the Android one.
+- Windows on ARM64 crash logs list the faulting instruction first in the host backtrace (same CONTEXT unwind as x64), so release CI `crash_log_module` passes on `windows-arm64`.
 - Settings text fields (including the custom frame rate) accept keyboard input while the overlay is open.
 - 30 fps runs a full game step for each picture update, including the wait that finishes the previous picture.
   Clearing the render list twice without that wait crashed the render thread.

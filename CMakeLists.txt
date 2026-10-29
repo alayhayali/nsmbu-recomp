@@ -280,6 +280,7 @@ add_executable(input_map_test runtime/test/input_map_test.cpp runtime/src/input/
 target_include_directories(input_map_test PRIVATE runtime/src)
 add_executable(controller_shortcuts_test runtime/test/controller_shortcuts_test.cpp runtime/src/input/input_map.cpp runtime/src/core/env.cpp)
 target_include_directories(controller_shortcuts_test PRIVATE runtime/src)
+target_compile_options(controller_shortcuts_test PRIVATE -UNDEBUG)
 add_executable(gamepad_nav_test runtime/test/gamepad_nav_test.cpp)
 target_include_directories(gamepad_nav_test PRIVATE runtime/src)
 add_executable(mobile_ui_test runtime/test/mobile_ui_test.cpp)

@@ -25,6 +25,7 @@
 #include "imgui.h"
 #include "hostui.h"
 #include "controls_view.h"
+#include "controller_shortcuts.h"
 #include "text_entry.h"
 #include "gfx/aspect.h"
 #include "gfx/display_modes.h"
@@ -364,7 +365,9 @@ void read_controller() {
     using namespace input_map;
     const double t = now_s();
 
-    if (controller_pressed(kPadHome)) set_open(!is_open());
+    if (U.cap_action < 0 &&
+        overlay_shortcuts::settings_controller_press(controller_pressed(kPadHome), controller_pressed(kPadR3)))
+        set_open(!is_open());
 
     const bool menu = controller_down(kPadMenu);
     const bool options = controller_down(kPadOptions);

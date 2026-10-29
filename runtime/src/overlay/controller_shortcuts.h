@@ -21,4 +21,6 @@ inline bool keyboard_start_select(const input_map::Mapping& m, const bool keys[2
     return action_down(m, input_map::kPlus, keys) && action_down(m, input_map::kMinus, keys);
 }
 
+inline bool settings_controller_press(bool home_edge, bool r3_edge) { return home_edge || r3_edge; }
+
 }

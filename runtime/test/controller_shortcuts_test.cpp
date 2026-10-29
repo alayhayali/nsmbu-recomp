@@ -16,6 +16,11 @@ static void check(bool ok, const char* msg) {
 
 int main() {
     using namespace overlay_shortcuts;
+    check(!settings_controller_press(false, false), "idle");
+    check(settings_controller_press(true, false), "home");
+    check(settings_controller_press(false, true), "r3");
+    check(settings_controller_press(true, true), "both");
+
     check(!combo_edge(false, false, false, false), "idle");
     check(combo_edge(true, true, false, false), "both pressed");
     check(!combo_edge(true, true, true, true), "both held");

@@ -13,7 +13,9 @@ You must supply your own copy of the game files, disc image, and encryption keys
 
 Press `` ` `` or `F12` to open or close the settings overlay.
 
-On a controller, press **Start** and **Select** together (Xbox **Menu** + **View**, Wii U **+** and **−**).
+On a controller, press **Home** or click the right stick (**R3**), or press **Start** and **Select** together (Xbox **Menu** + **View**, Wii U **+** and **−**).
+
+Hold **Select** (−) for half a second to open Settings when the overlay is closed; press **Select** again to close it.
 
 With the default keyboard layout, press **Enter** and **Tab** together for the same menu.
 
