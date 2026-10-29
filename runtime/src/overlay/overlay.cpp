@@ -688,51 +688,6 @@ void tab_graphics() {
             if (ImGui::Button("Restart now")) hostui::post([] { render::restart(); });
         }
     }
-#ifdef NSMBU_HAS_VULKAN
-    if (render::vulkan() && !gfxvk::device_inventory.empty()) {
-        heading("Graphics card (next start)");
-        const bool env = env::VK_GPU() != nullptr;
-        const std::string saved = gfxvk::device_setting();
-        const bool dedicated = saved.empty() || saved == "dedicated" || saved == "discrete";
-        bool haveDiscrete = false, haveIntegrated = false;
-        for (const auto& gpu : gfxvk::device_inventory) {
-            if (!gpu.usable()) continue;
-            if (gpu.kind == gfxvk::kGpuDiscrete) haveDiscrete = true;
-            if (gpu.kind == gfxvk::kGpuIntegrated) haveIntegrated = true;
-        }
-        auto choose = [](const std::string& value) {
-            gfxvk::set_device_setting(value);
-            hostui::set("gpu", value.empty() ? "dedicated" : value);
-        };
-        if (radio("Prefer dedicated", dedicated, !env)) post_changed([choose] { choose(""); });
-        ImGui::SameLine();
-        if (radio("Prefer integrated", saved == "integrated", !env)) post_changed([choose] { choose("integrated"); });
-        for (size_t i = 0; i < gfxvk::device_inventory.size(); i++) {
-            const auto& gpu = gfxvk::device_inventory[i];
-            ImGui::PushID(int(i));
-            const std::string label = gpu.name + " (" + gfxvk::gpu_kind_name(gpu.kind) + ")";
-            if (radio(label.c_str(), saved == gpu.identity, !env && gpu.usable())) {
-                const std::string identity = gpu.identity;
-                post_changed([choose, identity] { choose(identity); });
-            }
-            if (!gpu.usable()) note("%s", gpu.unavailable.c_str());
-            ImGui::PopID();
-        }
-        note("This start uses %s. A different choice applies the next time the game starts.",
-             gfxvk::active_gpu_name.c_str());
-        if (env) note("NSMBU_VK_GPU=%s is set for this start and takes precedence.", env::VK_GPU());
-#ifndef _WIN32
-        else if (gfxvk::gpu_restart_pending(saved, gfxvk::active_gpu_identity, gfxvk::active_gpu_kind, haveDiscrete, haveIntegrated)) {
-            note("Progress since your last save is lost if you restart now.");
-            if (ImGui::Button("Restart now##gpu")) hostui::post([] { render::restart(); });
-        }
-#endif
-        if (!gfxvk::gpu_fallback.empty()) note("%s", gfxvk::gpu_fallback.c_str());
-        help("Prefer dedicated uses a separate graphics card when one can draw the game windows.\n"
-             "Prefer integrated keeps the GPU built into the processor.\n"
-             "A listed card is used on the next start when it is still available.");
-    }
-#endif
     heading("Frame rate (experimental)");
     int m = interp::mode(), f = interp::fps();
     const bool ff = gx2::uncapped();
@@ -859,29 +814,6 @@ void tab_graphics() {
     ImGui::EndDisabled();
     note("This build has no Vulkan renderer.");
 #endif
-    heading("Overlay");
-    if (check("Performance overlay (FPS, frame time)", perf_shown(), &v)) set_perf_shown(v);
-    if (check("Performance overlay detail (lag breakdown)", perf_detail_shown(), &v, perf_shown())) set_perf_detail_shown(v);
-    if (!perf_shown()) help("Needs the performance overlay on");
-    if (ImGui::Button("Reset performance averages")) {
-        g_average.reset();
-        perf::reset();
-        std::memset(U.frame_ms, 0, sizeof U.frame_ms);
-        std::memset(U.frame_logic, 0, sizeof U.frame_logic);
-        U.frame_i = 0;
-    }
-
-    static double copiedAt = -10;
-    if (ImGui::Button("Copy performance report")) {
-        std::string report = performance_report();
-        hostui::post([report] { hostui::set_clipboard(report); });
-        copiedAt = ImGui::GetTime();
-    }
-    if (ImGui::GetTime() - copiedAt < 2.0) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("Copied");
-    }
-    help("Where the renderer spends its time over the last few seconds, as text for a bug report");
 }
 
 void tab_audio() {
@@ -1502,8 +1434,32 @@ void restart_button(const char* why) {
 }
 
 void tab_debug() {
-    heading("Course debug");
+    heading("Overlay");
     bool v;
+    if (check("Performance overlay (FPS, frame time)", perf_shown(), &v)) set_perf_shown(v);
+    if (check("Performance overlay detail (lag breakdown)", perf_detail_shown(), &v, perf_shown())) set_perf_detail_shown(v);
+    if (!perf_shown()) help("Needs the performance overlay on");
+    if (ImGui::Button("Reset performance averages")) {
+        g_average.reset();
+        perf::reset();
+        std::memset(U.frame_ms, 0, sizeof U.frame_ms);
+        std::memset(U.frame_logic, 0, sizeof U.frame_logic);
+        U.frame_i = 0;
+    }
+
+    static double copiedAt = -10;
+    if (ImGui::Button("Copy performance report")) {
+        std::string report = performance_report();
+        hostui::post([report] { hostui::set_clipboard(report); });
+        copiedAt = ImGui::GetTime();
+    }
+    if (ImGui::GetTime() - copiedAt < 2.0) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("Copied");
+    }
+    help("Where the renderer spends its time over the last few seconds, as text for a bug report");
+
+    heading("Course debug");
     const bool env_locked = env::COLLISION_VIEWER.present();
     if (check("Collision Viewer", collision_wireframe::enabled(), &v, !env_locked)) {
         collision_wireframe::set_enabled(v);
@@ -1530,6 +1486,51 @@ void tab_debug() {
         if (ImGui::Button("Reload now")) course_hot_reload::request_reload();
         help("Rebuilds the active course from disk and restarts it at the course entrance.");
     }
+#ifdef NSMBU_HAS_VULKAN
+    if (render::vulkan() && !gfxvk::device_inventory.empty()) {
+        heading("Graphics card (next start)");
+        const bool env = env::VK_GPU() != nullptr;
+        const std::string saved = gfxvk::device_setting();
+        const bool dedicated = saved.empty() || saved == "dedicated" || saved == "discrete";
+        bool haveDiscrete = false, haveIntegrated = false;
+        for (const auto& gpu : gfxvk::device_inventory) {
+            if (!gpu.usable()) continue;
+            if (gpu.kind == gfxvk::kGpuDiscrete) haveDiscrete = true;
+            if (gpu.kind == gfxvk::kGpuIntegrated) haveIntegrated = true;
+        }
+        auto choose = [](const std::string& value) {
+            gfxvk::set_device_setting(value);
+            hostui::set("gpu", value.empty() ? "dedicated" : value);
+        };
+        if (radio("Prefer dedicated", dedicated, !env)) post_changed([choose] { choose(""); });
+        ImGui::SameLine();
+        if (radio("Prefer integrated", saved == "integrated", !env)) post_changed([choose] { choose("integrated"); });
+        for (size_t i = 0; i < gfxvk::device_inventory.size(); i++) {
+            const auto& gpu = gfxvk::device_inventory[i];
+            ImGui::PushID(int(i));
+            const std::string label = gpu.name + " (" + gfxvk::gpu_kind_name(gpu.kind) + ")";
+            if (radio(label.c_str(), saved == gpu.identity, !env && gpu.usable())) {
+                const std::string identity = gpu.identity;
+                post_changed([choose, identity] { choose(identity); });
+            }
+            if (!gpu.usable()) note("%s", gpu.unavailable.c_str());
+            ImGui::PopID();
+        }
+        note("This start uses %s. A different choice applies the next time the game starts.",
+             gfxvk::active_gpu_name.c_str());
+        if (env) note("NSMBU_VK_GPU=%s is set for this start and takes precedence.", env::VK_GPU());
+#ifndef _WIN32
+        else if (gfxvk::gpu_restart_pending(saved, gfxvk::active_gpu_identity, gfxvk::active_gpu_kind, haveDiscrete, haveIntegrated)) {
+            note("Progress since your last save is lost if you restart now.");
+            if (ImGui::Button("Restart now##gpu")) hostui::post([] { render::restart(); });
+        }
+#endif
+        if (!gfxvk::gpu_fallback.empty()) note("%s", gfxvk::gpu_fallback.c_str());
+        help("Prefer dedicated uses a separate graphics card when one can draw the game windows.\n"
+             "Prefer integrated keeps the GPU built into the processor.\n"
+             "A listed card is used on the next start when it is still available.");
+    }
+#endif
 }
 
 void tab_about() {

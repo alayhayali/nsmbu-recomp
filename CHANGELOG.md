@@ -24,6 +24,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - Graphics frame rate: Custom is a preset radio on its own row with a number field beside it.
   Preset rates stay selectable while Custom is active.
 - The performance overlay averages fps and logic steps/s over the same 120 frames as the frame-time graph, not since you opened the overlay or reset.
+- Performance overlay controls moved from Graphics to the top of Debug.
+- Graphics card choice moved from Graphics to the bottom of Debug.
 - The performance overlay shows GPU name, driver, and Vulkan version on separate lines.
 - The performance overlay background is slightly less transparent.
 - High frame rates use a present cap with a wall-clock accumulator: logic stays at 60 steps/s, and blend time comes from the open step instead of a per-rate frame ladder.
