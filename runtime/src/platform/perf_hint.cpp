@@ -117,6 +117,7 @@ void adapt_60(int64_t now) {
         slow = roomy = 0;
         return;
     }
+    if (interp::unlocked()) return;
     if (interp::paced_interpolation()) {
         if (mode == 0) { set_mode_auto(1); LOG("[perf] 60 fps on (paced)"); }
         return;

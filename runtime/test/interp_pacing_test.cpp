@@ -259,6 +259,91 @@ static void test_swap_align() {
     CHECK(light.sleep_ns == 1'800'000);
 }
 
+static void test_hold_shed() {
+    CHECK(kRefreshResumeFrames > kShedResumeFrames);
+    CHECK(shed_slot_ns(30) == 0);
+    CHECK(shed_slot_ns(60) == 0);
+    CHECK(shed_slot_ns(120) == present_period_ns(120));
+    CHECK(present_period_ns(30) > 20'000'000LL);
+
+    const int64_t slot30 = present_period_ns(30);
+    HoldShed at30;
+    CHECK(!note_logic_work(at30, 20'000'000LL, slot30).shed);
+    CHECK(!note_logic_work(at30, 20'000'000LL, shed_slot_ns(30)).shed);
+
+    const int64_t slot = shed_slot_ns(120);
+    const int64_t slow = slot + 1;
+    HoldShed h;
+    ShedUpdate first = note_logic_work(h, slow, slot);
+    CHECK(first.shed && first.changed);
+    CHECK(!note_logic_work(h, slow, slot).changed);
+    for (int i = 0; i < kShedResumeFrames - 1; i++)
+        CHECK(note_logic_work(h, slot, slot).shed);
+    ShedUpdate resumed = note_logic_work(h, slot, slot);
+    CHECK(!resumed.shed && resumed.changed);
+    CHECK(!note_logic_work(h, slot, slot).shed);
+
+    CHECK(note_logic_work(h, slow, slot).shed);
+    for (int i = 0; i < 4; i++) CHECK(note_logic_work(h, slot, slot).shed);
+    CHECK(note_logic_work(h, slow, slot).shed);
+    CHECK(h.cheap == 0);
+    for (int i = 0; i < kShedResumeFrames - 1; i++)
+        CHECK(note_logic_work(h, slot, slot).shed);
+    CHECK(!note_logic_work(h, slot, slot).shed);
+
+    CHECK(note_logic_work(h, slow, slot).shed);
+    ShedUpdate cleared = note_logic_work(h, slow, 0);
+    CHECK(!cleared.shed && cleared.changed);
+    CHECK(h.cheap == 0);
+
+    RefreshHold r;
+    CHECK(!note_refresh_hold(r, true));
+    CHECK(!r.high);
+    for (int i = 0; i < kRefreshResumeFrames - 1; i++)
+        CHECK(!note_refresh_hold(r, false));
+    CHECK(note_refresh_hold(r, false));
+    CHECK(r.high);
+    CHECK(note_refresh_hold(r, false));
+    CHECK(!note_refresh_hold(r, true));
+    CHECK(!r.high && r.on == 0);
+    for (int i = 0; i < kShedResumeFrames; i++)
+        CHECK(!note_refresh_hold(r, false));
+    CHECK(!r.high);
+
+    HoldShed forced;
+    CHECK(note_logic_work(forced, 0, 0, true).shed);
+    CHECK(note_logic_work(forced, slot, 0, true).shed);
+    CHECK(!note_logic_work(forced, slot, 0).shed);
+
+    LoadLatch latch;
+    CHECK(note_load_latch(latch, true));
+    for (int i = 0; i < kLoadLatchFrames - 2; i++)
+        CHECK(note_load_latch(latch, false));
+    CHECK(note_load_latch(latch, false));
+    CHECK(!note_load_latch(latch, false));
+    CHECK(note_load_latch(latch, true));
+    CHECK(note_load_latch(latch, true));
+    CHECK(latch.left == kLoadLatchFrames - 1);
+
+    CourseOpen open;
+    CHECK(!course_open_ready(open, false, false, true, true));
+    CHECK(!course_open_ready(open, true, false, true, false));
+    CHECK(open.after == 0);
+    for (int i = 0; i < kCourseSettleFrames - 1; i++)
+        CHECK(!course_open_ready(open, true, true, false, false));
+    CHECK(course_open_ready(open, true, true, false, false));
+    CourseOpen hitch;
+    CHECK(!course_open_ready(hitch, true, true, false, false));
+    CHECK(!course_open_ready(hitch, true, true, true, false));
+    CHECK(hitch.settle == 0);
+    CHECK(!course_open_ready(hitch, true, true, false, true));
+    CHECK(hitch.settle == 0);
+    CourseOpen cap;
+    for (int i = 0; i < kCourseOpenMaxFrames - 1; i++)
+        CHECK(!course_open_ready(cap, true, true, true, true));
+    CHECK(course_open_ready(cap, true, true, true, true));
+}
+
 static void test_present_spacing() {
     const int caps[] = {30, 60, 120, 144, 165, 240};
     for (int cap : caps) {
@@ -287,6 +372,7 @@ int main() {
     test_accumulator();
     test_present_gap();
     test_swap_align();
+    test_hold_shed();
     test_present_spacing();
     if (g_failed) {
         std::fprintf(stderr, "interp_pacing_test: %d check(s) failed\n", g_failed);

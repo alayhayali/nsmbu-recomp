@@ -102,11 +102,15 @@ void poll(SDL_Window* tv) {
 
     static int requested = -1, maxHz = 0;
     if (!maxHz) maxHz = (int)std::lround(call_float("maxRefreshRate"));
-    const int want = interp::mode() == 1 && interp::fps() > 60 && maxHz > 60 ? std::min(interp::fps(), maxHz) : 0;
+    const int want = interp::refresh_request_hz(maxHz);
     if (want != requested) {
+        const int prev = requested;
         requested = want;
         request((float)want);
-        if (want) LOG("[display] %d fps frame interpolation: asking for a %d Hz display mode (the display offers up to %d Hz)", interp::fps(), want, maxHz);
+        if (interp::course_loading() && want) LOG("[display] course load: asking for a %d Hz display mode (the display offers up to %d Hz)", want, maxHz);
+        else if (interp::unlocked() && want) LOG("[display] unlocked fps: asking for a %d Hz display mode (the display offers up to %d Hz)", want, maxHz);
+        else if (want) LOG("[display] %d fps frame interpolation: asking for a %d Hz display mode (the display offers up to %d Hz)", interp::fps(), want, maxHz);
+        else if (prev > 0) LOG("[display] default refresh rate");
     }
     const float hz = call_float("displayRefreshRate");
     interp::set_display_hz((int)std::lround(hz));

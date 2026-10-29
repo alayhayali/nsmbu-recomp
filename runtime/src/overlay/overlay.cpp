@@ -721,14 +721,20 @@ void tab_graphics() {
     was_custom = custom;
     int n_rates = 0;
     const int* rates = interp::pacing::fps_ladder(n_rates);
+    const bool free = interp::unlocked() && !ff;
     ImGui::BeginDisabled(ff);
+    if (radio("Unlocked", free)) post_changed([] {
+        interp::set_fast_forward(false);
+        interp::set_unlocked(true);
+    });
     for (int i = 0; i < n_rates; i++) {
         const int r = rates[i];
-        if (i) ImGui::SameLine();
+        ImGui::SameLine();
         char label[16];
         snprintf(label, sizeof label, "%d fps", r);
-        const bool on = !custom && (r == 60 ? m != 1 : m == 1 && f == r);
+        const bool on = !custom && !free && (r == 60 ? m != 1 : m == 1 && f == r);
         if (radio(label, on)) post_changed([r] {
+            interp::set_unlocked(false);
             interp::set_fast_forward(false);
             if (r == 60) { interp::set_fps(60); interp::set_mode(0); }
             else { interp::set_fps(r); interp::set_mode(1); }
@@ -736,7 +742,8 @@ void tab_graphics() {
     }
     ImGui::EndDisabled();
     ImGui::BeginDisabled(ff);
-    if (radio("Custom", custom)) {
+    if (radio("Custom", custom && !free)) {
+        interp::set_unlocked(false);
         interp::set_fast_forward(false);
         interp::set_custom_fps(custom_value);
         post_changed([] {});
@@ -745,6 +752,7 @@ void tab_graphics() {
     ImGui::SetNextItemWidth(ImGui::CalcTextSize("9999").x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f);
     ImGui::InputText("##fps-custom", custom_buf, sizeof custom_buf, ImGuiInputTextFlags_CharsDecimal);
     if (ImGui::IsItemActivated()) {
+        interp::set_unlocked(false);
         interp::set_fast_forward(false);
         interp::set_custom_fps(custom_value);
     }
@@ -753,6 +761,7 @@ void tab_graphics() {
         v = interp::pacing::clamp_custom_fps(v);
         custom_value = v;
         snprintf(custom_buf, sizeof custom_buf, "%d", v);
+        interp::set_unlocked(false);
         interp::set_fast_forward(false);
         interp::set_custom_fps(v);
         post_changed([] {});
@@ -770,12 +779,15 @@ void tab_graphics() {
     help("30 fps draws half as often: two logic steps per picture, so the game keeps its speed.\n"
          "60 fps is the game rate. 120, 144, 165 and 240 are present caps: more draws between\n"
          "fixed 60 Hz logic steps, blended from wall-clock time left in the open step.\n"
-         "Custom is any rate from 60 to 1000. 30 fps is only the preset. Fast forward (debug) runs the game as fast as this\n"
+         "Custom is any rate from 60 to 1000. Unlocked draws pictures as fast as the machine can while the game stays at 60 logic steps per second.\n"
+         "The fps number is that render rate, even when the display cannot show every picture. 30 fps is only the preset. Fast forward (debug) runs the game as fast as this\n"
          "computer can: each picture is one game step, with no frame limit. Hotkeys: 6 = 60 fps,\n"
          "7 = cycle caps, 9 = toggle 60 fps and the last non-60 cap.");
 
     if (ff)
         note("Fast forward runs the game as fast as this computer can.");
+    else if (free)
+        note("Unlocked draws as many pictures as this device can. The fps number is that render rate. The display may show fewer.");
     else if (const int hz = interp::display_hz(); hz > 0) {
         const int out = interp::output_fps();
         if (m == 1 && out < f)

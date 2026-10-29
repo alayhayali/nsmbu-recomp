@@ -33,10 +33,18 @@ int custom_fps();
 void set_custom_fps(int f);
 void set_fast_forward(bool on);
 bool fast_forward();
+void set_unlocked(bool on);
+bool unlocked();
 void toggle_fps(int f);
 const char* mode_name();
 int output_fps();
 int frames_per_step();
+bool holds_shed();
+bool refresh_boost();
+int refresh_request_hz(int max_hz);
+bool course_loading();
+void set_course_load(bool on);
+void note_course_setup();
 
 bool paced_interpolation();
 void set_paced_interpolation(bool on);

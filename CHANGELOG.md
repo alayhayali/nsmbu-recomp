@@ -9,6 +9,9 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Added
 
+- Unlocked frame rate draws pictures as fast as the device can while the game stays at 60 logic steps per second.
+  The fps number is how fast those pictures are rendered.
+  The display may show fewer of them.
 - Decomp UI stack for native mod hooks: `Multi2D`, `AnimLayoutBase`, `LayoutAllocator`, `TagProcessor`, and `UtilCursorButtonMgr` in `vendor/decomp/src/layout_sys/`; screen units `AttentionScreen`, `ChangePlayerNum`, `CommonWindowMgr`, `CommonWindow`, `PaCursor`, and `GamesceneBase` in `vendor/decomp/src/layout/`; architecture notes in `vendor/decomp/docs/ui-system.md`.
 - Expand header-only decomp for pause menu and layout shells: `CommonWindow` guest methods, `PlayerCourseHud`, `SelectCursorLayout` / `SelectCursorMiniLayout`, and `layout_sys` `LayoutObj` / `TextBox` types (`vendor/decomp/include/`, `vendor/decomp/docs/ui-system.md`).
 - Document mod hook map for guest UI (pause, `Multi2D`, course HUD) in `vendor/decomp/docs/ui-system.md`; link from `docs/modding/README.md` and `docs/modding/api.md`.
@@ -106,6 +109,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- Opening a course from the map stays at 60 fps until that course is on screen and the fade has finished.
+  The display switches to a 60 Hz mode for that open, then back to the frame rate you picked.
 - LuaJIT `make clean` uses the same compiler as the build, so an Android configure does not wipe the desktop `libluajit.a`, and a desktop configure does not wipe the Android one.
 - Windows on ARM64 crash logs list the faulting instruction first in the host backtrace (same CONTEXT unwind as x64), so release CI `crash_log_module` passes on `windows-arm64`.
 - Settings text fields (including the custom frame rate) accept keyboard input while the overlay is open.

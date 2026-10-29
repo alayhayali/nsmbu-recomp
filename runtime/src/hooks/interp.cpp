@@ -62,6 +62,7 @@ static const bool g_env_custom = g_env_fps && !listed_fps(g_env_fps);
 static std::atomic<bool> g_custom_on{g_env_custom};
 static std::atomic<int> g_custom_fps{g_env_custom ? g_env_fps : 90};
 static std::atomic<int> g_fps{!g_env_fps || g_env_custom ? 60 : g_env_fps};
+static std::atomic<bool> g_unlocked{false};
 static std::atomic<bool> g_on{[] {
     const char* e = env::INTERP();
     return (e ? atoi(e) != 0 : g_env_fps != 0);
@@ -70,7 +71,7 @@ bool interp_on() { return g_on.load(std::memory_order_relaxed); }
 
 static std::atomic<int> g_granule{4};
 
-bool enabled() { return interp_on(); }
+bool enabled() { return unlocked() || interp_on(); }
 int fps() {
     if (g_custom_on.load(std::memory_order_relaxed)) return g_custom_fps.load(std::memory_order_relaxed);
     return g_fps.load(std::memory_order_relaxed);
@@ -78,7 +79,22 @@ int fps() {
 bool custom_on() { return g_custom_on.load(std::memory_order_relaxed); }
 int custom_fps() { return g_custom_fps.load(std::memory_order_relaxed); }
 bool fast_forward() { return gx2::uncapped(); }
-void set_fast_forward(bool on) { gx2::set_uncapped(on); }
+void set_fast_forward(bool on) {
+    if (on) g_unlocked.store(false, std::memory_order_relaxed);
+    gx2::set_uncapped(on);
+}
+void set_unlocked(bool on) {
+    if (g_unlocked.exchange(on, std::memory_order_relaxed) == on) return;
+    if (on) {
+        gx2::set_uncapped(false);
+        g_custom_on.store(false, std::memory_order_relaxed);
+        g_on.store(true, std::memory_order_relaxed);
+    } else if (fps() == 60) {
+        g_on.store(false, std::memory_order_relaxed);
+    }
+    LOG("[interp] unlocked fps %s", on ? "on: pictures are drawn as fast as they can, and the game stays at 60 logic steps per second" : "off");
+}
+bool unlocked() { return g_unlocked.load(std::memory_order_relaxed); }
 
 static const int g_env_hz = env::DISPLAY_HZ.integer_or(-1);
 static std::atomic<int> g_display_hz{0};
@@ -121,16 +137,18 @@ static const char* fps_name(int f) {
     }
 }
 void set_enabled(bool v) {
-    if (v && fps() == 60) v = false;
+    if (v && fps() == 60 && !unlocked()) v = false;
     g_on = v;
     LOG("[interp] frame interpolation %s", v ? fps_name(fps()) : "off");
 }
 void set_fps(int f) {
+    g_unlocked.store(false, std::memory_order_relaxed);
     g_custom_on.store(false, std::memory_order_relaxed);
     f = valid_fps(f);
     if (g_fps.exchange(f) != f && interp_on()) LOG("[interp] frame interpolation at %s", fps_name(f));
 }
 void set_custom_fps(int f) {
+    g_unlocked.store(false, std::memory_order_relaxed);
     f = pacing::clamp_custom_fps(f);
     g_custom_fps.store(f, std::memory_order_relaxed);
     g_custom_on.store(true, std::memory_order_relaxed);
@@ -141,8 +159,9 @@ void set_custom_fps(int f) {
     }
     set_enabled(true);
 }
-int mode() { return interp_on() && fps() != 60 ? 1 : 0; }
+int mode() { return unlocked() || (interp_on() && fps() != 60) ? 1 : 0; }
 void set_mode(int m) {
+    if (m == 0) g_unlocked.store(false, std::memory_order_relaxed);
     g_on = false;
     if (m == 1) set_enabled(true);
 }
@@ -158,6 +177,7 @@ void toggle_fps(int f) {
 const char* mode_name() {
     static char buf[48];
     if (fast_forward()) return "fast forward";
+    if (unlocked()) return "unlocked";
     if (mode() != 1 && !custom_on()) return "60 fps";
     const int f = fps(), out = output_fps();
     if (out >= f) return fps_name(f);
@@ -650,6 +670,7 @@ extern "C" void hook_024F30DC(Cpu* c) {
 
 
 namespace interp {
+void reset_pass_clock();
 void ss_reset() {
     g_record_passes += 8;
     g_hold_next = false;
@@ -667,6 +688,7 @@ void ss_reset() {
     g_present_i = 0;
     g_acc_ns = 0;
     g_wake_valid = false;
+    reset_pass_clock();
 }
 
 static const char* const g_env_paced = env::INTERP_PACED();
@@ -699,6 +721,76 @@ float paced_drawn_share() { return paced() && interp_on() ? g_paced_share.load(s
 
 using pace_clock = std::chrono::steady_clock;
 static uint64_t g_paced_holds = 0, g_paced_steps = 0, g_paced_presents = 0;
+static pacing::HoldShed g_shed;
+static pace_clock::time_point g_pass_begin{};
+static bool g_pass_begin_valid = false;
+static std::atomic<bool> g_course_load{false};
+static bool g_course_setup = false;
+static pacing::CourseOpen g_course_open;
+static int64_t g_last_logic_ns = 0;
+
+bool course_loading() { return g_course_load.load(std::memory_order_relaxed); }
+bool holds_shed() {
+    if (unlocked()) return false;
+    return (g_shed.shed || course_loading()) && interp_on() && fps() > 60 && !fast_forward();
+}
+bool refresh_boost() {
+    if (fast_forward()) return false;
+    if (unlocked()) return true;
+    return mode() == 1 && fps() > 60 && !course_loading();
+}
+int refresh_request_hz(int max_hz) {
+    if (max_hz <= 60 || fast_forward()) return 0;
+    if (unlocked()) return max_hz;
+    if (course_loading()) return 60;
+    if (mode() == 1 && fps() > 60) return std::min(fps(), max_hz);
+    return 0;
+}
+void set_course_load(bool on) {
+    if (g_course_load.exchange(on, std::memory_order_relaxed) == on) return;
+    g_course_setup = false;
+    g_course_open = {};
+    if (unlocked()) return;
+    LOG("[interp] %s", on ? "course load: 60 fps until the course is on screen" : "course ready");
+}
+void note_course_setup() {
+    if (course_loading()) g_course_setup = true;
+}
+static bool fader_busy(Cpu* c) {
+    const uint32_t scene = ld32(GD(0x101E7B28));
+    if (scene < mem::kMem2Start || scene >= mem::kMem2End) return true;
+    const uint32_t fader = ld32(scene + 0x68);
+    if (fader < mem::kMem2Start || fader >= mem::kMem2End) return true;
+    return guest_call(c, GC(0x02983B28), {fader}) != 0;
+}
+void tick_course_open(Cpu* c) {
+    if (!course_loading()) return;
+    const bool setup = g_course_setup;
+    const bool area = course_play_active();
+    const bool busy = setup && area && fader_busy(c);
+    const bool heavy = g_last_logic_ns > pacing::kLogicStepNs;
+    if (!pacing::course_open_ready(g_course_open, setup, area, busy, heavy)) return;
+    set_course_load(false);
+}
+void reset_pass_clock() { g_pass_begin_valid = false; }
+void begin_pass_clock() {
+    g_pass_begin = pace_clock::now();
+    g_pass_begin_valid = true;
+}
+void discard_pass_clock() { g_pass_begin_valid = false; }
+void finish_logic_pass() {
+    int64_t work = 0;
+    const bool have = g_pass_begin_valid;
+    if (have) work = std::chrono::duration_cast<std::chrono::nanoseconds>(pace_clock::now() - g_pass_begin).count();
+    g_pass_begin_valid = false;
+    g_last_logic_ns = have ? work : 0;
+    const bool apply = !unlocked() && interp_on() && fps() > 60 && !fast_forward();
+    const int64_t slot = apply ? pacing::shed_slot_ns(fps()) : 0;
+    if (!have && slot > 0) return;
+    const pacing::ShedUpdate upd = pacing::note_logic_work(g_shed, work, slot);
+    if (!upd.changed) return;
+    LOG("[interp] in-between frames %s: logic pass %.1f ms", upd.shed ? "paused" : "resumed", work / 1e6);
+}
 
 static void note_present_share(bool hold) {
     g_paced_presents++;
@@ -775,6 +867,8 @@ extern "C" void hook_029C52CC(Cpu* c) {
             g_wake_valid = false;
             g_blend_t = 1.f;
             f_029C52CC_orig(c);
+            finish_logic_pass();
+            tick_course_open(c);
             status_trace::on_logic_step(logic_steps());
             return;
         }
@@ -783,9 +877,10 @@ extern "C" void hook_029C52CC(Cpu* c) {
     g_pass_valid = true;
     g_passes++;
     g_present_i++;
-    g_frame_n = frames_per_step();
+    const bool shed = holds_shed();
+    g_frame_n = shed ? 1 : frames_per_step();
     g_step_n = std::max(0, g_frame_n - 1);
-    g_granule.store(pacing::present_granule(output_fps()), std::memory_order_relaxed);
+    g_granule.store(unlocked() ? 1 : pacing::present_granule(shed ? 60 : output_fps()), std::memory_order_relaxed);
 
     const auto now = pace_clock::now();
     int64_t dt = 0;
@@ -793,7 +888,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
     g_last_wake = now;
     g_wake_valid = true;
 
-    const bool interpolate = interp_on() && output_fps() != 60 && !gx2::uncapped();
+    const bool interpolate = !gx2::uncapped() && !shed && (unlocked() || (interp_on() && output_fps() != 60));
     pacing::WakePlan plan = pacing::advance_accumulator(g_acc_ns, dt, interpolate);
     if (interpolate && plan.logic_steps == 0 && g_logic_steps == 0) {
         plan.logic_steps = 1;
@@ -816,6 +911,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
             PassTimer timer(1);
             f_029C5104(c);
         }
+        discard_pass_clock();
         return;
     }
 
@@ -832,6 +928,8 @@ extern "C" void hook_029C52CC(Cpu* c) {
         f_029C52CC_orig(c);
     }
     note_present_share(false);
+    finish_logic_pass();
+    tick_course_open(c);
     status_trace::on_logic_step(g_logic_steps);
     model_stats_report();
     static uint64_t n = 0, t0 = timebase::now(), f0 = 0;
@@ -846,6 +944,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
 
 extern "C" void hook_029C4FE4(Cpu* c) {
     using namespace interp;
+    begin_pass_clock();
     if (enabled() && g_hold && !course_play_active()) return;
     f_029C4FE4_orig(c);
     if (!g_models_on || !enabled() || !course_play_active() || g_exact_step || !model_subst_pending()) return;

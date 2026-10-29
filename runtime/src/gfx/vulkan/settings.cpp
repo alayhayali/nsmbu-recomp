@@ -47,7 +47,7 @@ bool present_mode_from_env() { return env_present_mode() >= 0; }
 bool present_mode_offered(int m) { return m >= 0 && m < kPresentModes && (g_offered.load() >> m & 1); }
 void set_present_modes_offered(unsigned mask) { g_offered = mask | 1u << kPresentFifo; }
 int effective_present_mode() {
-    if (!gx2::uncapped()) return present_mode();
+    if (!gx2::uncapped() && !interp::unlocked()) return present_mode();
     return present_mode_offered(kPresentImmediate) ? kPresentImmediate : present_mode_offered(kPresentMailbox) ? kPresentMailbox : kPresentFifo;
 }
 const char* present_mode_name(int m) { return m == kPresentMailbox ? "mailbox" : m == kPresentImmediate ? "immediate" : "fifo"; }

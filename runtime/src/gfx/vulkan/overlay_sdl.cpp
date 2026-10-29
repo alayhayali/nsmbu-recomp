@@ -207,6 +207,7 @@ void graphics_changed() {
     put("fps60", {env::INTERP, env::INTERP_FPS}, std::to_string(interp::mode()));
 #endif
 
+    put("fpsUnlocked", {env::INTERP_FPS}, interp::unlocked() ? "1" : "0");
     put("fpsCustom", {env::INTERP_FPS}, interp::custom_on() ? "1" : "0");
     put("interpFps", {env::INTERP_FPS}, std::to_string(interp::custom_on() ? interp::custom_fps() : interp::fps()));
     put("fps60Paced", {env::INTERP_PACED}, interp::paced_interpolation_at(60) ? "1" : "0");
@@ -242,6 +243,7 @@ void load_saved_options() {
     else if (saved("interpFps", {env::INTERP_FPS})) interp::set_fps((int)num("interpFps"));
     if (saved("fps60", {env::INTERP, env::INTERP_FPS})) interp::set_mode((int)num("fps60"));
     if (saved("fps60Paced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(60, num("fps60Paced") != 0);
+    if (saved("fpsUnlocked", {env::INTERP_FPS}) && num("fpsUnlocked") != 0) interp::set_unlocked(true);
 #ifdef __ANDROID__
     if (saved("heatGuard", {env::HEAT_GUARD})) heat_guard::choice = heat_guard::parse(v["heatGuard"].c_str());
 #endif
