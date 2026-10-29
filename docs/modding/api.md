@@ -624,6 +624,10 @@ Do not pass guest pointers or keep a command across steps.
 `nsmbu.Gui` does not load images, textures, or fonts.
 Use shapes and text for icons.
 
+For UI that must match pause menus, GamePad focus, or `.bflyt` layout animation, use the guest layout stack instead of `Gui`.
+See [Guest UI / layout hooks](../../vendor/decomp/docs/ui-system.md#mod-integration) for hook addresses and patterns (`CommonWindowMgr`, `Multi2D`, course HUD).
+That path relies on phase 4 `nsmbu.Hooks` or runtime `hooks.txt` today.
+
 ## Data files
 
 Proposal.

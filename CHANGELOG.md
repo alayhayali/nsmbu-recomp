@@ -11,6 +11,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - Decomp UI stack for native mod hooks: `Multi2D`, `AnimLayoutBase`, `LayoutAllocator`, `TagProcessor`, and `UtilCursorButtonMgr` in `vendor/decomp/src/layout_sys/`; screen units `AttentionScreen`, `ChangePlayerNum`, `CommonWindowMgr`, `CommonWindow`, `PaCursor`, and `GamesceneBase` in `vendor/decomp/src/layout/`; architecture notes in `vendor/decomp/docs/ui-system.md`.
 - Expand header-only decomp for pause menu and layout shells: `CommonWindow` guest methods, `PlayerCourseHud`, `SelectCursorLayout` / `SelectCursorMiniLayout`, and `layout_sys` `LayoutObj` / `TextBox` types (`vendor/decomp/include/`, `vendor/decomp/docs/ui-system.md`).
+- Document mod hook map for guest UI (pause, `Multi2D`, course HUD) in `vendor/decomp/docs/ui-system.md`; link from `docs/modding/README.md` and `docs/modding/api.md`.
 
 - Press Start and Select together (+ and − on the GamePad, or the matching controller buttons) to open or close the settings overlay, on PC and Android as well as `` ` `` or F12.
 - Original cel-shaded app icon for Android and Linux packages (`android/icon/app_icon_1024.png`), in the same full-bleed style as the WWHD port's launcher art, with `android/bake_app_icon.py` to refresh the mipmaps.

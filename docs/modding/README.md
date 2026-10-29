@@ -12,6 +12,7 @@ This folder is the modding documentation for NSMBU recomp.
 | [content.md](content.md) | File replacements via Lua `content_dir` (`kind: content` is a legacy alias this release) |
 | [cemu-content.md](cemu-content.md) | Drop-in Cemu level/content packs: Definition-only `rules.txt` + `content/`, ignore `meta/` |
 | [cemu.md](cemu.md) | `kind: cemu` graphics and shader packs |
+| [Guest UI / layout hooks](../../vendor/decomp/docs/ui-system.md#mod-integration) | Pause, `Multi2D`, and native menu hook map (decomp note; C++ hooks today, Lua hooks phase 4) |
 
 Rejected on install: `kind: native`, `kind: guest`, and `kind: settings`.
 `kind: content` is accepted as a read-only alias this release and migrates to `lua` on scan.
