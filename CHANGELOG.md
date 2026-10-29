@@ -21,7 +21,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ### Changed
 
 - `nsmbu build` and `nsmbu run` skip CMake configure when the build cache is already up to date, and use a quiet log level when configure does run.
-- Graphics frame rate: Custom is a preset radio with a number field beside it.
+- Graphics frame rate: Custom is a preset radio on its own row with a number field beside it.
   Preset rates stay selectable while Custom is active.
 - The performance overlay averages fps and logic steps/s over the same 120 frames as the frame-time graph, not since you opened the overlay or reset.
 - The performance overlay shows GPU name, driver, and Vulkan version on separate lines.
@@ -67,6 +67,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- Settings text fields (including the custom frame rate) accept keyboard input while the overlay is open.
 - 30 fps runs a full game step for each picture update, including the wait that finishes the previous picture.
   Clearing the render list twice without that wait crashed the render thread.
 - 60 fps stays at 60 when a higher rate was used earlier.

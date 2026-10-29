@@ -84,11 +84,12 @@ const bool g_no_host_keys = g_no_host && !env::TEST_POST_KEYS();
 bool g_pad_b_used = false;
 
 struct Event {
-    enum Kind { Key, MousePos, MouseButton, Wheel, Focus } kind;
+    enum Kind { Key, MousePos, MouseButton, Wheel, Text, Focus } kind;
     int code = 0;
     bool down = false;
     float x = 0, y = 0;
     int mods = 0;
+    std::string text;
 };
 std::mutex g_mu;
 std::vector<Event> g_events;
@@ -737,8 +738,11 @@ void tab_graphics() {
     const bool ff = gx2::uncapped();
     const bool custom = interp::custom_on() && !ff;
     static int custom_value = -1;
+    static char custom_buf[8] = "";
+    static bool was_custom = false;
     if (custom_value < 0) custom_value = interp::custom_fps();
-    if (custom && custom_value != interp::custom_fps()) custom_value = interp::custom_fps();
+    if (custom && !was_custom) custom_value = interp::custom_fps();
+    was_custom = custom;
     int n_rates = 0;
     const int* rates = interp::pacing::fps_ladder(n_rates);
     ImGui::BeginDisabled(ff);
@@ -754,20 +758,33 @@ void tab_graphics() {
             else { interp::set_fps(r); interp::set_mode(1); }
         });
     }
-    ImGui::SameLine();
-    if (radio("Custom", custom)) {
-        const int v = custom_value;
-        post_changed([v] { interp::set_fast_forward(false); interp::set_custom_fps(v); });
-    }
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(ImGui::CalcTextSize("999").x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f);
-    ImGui::BeginDisabled(!custom);
-    if (ImGui::InputInt("##fps-custom", &custom_value, 0, 0)) {
-        custom_value = interp::pacing::clamp_custom_fps(custom_value);
-        const int v = custom_value;
-        post_changed([v] { interp::set_fast_forward(false); interp::set_custom_fps(v); });
-    }
     ImGui::EndDisabled();
+    ImGui::BeginDisabled(ff);
+    if (radio("Custom", custom)) {
+        interp::set_fast_forward(false);
+        interp::set_custom_fps(custom_value);
+        post_changed([] {});
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("9999").x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f);
+    ImGui::InputText("##fps-custom", custom_buf, sizeof custom_buf, ImGuiInputTextFlags_CharsDecimal);
+    if (ImGui::IsItemActivated()) {
+        interp::set_fast_forward(false);
+        interp::set_custom_fps(custom_value);
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        int v = atoi(custom_buf);
+        v = interp::pacing::clamp_custom_fps(v);
+        custom_value = v;
+        snprintf(custom_buf, sizeof custom_buf, "%d", v);
+        interp::set_fast_forward(false);
+        interp::set_custom_fps(v);
+        post_changed([] {});
+    }
+    if (!ImGui::IsItemActive()) {
+        if (custom) custom_value = interp::custom_fps();
+        snprintf(custom_buf, sizeof custom_buf, "%d", custom_value);
+    }
     ImGui::EndDisabled();
     bool ff_ui = ff;
     if (check("Fast forward (debug)", ff_ui, &ff_ui)) {
@@ -1800,6 +1817,14 @@ bool mouse_wheel(float dx, float dy) {
     push({Event::Wheel, 0, false, dx, dy, 0});
     return true;
 }
+bool text(const char* utf8) {
+    if (!utf8 || !*utf8 || !is_open() || g_no_host) return false;
+    Event e;
+    e.kind = Event::Text;
+    e.text = utf8;
+    push(e);
+    return true;
+}
 void set_density(float d) { g_density = d > 0.5f ? d : 1.0f; }
 
 void undo_frame_sample() {
@@ -1941,6 +1966,7 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         case Event::MousePos: io.AddMousePosEvent(e.x * io.DisplaySize.x, e.y * io.DisplaySize.y); break;
         case Event::MouseButton: io.AddMouseButtonEvent(e.code, e.down); break;
         case Event::Wheel: io.AddMouseWheelEvent(e.x, e.y); break;
+        case Event::Text: io.AddInputCharactersUTF8(e.text.c_str()); break;
         default: break;
         }
     }
