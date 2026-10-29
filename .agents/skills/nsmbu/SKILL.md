@@ -31,7 +31,7 @@ nsmbu build
 `nsmbu game <id>` writes `game/active` and skips prompts.
 Add `--extract` to extract (or re-extract) the disc.
 Add `--recomp` to refresh `build/gen` from that dump's RPX.
-`--recomp` is slow; reuse `build/gen` unless `tools/recomp/recomp.py` changed, you switch game version (e.g. USA ↔ Europe), or `hooks.txt` / `hooks_*.txt` changed.
+`--recomp` is slow, reuse `build/gen` unless `tools/recomp/recomp.py` changed, you switch game version (e.g. USA  Europe), or `hooks.txt` / `hooks_*.txt` changed.
 Runtime-only edits need `nsmbu build` only.
 Then `nsmbu build` (and playtests / `nsmbu open`) use that dump.
 
@@ -50,7 +50,7 @@ A runtime-only edit compiles the changed `.cpp` and links.
 
 ## Hidden boot
 
-Launch `build/debug/nsmbu --game game/usa-1.3.0`.
+Boot `build/debug/nsmbu --game game/<id>`, where `<id>` is the text in `game/active` or the `active` id from `nsmbu game --list`.
 `--game game` has no `red-pro2.rpx` and exits at once.
 `nsmbu scripted` and `tools/run/scripted-run.sh` pass that `game/` path.
 Copy `nsmbu/save` into `.tmp/<name>/save` and set `NSMBU_USER_DIR` to `nsmbu/`.

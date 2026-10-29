@@ -203,7 +203,8 @@ void graphics_changed() {
     put("fps60", {env::INTERP, env::INTERP_FPS}, std::to_string(interp::mode()));
 #endif
 
-    put("interpFps", {env::INTERP_FPS}, std::to_string(interp::fps()));
+    put("fpsCustom", {env::INTERP_FPS}, interp::custom_on() ? "1" : "0");
+    put("interpFps", {env::INTERP_FPS}, std::to_string(interp::custom_on() ? interp::custom_fps() : interp::fps()));
     put("fps60Paced", {env::INTERP_PACED}, interp::paced_interpolation_at(60) ? "1" : "0");
     put("scaleFilter", {env::SCALE_FILTER}, std::to_string(gfxvk::scale_filter()));
     char aspect[32];
@@ -232,7 +233,9 @@ void load_saved_options() {
     if (saved("resScale", {env::RES_SCALE})) gfxvk::set_res_scale((float)num("resScale"));
     if (saved("aniso", {env::ANISO})) gfxvk::set_aniso(num("aniso") != 0);
     if (saved("fxaa", {env::FXAA})) gfxvk::set_fxaa(num("fxaa") != 0);
-    if (saved("interpFps", {env::INTERP_FPS})) interp::set_fps((int)num("interpFps"));
+    if (saved("fpsCustom", {env::INTERP_FPS}) && num("fpsCustom") != 0 && v.count("interpFps"))
+        interp::set_custom_fps((int)num("interpFps"));
+    else if (saved("interpFps", {env::INTERP_FPS})) interp::set_fps((int)num("interpFps"));
     if (saved("fps60", {env::INTERP, env::INTERP_FPS})) interp::set_mode((int)num("fps60"));
     if (saved("fps60Paced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(60, num("fps60Paced") != 0);
     if (saved("scaleFilter", {env::SCALE_FILTER})) gfxvk::set_scale_filter((int)num("scaleFilter"));

@@ -7,8 +7,28 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+### Added
+
+- A 30 fps choice in Graphics.
+  It draws half as often and runs two logic steps per picture, so the game keeps its speed.
+- Graphics can set any frame rate from 60 to 1000.
+  30 fps is only the preset.
+  Fast forward runs the game as fast as the computer can, with one game step per picture and no frame limit.
+- `nsmbu installer --no-open` packages the installer and returns without opening setup.
+- Scene checks for agents live in the `scenes` skill.
+  The world map, a course pack, and the file menu each have a short boot that stops on `nsmbu status`.
+
 ### Changed
 
+- `nsmbu build` and `nsmbu run` skip CMake configure when the build cache is already up to date, and use a quiet log level when configure does run.
+- Graphics frame rate: Custom is a preset radio on its own row with a number field beside it.
+  Preset rates stay selectable while Custom is active.
+- The performance overlay averages fps and logic steps/s over the same 120 frames as the frame-time graph, not since you opened the overlay or reset.
+- Performance overlay controls moved from Graphics to the top of Debug.
+- Graphics card choice moved from Graphics to the bottom of Debug.
+- The performance overlay shows GPU name, driver, and Vulkan version on separate lines.
+- The performance overlay background is slightly less transparent.
+- High frame rates use a present cap with a wall-clock accumulator: logic stays at 60 steps/s, and blend time comes from the open step instead of a per-rate frame ladder.
 - Guest-code notes live in the docs.
   The guest skill is gone.
 - The GamePad screen starts off.
@@ -49,6 +69,9 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- Settings text fields (including the custom frame rate) accept keyboard input while the overlay is open.
+- 30 fps runs a full game step for each picture update, including the wait that finishes the previous picture.
+  Clearing the render list twice without that wait crashed the render thread.
 - 60 fps stays at 60 when a higher rate was used earlier.
   The performance overlay no longer reports that higher rate.
 - Vulkan prefers a dedicated GPU when one can draw the game windows.
@@ -58,6 +81,21 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - The TV window title uses ASCII separators so punctuation no longer shows as garbled text on some systems.
 - Metal: a new render target starts with the texels already in guest memory.
   A course's static tiles drawn from its working tileset, such as the used block after hitting a ? block, were invisible.
+
+### Fixed
+
+- A 165 Hz present cap stays on 165.
+  The present wait was keeping the time it actually woke, so each short overrun started the next frame late and the overlay sat near 162.
+- A late world-map frame no longer starts a second present slot while it waits for the previous flip.
+  That extra wait held the overworld near 108 fps.
+- Frame time stays on the present cap when a light frame would otherwise show early and the next full draw shows late.
+  The present wait keeps running queued GPU loads, so the boot screen can finish.
+- Install and recomp tools find generated code and hook lists when the install path contains square brackets.
+- High present caps keep their cadence when a frame runs late, so the world map no longer drifts well below the selected rate.
+- Logic presents at high frame rates draw the finished step (blend t = 1) instead of the open-step leftover, so Mario no longer jitters while running at 120/165.
+- World-map presents no longer defer or idle-repeat against the present-cap wake schedule, so the overworld can hold the same host frame rate as courses.
+- A hitch can run up to four guest logic steps on one present, and the leftover time stays in the accumulator so the game slows under load.
+- Hold frames blend the course camera across the open logic step, and logic frames still draw the finished step.
 
 ## [0.7.2] - 2026-10-27
 

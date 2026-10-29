@@ -17,6 +17,17 @@ int main() {
     a.sample(10, 640, 320, 1, 1, 120, 2);
     assert(a.fps == 120 && a.logic == 60);
     a.sample(11, 0, 0, 1, 1, 120, 2); assert(a.fps == 0);
+    float ms[overlay::FrameHistoryAverages::kFrames]{};
+    uint32_t logic[overlay::FrameHistoryAverages::kFrames]{};
+    for (int i = 0; i < overlay::FrameHistoryAverages::kFrames; ++i) {
+        ms[i] = 1000.0f / 60.0f;
+        logic[i] = 1;
+    }
+    float avg_ms = 0, worst = 0, fps = 0;
+    double logic_rate = 0;
+    overlay::FrameHistoryAverages::compute(ms, logic, avg_ms, worst, fps, logic_rate);
+    assert(fps > 59.9f && fps < 60.1f);
+    assert(logic_rate > 59.9 && logic_rate < 60.1);
     a.reset(); assert(!a.started);
     auto root = std::filesystem::temp_directory_path() / "nsmbu-telemetry-test";
     std::filesystem::create_directories(root / "class/kgsl/kgsl-3d0");

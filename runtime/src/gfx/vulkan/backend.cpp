@@ -1564,6 +1564,7 @@ void repeat_present() {
       drcScan, drcScan ? float(drcScan->extent.width) : 0, drcScan ? float(drcScan->extent.height) : 0,
       layerW, layerH, R.frame);
   set_present_plan(&plan);
+  gx2::pace_host_present();
   set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
   g_acquire_timeout_ns = 0;
   g_presented = false;
@@ -1609,7 +1610,10 @@ void swap() {
   set_present_plan(&plan);
 
   if (delay > 0) set_overlay_draw(nullptr);
-  else set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
+  else {
+    gx2::pace_host_present();
+    set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
+  }
   take_screenshots(plan);
   bool sampled[2] = {};
   if (plan.sample_auto && drcScan) {
@@ -2792,7 +2796,7 @@ void run_main_loop() {
       char title[window_title::kCap];
       window_title::format_base(title, sizeof title);
       if (build::dev() && gx2::uncapped())
-        std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
+        std::strncat(title, " | FAST FORWARD", sizeof title - std::strlen(title) - 1);
       static char lastTitle[window_title::kCap];
       if (strcmp(title, lastTitle)) {
         memcpy(lastTitle, title, sizeof lastTitle);

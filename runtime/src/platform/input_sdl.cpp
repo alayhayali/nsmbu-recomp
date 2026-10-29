@@ -213,6 +213,11 @@ static bool overlay_event(const SDL_Event& event){
   float y=event.wheel.y,x=event.wheel.x;if(event.wheel.direction==SDL_MOUSEWHEEL_FLIPPED){x=-x;y=-y;}
   return overlay::mouse_wheel(x,y);
  }
+ case SDL_EVENT_TEXT_INPUT:{
+  if(event.text.windowID!=tv)return false;
+  if(!overlay::is_open())return false;
+  return overlay::text(event.text.text);
+ }
  default:return false;
  }
 }
@@ -515,6 +520,15 @@ void update(){
     SDL_SetTextInputArea(ws[i],&area,0);SDL_StartTextInput(ws[i]);
    }
    SDL_free(ws);
+  }
+ }
+ static bool overlay_text=false;
+ const bool overlay_wants_text=overlay::is_open()&&!text_entry::active()&&!g_done;
+ if(overlay_wants_text!=overlay_text){
+  overlay_text=overlay_wants_text;
+  if(g_prompt_window){
+   if(overlay_text)SDL_StartTextInput(g_prompt_window);
+   else if(!text_entry::active()&&!g_done)SDL_StopTextInput(g_prompt_window);
   }
  }
  post_test_keys();

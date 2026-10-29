@@ -28,6 +28,7 @@ bool mouse_move(float nx, float ny);
 bool mouse_button(int button, bool down);
 bool mouse_wheel(float dx, float dy);
 void set_density(float pixels_per_point);
+bool text(const char* utf8);
 
 ImDrawData* frame(float pw, float ph, void (*renderer_init)());
 void undo_frame_sample();
