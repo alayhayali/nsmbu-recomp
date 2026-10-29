@@ -37,7 +37,7 @@ void f_02AA56F4(Cpu* c);
 void imp_gx2_GX2DrawDone(Cpu* c);
 }
 
-namespace gx2 { bool uncapped(); void set_uncapped(bool on); }
+namespace gx2 { bool uncapped(); void set_uncapped(bool on); int gpu_frames_queued(); }
 
 namespace interp {
 
@@ -671,6 +671,7 @@ extern "C" void hook_024F30DC(Cpu* c) {
 
 namespace interp {
 void reset_pass_clock();
+void finish_wake();
 void ss_reset() {
     g_record_passes += 8;
     g_hold_next = false;
@@ -689,6 +690,7 @@ void ss_reset() {
     g_acc_ns = 0;
     g_wake_valid = false;
     reset_pass_clock();
+    finish_wake();
 }
 
 static const char* const g_env_paced = env::INTERP_PACED();
@@ -724,54 +726,58 @@ static uint64_t g_paced_holds = 0, g_paced_steps = 0, g_paced_presents = 0;
 static pacing::HoldShed g_shed;
 static pace_clock::time_point g_pass_begin{};
 static bool g_pass_begin_valid = false;
-static std::atomic<bool> g_course_load{false};
-static bool g_course_setup = false;
-static pacing::CourseOpen g_course_open;
-static int64_t g_last_logic_ns = 0;
+static bool g_wake_ready = false;
+static bool g_wake_hold = false;
+static bool g_wake_skip = false;
+static pacing::WakePlan g_wake_plan;
 
-bool course_loading() { return g_course_load.load(std::memory_order_relaxed); }
+static std::atomic<int> g_course_setup{0};
+void begin_course_setup() { g_course_setup.fetch_add(1, std::memory_order_relaxed); }
+void end_course_setup() { g_course_setup.fetch_sub(1, std::memory_order_relaxed); }
+bool course_setup_active() { return g_course_setup.load(std::memory_order_relaxed) > 0; }
 bool holds_shed() {
     if (unlocked()) return false;
-    return (g_shed.shed || course_loading()) && interp_on() && fps() > 60 && !fast_forward();
+    return g_shed.shed && interp_on() && fps() > 60 && !fast_forward();
 }
 bool refresh_boost() {
     if (fast_forward()) return false;
     if (unlocked()) return true;
-    return mode() == 1 && fps() > 60 && !course_loading();
+    return mode() == 1 && fps() > 60;
 }
 int refresh_request_hz(int max_hz) {
     if (max_hz <= 60 || fast_forward()) return 0;
     if (unlocked()) return max_hz;
-    if (course_loading()) return 60;
     if (mode() == 1 && fps() > 60) return std::min(fps(), max_hz);
     return 0;
 }
-void set_course_load(bool on) {
-    if (g_course_load.exchange(on, std::memory_order_relaxed) == on) return;
-    g_course_setup = false;
-    g_course_open = {};
-    if (unlocked()) return;
-    LOG("[interp] %s", on ? "course load: 60 fps until the course is on screen" : "course ready");
+void prepare_wake() {
+    if (g_wake_ready) return;
+    const bool shed = holds_shed();
+    g_frame_n = shed ? 1 : frames_per_step();
+    g_step_n = std::max(0, g_frame_n - 1);
+    g_granule.store(unlocked() ? 1 : pacing::present_granule(shed ? 60 : output_fps()), std::memory_order_relaxed);
+    const auto now = pace_clock::now();
+    int64_t dt = 0;
+    if (g_wake_valid) dt = std::chrono::duration_cast<std::chrono::nanoseconds>(now - g_last_wake).count();
+    g_last_wake = now;
+    g_wake_valid = true;
+    const bool interpolate = !gx2::uncapped() && !shed && (unlocked() || (interp_on() && output_fps() != 60));
+    const int queued = gx2::gpu_frames_queued();
+    pacing::WakePlan plan = pacing::advance_accumulator(g_acc_ns, dt, interpolate, pacing::logic_step_budget(queued));
+    if (interpolate && plan.logic_steps == 0 && g_logic_steps == 0) {
+        plan.logic_steps = 1;
+        plan.t = 1.f;
+        plan.acc_ns = 0;
+    }
+    g_acc_ns = plan.acc_ns;
+    g_blend_t = interpolate ? plan.t : 1.f;
+    g_exact_step = !interpolate || plan.logic_steps > 0;
+    g_wake_plan = plan;
+    g_wake_hold = interpolate && plan.logic_steps == 0;
+    g_wake_skip = pacing::skip_extra_course_draw(g_wake_hold, course_play_active(), queued);
+    g_wake_ready = true;
 }
-void note_course_setup() {
-    if (course_loading()) g_course_setup = true;
-}
-static bool fader_busy(Cpu* c) {
-    const uint32_t scene = ld32(GD(0x101E7B28));
-    if (scene < mem::kMem2Start || scene >= mem::kMem2End) return true;
-    const uint32_t fader = ld32(scene + 0x68);
-    if (fader < mem::kMem2Start || fader >= mem::kMem2End) return true;
-    return guest_call(c, GC(0x02983B28), {fader}) != 0;
-}
-void tick_course_open(Cpu* c) {
-    if (!course_loading()) return;
-    const bool setup = g_course_setup;
-    const bool area = course_play_active();
-    const bool busy = setup && area && fader_busy(c);
-    const bool heavy = g_last_logic_ns > pacing::kLogicStepNs;
-    if (!pacing::course_open_ready(g_course_open, setup, area, busy, heavy)) return;
-    set_course_load(false);
-}
+void finish_wake() { g_wake_ready = false; }
 void reset_pass_clock() { g_pass_begin_valid = false; }
 void begin_pass_clock() {
     g_pass_begin = pace_clock::now();
@@ -783,7 +789,6 @@ void finish_logic_pass() {
     const bool have = g_pass_begin_valid;
     if (have) work = std::chrono::duration_cast<std::chrono::nanoseconds>(pace_clock::now() - g_pass_begin).count();
     g_pass_begin_valid = false;
-    g_last_logic_ns = have ? work : 0;
     const bool apply = !unlocked() && interp_on() && fps() > 60 && !fast_forward();
     const int64_t slot = apply ? pacing::shed_slot_ns(fps()) : 0;
     if (!have && slot > 0) return;
@@ -868,50 +873,31 @@ extern "C" void hook_029C52CC(Cpu* c) {
             g_blend_t = 1.f;
             f_029C52CC_orig(c);
             finish_logic_pass();
-            tick_course_open(c);
+            finish_wake();
             status_trace::on_logic_step(logic_steps());
             return;
         }
     }
+    prepare_wake();
     const uint32_t self = c->r[3];
     g_pass_valid = true;
     g_passes++;
     g_present_i++;
-    const bool shed = holds_shed();
-    g_frame_n = shed ? 1 : frames_per_step();
-    g_step_n = std::max(0, g_frame_n - 1);
-    g_granule.store(unlocked() ? 1 : pacing::present_granule(shed ? 60 : output_fps()), std::memory_order_relaxed);
 
-    const auto now = pace_clock::now();
-    int64_t dt = 0;
-    if (g_wake_valid) dt = std::chrono::duration_cast<std::chrono::nanoseconds>(now - g_last_wake).count();
-    g_last_wake = now;
-    g_wake_valid = true;
-
-    const bool interpolate = !gx2::uncapped() && !shed && (unlocked() || (interp_on() && output_fps() != 60));
-    pacing::WakePlan plan = pacing::advance_accumulator(g_acc_ns, dt, interpolate);
-    if (interpolate && plan.logic_steps == 0 && g_logic_steps == 0) {
-        plan.logic_steps = 1;
-        plan.t = 1.f;
-        plan.acc_ns = 0;
-    }
-    g_acc_ns = plan.acc_ns;
-    g_blend_t = interpolate ? plan.t : 1.f;
-    g_exact_step = !interpolate || plan.logic_steps > 0;
-
-    if (interpolate && plan.logic_steps == 0) {
+    if (g_wake_hold) {
         g_phase = std::min(g_phase + 1, std::max(1, g_step_n));
         g_hold = true;
         g_logic_pass = false;
         g_hold_next = true;
         note_present_share(true);
-        apply_hold_camera(c);
-        c->r[3] = self;
-        {
+        if (!g_wake_skip) {
+            apply_hold_camera(c);
+            c->r[3] = self;
             PassTimer timer(1);
             f_029C5104(c);
         }
         discard_pass_clock();
+        finish_wake();
         return;
     }
 
@@ -919,7 +905,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
     g_logic_pass = true;
     g_hold_next = false;
     g_phase = 0;
-    const int steps = std::max(1, plan.logic_steps);
+    const int steps = std::max(1, g_wake_plan.logic_steps);
     for (int i = 0; i < steps; i++) {
         g_logic_steps++;
         g_record_passes++;
@@ -929,7 +915,7 @@ extern "C" void hook_029C52CC(Cpu* c) {
     }
     note_present_share(false);
     finish_logic_pass();
-    tick_course_open(c);
+    finish_wake();
     status_trace::on_logic_step(g_logic_steps);
     model_stats_report();
     static uint64_t n = 0, t0 = timebase::now(), f0 = 0;
@@ -945,7 +931,10 @@ extern "C" void hook_029C52CC(Cpu* c) {
 extern "C" void hook_029C4FE4(Cpu* c) {
     using namespace interp;
     begin_pass_clock();
-    if (enabled() && g_hold && !course_play_active()) return;
+    if (enabled()) {
+        prepare_wake();
+        if (g_wake_skip || (g_hold && !course_play_active())) return;
+    }
     f_029C4FE4_orig(c);
     if (!g_models_on || !enabled() || !course_play_active() || g_exact_step || !model_subst_pending()) return;
     imp_gx2_GX2DrawDone(c);

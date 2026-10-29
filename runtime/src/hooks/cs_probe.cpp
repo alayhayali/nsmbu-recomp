@@ -261,7 +261,6 @@ extern "C" void nsmbu_fill_course_banner_digits(void) {}
 
 extern "C" void hook_02994164(Cpu* c) {
     uint32_t factory = ld32(c->r[5] + 4);
-    interp::set_course_load(factory == GC(0x0202B4C8));
     if (factory == GC(0x0202B4C8)) g_left_course = false;
     if (factory == GC(0x0298AD3C))
         LOG("[scene] FileSelect (controller %s)", input::pro_controller() ? "Pro" : "GamePad");
@@ -277,12 +276,10 @@ extern "C" void hook_02994164(Cpu* c) {
 extern "C" void hook_029CBBB4(Cpu*) {}
 
 extern "C" void hook_024BD86C(Cpu* c) {
-    if (mods::lua_sdk::story_leave_pending()) {
-        interp::set_course_load(false);
-        return;
-    }
+    if (mods::lua_sdk::story_leave_pending()) return;
+    interp::begin_course_setup();
     f_024BD86C_orig(c);
-    interp::note_course_setup();
+    interp::end_course_setup();
 }
 
 extern "C" void hook_025CF020(Cpu* c) {

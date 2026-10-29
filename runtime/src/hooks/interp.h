@@ -42,9 +42,9 @@ int frames_per_step();
 bool holds_shed();
 bool refresh_boost();
 int refresh_request_hz(int max_hz);
-bool course_loading();
-void set_course_load(bool on);
-void note_course_setup();
+void begin_course_setup();
+void end_course_setup();
+bool course_setup_active();
 
 bool paced_interpolation();
 void set_paced_interpolation(bool on);

@@ -109,8 +109,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
-- Opening a course from the map stays at 60 fps until that course is on screen and the fade has finished.
-  The display switches to a 60 Hz mode for that open, then back to the frame rate you picked.
+- Black loading screens at a higher frame rate no longer sit still while a loader waits on the draw lock.
+  That covers the first load, the save file, and a level.
+  Each picture still uses the frame rate you picked.
+  While that loader is waiting, the frame wait leaves the lock free so the screen can move on.
 - LuaJIT `make clean` uses the same compiler as the build, so an Android configure does not wipe the desktop `libluajit.a`, and a desktop configure does not wipe the Android one.
 - Windows on ARM64 crash logs list the faulting instruction first in the host backtrace (same CONTEXT unwind as x64), so release CI `crash_log_module` passes on `windows-arm64`.
 - Settings text fields (including the custom frame rate) accept keyboard input while the overlay is open.

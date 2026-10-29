@@ -325,23 +325,13 @@ static void test_hold_shed() {
     CHECK(note_load_latch(latch, true));
     CHECK(latch.left == kLoadLatchFrames - 1);
 
-    CourseOpen open;
-    CHECK(!course_open_ready(open, false, false, true, true));
-    CHECK(!course_open_ready(open, true, false, true, false));
-    CHECK(open.after == 0);
-    for (int i = 0; i < kCourseSettleFrames - 1; i++)
-        CHECK(!course_open_ready(open, true, true, false, false));
-    CHECK(course_open_ready(open, true, true, false, false));
-    CourseOpen hitch;
-    CHECK(!course_open_ready(hitch, true, true, false, false));
-    CHECK(!course_open_ready(hitch, true, true, true, false));
-    CHECK(hitch.settle == 0);
-    CHECK(!course_open_ready(hitch, true, true, false, true));
-    CHECK(hitch.settle == 0);
-    CourseOpen cap;
-    for (int i = 0; i < kCourseOpenMaxFrames - 1; i++)
-        CHECK(!course_open_ready(cap, true, true, true, true));
-    CHECK(course_open_ready(cap, true, true, true, true));
+    CHECK(!skip_extra_course_draw(false, true, 2));
+    CHECK(!skip_extra_course_draw(true, false, 2));
+    CHECK(!skip_extra_course_draw(true, true, 0));
+    CHECK(skip_extra_course_draw(true, true, 1));
+    CHECK(logic_step_budget(0) == kMaxLogicStepsPerWake);
+    CHECK(logic_step_budget(1) == 1);
+    CHECK(logic_step_budget(4, 2) == 1);
 }
 
 static void test_present_spacing() {

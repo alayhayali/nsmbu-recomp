@@ -729,7 +729,21 @@ namespace gx2 { uint64_t flips_presented() { return __atomic_load_n(&g_flip_coun
 static uint32 g_swap_interval = 1;
 namespace interp { uint32_t effective_swap_interval(uint32_t game); uint64_t logic_steps(); int vsync_granule(); }
 static std::mutex g_flip_mutex;
-namespace gx2 { uint64_t swap_count() { std::lock_guard<std::mutex> lk(g_flip_mutex); return g_swap_count; } }
+namespace gx2 {
+uint64_t swap_count() { std::lock_guard<std::mutex> lk(g_flip_mutex); return g_swap_count; }
+int gpu_frames_queued() {
+    if (!render::g_backend || !render::g_backend->frames_completed) return 0;
+    const uint64_t done = render::frames_completed();
+    uint64_t swaps;
+    {
+        std::lock_guard<std::mutex> lk(g_flip_mutex);
+        swaps = g_swap_count;
+    }
+    if (swaps <= done) return 0;
+    const uint64_t n = swaps - done;
+    return n > 1000 ? 1000 : (int)n;
+}
+}
 static const auto g_vsync_epoch = std::chrono::steady_clock::now();
 static constexpr int64_t kDefaultVsyncNs = 16683333;
 static std::atomic<int64_t> g_vsync_period_ns{kDefaultVsyncNs};
@@ -838,6 +852,8 @@ static void capped_vsync_ready_flip_last_wake(uint64_t granule) {
     capped_vsync_note_wake(granule);
 }
 static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void (*before_resume)()) {
+    if (interp::course_setup_active() || threads::draw_lock_waiters() > 0)
+        threads::park_sleep_until(std::chrono::steady_clock::now() + std::chrono::milliseconds(8), false, nullptr);
     const auto now = std::chrono::steady_clock::now();
     if (capped_vsync_same_frame(granule, now)) {
         const int64_t since = g_capped_vsync_last_wake_valid

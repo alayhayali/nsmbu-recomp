@@ -126,8 +126,15 @@ inline int64_t present_period_ns(int present_cap) {
 constexpr int kShedResumeFrames = 8;
 constexpr int kRefreshResumeFrames = 48;
 constexpr int kLoadLatchFrames = 300;
-constexpr int kCourseSettleFrames = 45;
-constexpr int kCourseOpenMaxFrames = 300;
+
+inline bool skip_extra_course_draw(bool hold, bool course_play, int frames_queued) {
+    return hold && course_play && frames_queued > 0;
+}
+
+inline int logic_step_budget(int frames_queued, int max_steps = kMaxLogicStepsPerWake) {
+    if (frames_queued > 0) return 1;
+    return std::max(1, max_steps);
+}
 
 inline int64_t shed_slot_ns(int chosen_fps) {
     if (chosen_fps <= 60) return 0;
@@ -177,25 +184,6 @@ struct RefreshHold {
 struct LoadLatch {
     int left = 0;
 };
-
-struct CourseOpen {
-    int after = 0;
-    int settle = 0;
-};
-
-inline bool course_open_ready(CourseOpen& o, bool setup, bool area, bool fader_busy, bool heavy) {
-    if (!setup || !area) {
-        o.after = 0;
-        o.settle = 0;
-        return false;
-    }
-    if (++o.after >= kCourseOpenMaxFrames) return true;
-    if (fader_busy || heavy) {
-        o.settle = 0;
-        return false;
-    }
-    return ++o.settle >= kCourseSettleFrames;
-}
 
 inline bool note_load_latch(LoadLatch& l, bool trip) {
     if (trip) l.left = kLoadLatchFrames;
