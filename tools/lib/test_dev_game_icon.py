@@ -50,10 +50,11 @@ class DevGameIcon(unittest.TestCase):
                 f.write("#!/usr/bin/env python3\nimport sys, os\n"
                         "out = os.path.join(os.path.dirname(__file__), 'app', 'local-res')\n"
                         "os.makedirs(out)\n")
-            with patch.object(dev_game_icon, "ROOT", root):
-                with patch.object(dev_game_icon, "MAKE_ICON", script):
-                    with patch.object(dev_game_icon.gv, "active_dir", return_value=dump):
-                        self.assertTrue(dev_game_icon.refresh_android_local_icon(root))
+            with patch.dict(os.environ, {"CI": "", "GITHUB_ACTIONS": ""}, clear=False):
+                with patch.object(dev_game_icon, "ROOT", root):
+                    with patch.object(dev_game_icon, "MAKE_ICON", script):
+                        with patch.object(dev_game_icon.gv, "active_dir", return_value=dump):
+                            self.assertTrue(dev_game_icon.refresh_android_local_icon(root))
 
 
 if __name__ == "__main__":
