@@ -7,6 +7,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+- macOS builds pass the deployment target when they clean LuaJIT.
 - Release builds download the Android compiler and the AppImage runtime from nsmbu-recomp/ci-assets.
   A manual workflow in that repo builds the Android compiler.
 
