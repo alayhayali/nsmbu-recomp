@@ -17,6 +17,9 @@
 #include "core/runtime.h"
 
 #include "core/env.h"
+#ifdef __ANDROID__
+#include "platform/touch_buttons.h"
+#endif
 namespace gfx {
 
 const char* const kModeNames[kDrcModeCount] = {"window", "pip", "auto", "off", "gamepad"};
@@ -282,7 +285,11 @@ bool view_button_enabled() {
         return e && atoi(e) != 0;
 #endif
     }();
+#ifdef __ANDROID__
+    return on && touch_buttons::visible_now();
+#else
     return on;
+#endif
 }
 
 static Box view_button(float dw, float dh) {

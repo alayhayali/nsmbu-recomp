@@ -7,39 +7,49 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+- macOS builds pass the deployment target when they clean LuaJIT.
+- Release builds download the Android compiler and the AppImage runtime from nsmbu-recomp/ci-assets.
+  A manual workflow in that repo builds the Android compiler.
+
 ### Added
 
 - iOS and iPadOS build (`ios/build_ios.sh`, [docs/ios.md](docs/ios.md)): the Metal renderer in a UIKit app with on-screen controls, game controllers and hardware keyboards.
   Picture-in-picture puts the GamePad picture over the TV picture, where it takes touches.
 - Metal decodes BC1–5 textures on upload when the GPU cannot sample them.
 
-### Changed
-
-- Guest-code notes live in the docs.
-  The guest skill is gone.
-- The GamePad screen starts off.
-  Off is the first choice in Settings.
-- Internal resolution adds 360p and 540p for slower machines.
-  The choices read 360p, 540p, 720p, 1080p, 1440p, and 2160p/4K.
-  720p is the Wii U picture.
-  Lower choices draw fewer pixels and are scaled up to the window.
-  R cycles the list.
-- Translating the game to C uses every CPU core, so install and a full recompile finish sooner.
-- The TV window title shows the NSMBU release version and the installed game build (for example `v0.7.2 - USA v64`, or `0.7.2 git - EU v0` on a local build).
-- A later release tag reuses the Linux compiler cache, so that build compiles less.
-
 ### Fixed
 
 - iOS: the on-screen stick works while the GamePad picture fills the screen, as on the world map.
-- 60 fps stays at 60 when a higher rate was used earlier.
-  The performance overlay no longer reports that higher rate.
-- Vulkan prefers a dedicated GPU when one can draw the game windows.
-  Graphics (` or F12) can prefer dedicated, prefer integrated, or one listed card.
-  The choice applies on the next start.
-  `NSMBU_VK_GPU` overrides it for that start.
-- The TV window title uses ASCII separators so punctuation no longer shows as garbled text on some systems.
-- Metal: a new render target starts with the texels already in guest memory.
-  A course's static tiles drawn from its working tileset, such as the used block after hitting a ? block, were invisible.
+- iOS builds give LuaJIT's clean step the iOS SDK, as its build step has.
+
+## [0.8.0] - 2026-10-30
+
+### Added
+
+- Android setup app for phones and emulators.
+  You add your own game; the download does not include game code.
+  Touch controls, full screen, and save import and export are included.
+- Frame rate choices: unlocked, a custom rate from 60 to 1000, a 30 fps preset, and 360p and 540p internal resolution.
+- Start and Select together, or R3, open Settings, as well as `` ` `` or F12.
+- Windows on ARM64 builds.
+
+### Changed
+
+- The GamePad screen starts off.
+- High frame rates keep normal game speed.
+- Android Settings is larger and easier to use with touch or a controller.
+- Setup and a full recompile use every CPU core, so they finish sooner.
+
+### Fixed
+
+- High frame rates no longer stall on black loading screens or make Mario jitter, and they hold the rate you pick.
+  A logic step that runs a little long no longer drops the picture rate back to 60.
+- On Android, the Controls diagram no longer overlaps the options.
+- 30 fps no longer crashes on some screen changes, and switching back to 60 fps stays at 60.
+- Settings text fields accept keyboard input while the overlay is open.
+- You can pick which graphics card Vulkan uses.
+  On Metal, used ? blocks stay visible.
+  The window title no longer shows garbled punctuation.
 
 ## [0.7.2] - 2026-10-27
 
@@ -70,6 +80,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 - On 21:9, the title screen no longer shows a one-pixel bright column on the far right.
 - On 21:9, the world map no longer shows dark bars just outside the old 16:9 frame.
 - Ultrawide no longer stretches the GamePad picture; only the TV view grows.
+
+## [0.7.0] - 2026-10-26
 
 ### Added
 
@@ -301,7 +313,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - The TV and GamePad present together on one vsync.
 
-[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.3...v0.7.0

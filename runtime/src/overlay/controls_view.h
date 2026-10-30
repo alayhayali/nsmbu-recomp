@@ -3,7 +3,17 @@
 #pragma once
 #include "input/input_map.h"
 
+#include <algorithm>
+
 namespace overlay {
+
+constexpr float kControlsRefW = 1060.0f;
+constexpr float kControlsRefH = 380.0f;
+
+inline float controls_fit_scale(float w, float h) {
+    if (!(w > 1.0f) || !(h > 1.0f)) return 0.05f;
+    return std::clamp(std::min(w / kControlsRefW, h / kControlsRefH), 0.05f, 1.3f);
+}
 
 enum { kColKey0, kColKey1, kColPad, kColAny };
 

@@ -85,6 +85,7 @@ static void load_prefs() {
     if (saved(@"interpFps", {env::INTERP_FPS})) interp::set_fps([pref(@"interpFps") intValue]);
     if (saved(@"fps60", {env::INTERP, env::INTERP_FPS})) interp::set_mode([pref(@"fps60") intValue]);
     if (saved(@"fps60Paced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(60, [pref(@"fps60Paced") boolValue]);
+    if (saved(@"fpsUnlocked", {env::INTERP_FPS}) && [pref(@"fpsUnlocked") boolValue]) interp::set_unlocked(true);
     if (saved(@"fpsHighPaced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(120, [pref(@"fpsHighPaced") boolValue]);
     if (saved(@"aspect", {env::ASPECT})) aspect::apply_choice([pref(@"aspect") UTF8String]);
 #ifdef NSMBU_HAS_VULKAN
@@ -97,7 +98,10 @@ static void save_prefs() {
     if (!env_set({env::ANISO})) set_pref(@"aniso", @(render::aniso()));
     if (!env_set({env::FXAA})) set_pref(@"fxaa", @(render::fxaa()));
     if (!env_set({env::INTERP, env::INTERP_FPS})) set_pref(@"fps60", @(interp::mode()));
-    if (!env_set({env::INTERP_FPS})) set_pref(@"interpFps", @(interp::fps()));
+    if (!env_set({env::INTERP_FPS})) {
+        set_pref(@"interpFps", @(interp::fps()));
+        set_pref(@"fpsUnlocked", @(interp::unlocked()));
+    }
     if (!env_set({env::ASPECT})) {
         char aspect[32];
         aspect::choice_text(aspect, sizeof aspect);

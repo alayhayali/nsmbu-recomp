@@ -2,6 +2,7 @@
 from pathlib import Path
 import ast
 import importlib.util
+import json
 import shutil
 import subprocess
 import sys
@@ -15,7 +16,7 @@ import package
 
 class SDKPackage(unittest.TestCase):
     def test_platform_sdk_archives_pass_guard(self):
-        for platform in ("macos-arm64", "linux-x86_64", "linux-aarch64", "windows-x86_64"):
+        for platform in ("macos-arm64", "linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-arm64"):
             with self.subTest(platform=platform), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp) / ("NSMBU-test-" + platform)
                 package.copy_sdk_headers(str(root))
@@ -30,6 +31,14 @@ class SDKPackage(unittest.TestCase):
                 problems, count = guard.scan(str(archive))
                 self.assertEqual(count, 4)
                 self.assertEqual(problems, [])
+
+    def test_sdk_manifest_fields(self):
+        manifest = package.sdk_manifest("v1", "android-arm64-v8a", "android-ndk", "libgame.so", "/ndk/bin/clang++",
+                                        ["-O3"], ["{gamecode}", "-o", "{out}"])
+        self.assertEqual(manifest["format"], 1)
+        self.assertEqual(manifest["built_with"], "clang++")
+        self.assertEqual(manifest["runtime_files"], [])
+        self.assertEqual(manifest["link"], ["{gamecode}", "-o", "{out}"])
 
     def test_installer_local_imports_are_shipped(self):
         installer = Path(package.ROOT) / "tools/installer"
@@ -108,6 +117,19 @@ class SDKPackage(unittest.TestCase):
                      str(root / "tools/installer/setup.py")],
                     cwd=tmp, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_windows_python_pins_match_their_file_lists(self):
+        pins = json.loads((Path(package.ROOT) / "tools/installer/toolchains.json").read_text())["python"]
+        for pin, listing, platform in (("windows", "python-windows-files.json", "windows-x86_64"),
+                                       ("windows-arm64", "python-windows-arm64-files.json", "windows-arm64")):
+            with self.subTest(platform=platform):
+                files = json.loads((Path(package.ROOT) / "tools/release" / listing).read_text())
+                self.assertEqual(files["sha256"], pins[pin]["sha256"])
+                self.assertEqual(files["url"], pins[pin]["url"])
+                self.assertTrue(guard.python_files("NSMBU-v1-%s.zip" % platform).endswith(listing))
+                self.assertTrue(guard.python_files("/x/NSMBU-v1-%s/" % platform).endswith(listing))
+                for name in ("python.exe", "pythonw.exe", "python3.dll", "python313.dll"):
+                    self.assertIn(name, files["files"])
 
     def test_guard_still_rejects_game_tree_and_function_body(self):
         problems = []

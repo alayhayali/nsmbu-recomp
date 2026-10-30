@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include "hooks/interp.h"
+#include "hooks/interp_pacing.h"
 #include "gx2/gx2.h"
 #include "core/env.h"
 namespace gfxvk {
@@ -46,7 +47,7 @@ bool present_mode_from_env() { return env_present_mode() >= 0; }
 bool present_mode_offered(int m) { return m >= 0 && m < kPresentModes && (g_offered.load() >> m & 1); }
 void set_present_modes_offered(unsigned mask) { g_offered = mask | 1u << kPresentFifo; }
 int effective_present_mode() {
-    if (!gx2::uncapped()) return present_mode();
+    if (!gx2::uncapped() && !interp::unlocked()) return present_mode();
     return present_mode_offered(kPresentImmediate) ? kPresentImmediate : present_mode_offered(kPresentMailbox) ? kPresentMailbox : kPresentFifo;
 }
 const char* present_mode_name(int m) { return m == kPresentMailbox ? "mailbox" : m == kPresentImmediate ? "immediate" : "fifo"; }
@@ -62,10 +63,11 @@ bool graphics_hotkey(char k,bool activate) {
     GraphicsFeature f;
     switch(k) {
     case 'R': if(activate) set_res_scale(gfx::next_res_preset(requested_res_scale())); return true;
-    case '6': if(activate) interp::set_mode(0); return true;
+    case '6': if(activate) { interp::set_fast_forward(false); interp::set_fps(60); interp::set_mode(0); } return true;
     case '7': if(activate) {
-        static const int order[] = {60, 120, 144, 165, 240};
-        const int n = int(sizeof order / sizeof order[0]);
+        interp::set_fast_forward(false);
+        int n = 0;
+        const int* order = interp::pacing::fps_ladder(n);
         const int cur = interp::mode() == 1 ? interp::fps() : 60;
         int next = 120;
         for (int i = 0; i < n; i++) if (order[i] == cur) next = order[(i + 1) % n];
@@ -74,6 +76,7 @@ bool graphics_hotkey(char k,bool activate) {
         return true;
     } return true;
     case '9': if(activate) {
+        if (interp::fast_forward()) { interp::set_fast_forward(false); return true; }
         static int last_rate = 165;
         if (interp::mode() == 1) {
             if (interp::fps() != 60) last_rate = interp::fps();

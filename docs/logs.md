@@ -28,12 +28,13 @@ Run and crash logs live under `…/logs/` next to settings (`host::log_dir()`).
 | Non-portable install on Windows | `%APPDATA%\NSMBU\logs\` |
 | Non-portable install on macOS | `~/Library/Application Support/NSMBU/logs/` |
 | Built from source (`nsmbu launch` / `nsmbu run`) | `<repo>/nsmbu/logs/` |
+| Android | `Android/data/org.nsmbrecomp.nsmbu/files/config/nsmbu/logs/` |
 
 On each start the previous `nsmbu.log` is renamed to `nsmbu-previous.log`.
 Then a new `nsmbu.log` is opened.
 Crash handlers write `crash-<date>-<time>.log` into the same folder.
 Set `NSMBU_LOG_FILE` to write somewhere else, or to `0` to skip the file.
-Android does not write a default log file unless `NSMBU_LOG_FILE` is set.
+On Android, **Share log** in the setup app shares `nsmbu.log` and `nsmbu-previous.log`.
 
 ## Setup logs
 

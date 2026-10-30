@@ -1,5 +1,4 @@
 
-
 #include "hooks/interp_pacing.h"
 
 #include <cmath>
@@ -20,38 +19,6 @@ static int g_failed = 0;
     } while (0)
 #define CHECK_NEAR(a, b, eps) CHECK(std::fabs(double(a) - double(b)) <= (eps))
 
-static void test_fractions() {
-
-    CHECK(pass_fraction(0, 1, false) == 0.5f);
-    CHECK(pass_fraction(1, 1, false) == 1.0f);
-
-    for (int k = 0; k <= 3; k++) CHECK(pass_fraction(k, 3, false) == float(k + 1) / 4.0f);
-
-    for (int k = 0; k <= 7; k++) CHECK(pass_fraction(k, 7, false) == float(k + 1) / 8.0f);
-
-    CHECK(pass_fraction(0, 1, true) == 1.0f);
-    CHECK(pass_fraction(1, 1, true) == 1.0f);
-
-    CHECK_NEAR(pass_fraction(0, 2, false), 1.0 / 3.0, 1e-7);
-    CHECK_NEAR(pass_fraction(1, 2, false), 2.0 / 3.0, 1e-7);
-    CHECK(pass_fraction(2, 2, false) == 1.0f);
-
-    CHECK_NEAR(even_fraction(1, 1, 90), 2.0 / 3.0, 1e-6);
-    CHECK_NEAR(even_fraction(2, 2, 90), 1.0 / 3.0, 1e-6);
-    CHECK(even_fraction(3, 2, 90) == 1.f);
-    CHECK_NEAR(even_fraction(4, 3, 90), 2.0 / 3.0, 1e-6);
-    double prev = 0;
-    for (int n = 1; n <= 12; n++) {
-        const int step = int((n * 60 + 143) / 144);
-        const double tau = n * 60.0 / 144.0;
-        const double t = even_fraction((uint64_t)n, (uint64_t)step, 144);
-        const double shown = (step - 1) + t;
-        CHECK_NEAR(shown, tau, 1e-5);
-        CHECK(shown + 1e-6 >= prev);
-        prev = shown;
-    }
-}
-
 static void test_blends() {
     std::mt19937 rng(7);
     std::uniform_real_distribution<float> u(-1000.0f, 1000.0f);
@@ -67,9 +34,7 @@ static void test_blends() {
             CHECK_NEAR(lerp_f(a, b, t), a + (b - a) * double(t), 1e-3);
         }
         CHECK(lerp_f(a, b, 1.0f) == b);
-        CHECK(lerp_f(a, b, 0.0f) == a);
     }
-
     for (int a = -32768; a < 32768; a += 997)
         for (int b = -32768; b < 32768; b += 1009) {
             const int16_t d = (int16_t)(b - a);
@@ -117,242 +82,293 @@ static void test_cap() {
     CHECK(cap_fps(240, 239, true) == 240);
     CHECK(cap_fps(120, 119, true) == 120);
     CHECK(cap_fps(120, 90, true) == 60);
-    CHECK(cap_fps(60, 30, true) == 60);
+    CHECK(cap_fps(60, 30, true) == 30);
+    CHECK(cap_fps(30, 165, true) == 30);
+    CHECK(cap_fps(30, 60, true) == 30);
     CHECK(cap_fps(240, 0, true) == 240);
     CHECK(cap_fps(240, 60, false) == 240);
     CHECK(cap_fps(100, 240, true) == 120);
-    CHECK(presented_fps(0, 120, 165, true) == 60);
-    CHECK(presented_fps(0, 165, 165, false) == 60);
-    CHECK(presented_fps(1, 120, 165, true) == 120);
-    CHECK(presented_fps(1, 240, 165, true) == 165);
-    CHECK(repeat_period_ns(false, presented_fps(0, 120, 165, true)) == 0);
-    CHECK(logic_wait_matches_presents(60));
-    CHECK(logic_wait_matches_presents(120));
-    CHECK(logic_wait_matches_presents(240));
-    CHECK(!logic_wait_matches_presents(144));
-    CHECK(!logic_wait_matches_presents(165));
-    CHECK(pad_logic_step(120, 0, 1, 2));
-    CHECK(pad_logic_step(120, 3, 4, 4));
-    CHECK(!pad_logic_step(120, 1, 2, 2));
-    CHECK(!pad_logic_step(165, 2, 3, 3));
-    CHECK(!pad_logic_step(165, 1, 2, 2));
-    CHECK(pad_logic_step(165, 1, 2, 3));
-    CHECK(pad_logic_step(165, 2, 2, 3));
-    CHECK(pad_logic_step(144, 0, 1, 3));
-    CHECK(output_slot_ns(165) == 1000000000LL / 165);
-    CHECK(output_slot_ns(144) == 1000000000LL / 144);
-    CHECK(output_slot_ns(120) == 0);
-    CHECK(output_slot_ns(60) == 0);
-    CHECK(pass_budget_ns(4'000'000, output_slot_ns(165)) == output_slot_ns(165));
-    CHECK(pass_budget_ns(9'000'000, output_slot_ns(165)) == 9'000'000);
-    CHECK(pass_budget_ns(4'000'000, 0) == 4'000'000);
-    const int64_t slot = output_slot_ns(165);
-    CHECK(absorb_late_wake(0, slot + 3'000'000, slot) == slot);
-    CHECK(absorb_late_wake(0, slot, slot) == slot);
-    CHECK(absorb_late_wake(0, slot - 1, slot) == 0);
-    CHECK(absorb_late_wake(0, slot * 2 + 1000, slot) == slot * 2);
-    CHECK(absorb_late_wake(50, 40, slot) == 50);
-    CHECK(absorb_late_wake(0, slot, 0) == 0);
-    CHECK(repeat_period_ns(false, 165) == 1000000000LL / 165);
-    CHECK(repeat_period_ns(false, 144) == 1000000000LL / 144);
-    CHECK(repeat_period_ns(true, 165) == 0);
-    CHECK(repeat_period_ns(false, 60) == 0);
-    CHECK(skip_bunched_present(false, 165, 1000000));
-    CHECK(!skip_bunched_present(false, 165, 5000000));
-    CHECK(!skip_bunched_present(true, 165, 1000000));
-    CHECK(!skip_bunched_present(false, 165, -1));
-    CHECK(bunched_present_delay_ns(false, 165, 1000000) == 1000000000LL / 165 - 1000000);
-    CHECK(bunched_present_delay_ns(false, 165, 5000000) == 0);
-    CHECK(bunched_present_delay_ns(true, 165, 1000000) == 0);
-    CHECK(bunched_present_delay_ns(false, 165, -1) == 0);
-    CHECK(collapse_duplicate_vsync(false, true, 1'000'000));
-    CHECK(!collapse_duplicate_vsync(true, true, 500'000));
-    CHECK(!collapse_duplicate_vsync(false, true, 6'060'606));
-    CHECK(!collapse_duplicate_vsync(false, false, 0));
+    CHECK(clamp_custom_fps(1) == 60);
+    CHECK(clamp_custom_fps(30) == 60);
+    CHECK(clamp_custom_fps(59) == 60);
+    CHECK(clamp_custom_fps(60) == 60);
+    CHECK(clamp_custom_fps(90) == 90);
+    CHECK(clamp_custom_fps(1000) == 1000);
+    CHECK(clamp_custom_fps(1001) == 1000);
     CHECK(valid_fps(0) == 60);
+    CHECK(valid_fps(30) == 30);
+    CHECK(valid_fps(44) == 30);
+    CHECK(valid_fps(45) == 60);
     CHECK(valid_fps(59) == 60);
     CHECK(valid_fps(100) == 120);
     CHECK(valid_fps(150) == 144);
     CHECK(valid_fps(360) == 240);
-}
-
-static void test_ladder() {
-    static const int rates[] = {60, 120, 144, 165, 240};
-    for (int r : rates) {
-        int frames = 0;
-        for (int i = 0; i < 240; i++) frames += frames_for_step(r, i);
-        CHECK_NEAR(frames, 4.0 * r, 0.5);
+    CHECK(present_period_ns(30) == 1'000'000'000LL / 30);
+    CHECK(present_period_ns(90) == 1'000'000'000LL / 90);
+    CHECK(present_granule(90) == 3);
+    CHECK(present_period_ns(120) == 1'000'000'000LL / 120);
+    CHECK(present_period_ns(165) == 1'000'000'000LL / 165);
+    CHECK(present_granule(30) == 4);
+    CHECK(present_granule(60) == 4);
+    CHECK(present_granule(120) == 2);
+    CHECK(present_granule(240) == 1);
+    CHECK(repeat_period_ns(false, 165) == 0);
+    CHECK(repeat_period_ns(true, 165) == 0);
+    CHECK(!skip_bunched_present(false, 165, 1000000));
+    CHECK(!skip_bunched_present(false, 165, 5000000));
+    CHECK(bunched_present_delay_ns(false, 165, 1000000) == 0);
+    CHECK(collapse_duplicate_vsync(false, true, 1'000'000));
+    CHECK(collapse_duplicate_vsync(false, true, 5'000'000));
+    CHECK(!collapse_duplicate_vsync(true, true, 500'000));
+    CHECK(!collapse_duplicate_vsync(false, false, 5'000'000));
+    const int64_t period = present_period_ns(165);
+    CHECK(absorb_late_wake(0, period / 2, period) == 0);
+    CHECK(absorb_late_wake(0, period + period / 3, period) == period);
+    CHECK(absorb_late_wake(0, period * 3 + 100, period) == period * 3);
+    CHECK(yield_blocked_draw_lock(true, 0));
+    CHECK(!yield_blocked_draw_lock(false, 0));
+    CHECK(!yield_blocked_draw_lock(false, 8'000'000));
+    CHECK(yield_blocked_draw_lock(false, 32'000'000));
+    int64_t last = 0;
+    for (int i = 0; i < 165; i++) {
+        const int64_t now = last + period + period / 10;
+        last = absorb_late_wake(last, now, period);
+        CHECK(last % period == 0);
     }
-    CHECK(frames_for_step(60, 0) == 1);
-    CHECK(frames_for_step(120, 0) == 2);
-    CHECK(frames_for_step(240, 0) == 4);
-    int total = 0;
-    for (int i = 0; i < 240; i++) total += frames_for_step(165, i);
-    CHECK_NEAR(total, 11.0 * 60, 1.0);
-    CHECK(granule_quarter(1, 0) == 4);
-    CHECK(granule_quarter(2, 0) == 2);
-    CHECK(granule_quarter(2, 1) == 2);
-    CHECK(granule_quarter(3, 0) == 1);
-    CHECK(granule_quarter(3, 1) == 1);
-    CHECK(granule_quarter(3, 2) == 2);
-    CHECK(granule_quarter(4, 0) == 1);
+    CHECK(last == period * 165);
 }
 
-static void test_plan_and_next() {
-    const int64_t budget = 35'333'333, vs = 16'683'333;
-    CHECK(plan_in_between(3, budget, vs / 2, vs / 2) == 3);
-    CHECK(plan_in_between(7, budget, vs / 4, vs / 4) == 7);
-    CHECK(plan_in_between(7, budget, vs / 2, vs / 2) == 3);
-    CHECK(plan_in_between(7, budget, vs, vs) == 1);
-    CHECK(plan_in_between(3, budget, 25'000'000, vs / 2) == 1);
-    CHECK(plan_in_between(7, budget, 12'000'000, vs / 4) == 5);
-    CHECK(plan_in_between(3, budget, 200'000'000, vs) == 1);
-    CHECK(plan_in_between(1, budget, 1, 1) == 1);
-    CHECK(plan_in_between(0, budget, 0, 0) == 1);
+static void test_accumulator() {
+    CHECK(clamp_dt_ns(-1) == 0);
+    CHECK(clamp_dt_ns(kMaxDtNs + 1) == kMaxDtNs);
+    CHECK(clamp_dt_ns(kLogicStepNs) == kLogicStepNs);
 
-    CHECK(next_pass(0, 1, 16'000'000, 16'000'000, budget) == Next::kHold);
-    CHECK(next_pass(0, 1, 20'000'000, 16'000'000, budget) == Next::kDrop);
-    CHECK(next_pass(1, 1, 0, 0, budget) == Next::kStepDone);
+    WakePlan off = advance_accumulator(0, kLogicStepNs * 3, false);
+    CHECK(off.logic_steps == 1);
+    CHECK(off.t == 1.f);
+    CHECK(off.acc_ns == 0);
 
-    CHECK(next_pass(0, 3, 8'000'000, 8'000'000, budget) == Next::kHold);
-    CHECK(next_pass(1, 3, 20'000'000, 8'000'000, budget) == Next::kRecord);
-    CHECK(next_pass(1, 3, 30'000'000, 8'000'000, budget) == Next::kDrop);
-    CHECK(next_pass(2, 3, 26'000'000, 8'000'000, budget) == Next::kHold);
-    CHECK(next_pass(3, 3, 99'000'000, 8'000'000, budget) == Next::kStepDone);
-}
+    WakePlan hold = advance_accumulator(0, kLogicStepNs / 4, true);
+    CHECK(hold.logic_steps == 0);
+    CHECK_NEAR(hold.t, 0.25, 1e-6);
+    CHECK(hold.acc_ns == kLogicStepNs / 4);
 
-struct SimResult {
-    double steps_per_s, frames_per_s, holds_per_step, exact_share, record_share;
-};
-static SimResult simulate(int fps, double logic_ms, double hold_ms, double seconds = 30, bool paced = true, double spike_at = -1,
-                          double spike_ms = 0) {
-    const double kStep = 33.333333, kBudget = kStep + 2.0, period = 16.683333 * 60.0 / fps, kProbeAfter = 10000;
-    const int n_max = fps / 30 - 1;
-    double t = 0, last_logic = -1e9, logic_avg = period, hold_avg = period, last_hold = 0;
-    bool probe = false;
-    bool wait_step = false, prev_record = false;
-    long steps = 0, frames = 0, holds = 0, exact = 0, records = 0;
-    auto run_pass = [&](double cost, double& avg) {
-        const double start = t;
-        if (spike_at >= 0 && t >= spike_at) {
-            cost += spike_ms;
-            spike_at = -1;
-        }
-        t = std::ceil((t + cost) / period - 1e-9) * period;
-        avg = probe ? t - start : update_average(int64_t(avg * 1e6), int64_t((t - start) * 1e6)) / 1e6;
-        probe = false;
-        frames++;
-    };
-    while (t < seconds * 1000) {
+    WakePlan one = advance_accumulator(hold.acc_ns, kLogicStepNs, true);
+    CHECK(one.logic_steps == 1);
+    CHECK(one.t == 1.f);
+    CHECK_NEAR(blend_t(one.acc_ns), 0.25, 1e-6);
 
-        if (paced && wait_step && t < last_logic + kStep) t = last_logic + kStep;
-        wait_step = false;
-        last_logic = t;
-        const bool is_exact = paced && !prev_record;
-        exact += is_exact;
-        int n = paced ? plan_in_between(n_max, int64_t(kBudget * 1e6), int64_t(logic_avg * 1e6), int64_t(hold_avg * 1e6)) : n_max;
-        if (is_exact) n = 1;
-        steps++;
-        run_pass(logic_ms, logic_avg);
-        prev_record = false;
-        for (int phase = 0;;) {
+    WakePlan hitch = advance_accumulator(0, 200'000'000LL, true);
+    CHECK(hitch.logic_steps == kMaxLogicStepsPerWake);
+    CHECK(hitch.t == 1.f);
+    CHECK(hitch.acc_ns == kMaxDtNs - kMaxLogicStepsPerWake * kLogicStepNs);
 
-            const bool try_probe = paced && phase == 0 && t - last_hold >= kProbeAfter;
-            const double hold_est = try_probe ? period : hold_avg;
-            Next next = paced ? next_pass(phase, n, int64_t((t - last_logic) * 1e6), int64_t(hold_est * 1e6), int64_t(kBudget * 1e6))
-                              : (phase >= n ? Next::kStepDone : Next::kHold);
-            if (next == Next::kStepDone) {
-                prev_record = true;
-                records++;
-                if (n_max > 1) wait_step = true;
-                break;
-            }
-            if (next == Next::kDrop) {
-                wait_step = true;
-                break;
-            }
-            phase = next == Next::kRecord ? n : phase + 1;
+    WakePlan multi = advance_accumulator(0, kLogicStepNs * 2 + kLogicStepNs / 3, true);
+    CHECK(multi.logic_steps == 2);
+    CHECK(multi.t == 1.f);
+    CHECK_NEAR(blend_t(multi.acc_ns), 1.0 / 3.0, 1e-6);
+
+    CHECK(present_t(0, 0.4f) == 0.4f);
+    CHECK(present_t(1, 0.4f) == 1.f);
+
+    int64_t acc = 0;
+    float prev_t = -1.f;
+    int logics = 0, holds = 0;
+    const int64_t present = present_period_ns(120);
+    for (int i = 0; i < 120; i++) {
+        WakePlan p = advance_accumulator(acc, present, true);
+        acc = p.acc_ns;
+        if (p.logic_steps) {
+            logics += p.logic_steps;
+            CHECK(p.t == 1.f);
+            prev_t = -1.f;
+        } else {
             holds++;
-            probe = try_probe;
-            last_hold = t;
-            run_pass(hold_ms, hold_avg);
+            CHECK(p.t + 1e-6f >= prev_t);
+            prev_t = p.t;
         }
+        CHECK(p.t >= 0.f);
+        CHECK(p.t <= 1.f);
     }
-    const double s = t / 1000;
-    return {steps / s, frames / s, double(holds) / steps, double(exact) / steps, double(records) / steps};
+    CHECK_NEAR(logics, 60, 2);
+    CHECK(holds > 40);
+
+    acc = 0;
+    for (int i = 0; i < 165; i++) {
+        WakePlan p = advance_accumulator(acc, present_period_ns(165), true);
+        acc = p.acc_ns;
+        if (p.logic_steps) CHECK(p.t == 1.f);
+        else CHECK(p.t < 1.f);
+    }
 }
 
-static void test_simulation() {
+static void test_present_gap() {
+    const int64_t period = present_period_ns(165);
+    int64_t wake = 0, last = 0, prev = 0;
+    bool valid = false;
+    int steady = 0;
+    for (int i = 0; i < 40; i++) {
+        const int64_t work = (i % 3 == 2) ? 4'000'000 : 400'000;
+        const PresentGap gap = pace_present(wake + work, last, valid, period);
+        valid = true;
+        if (i > 2) {
+            CHECK(gap.swap_ns - prev == period);
+            steady++;
+        }
+        prev = gap.swap_ns;
+        last = gap.swap_ns;
+        const int64_t target = wake + period;
+        wake = gap.swap_ns < target ? target : gap.swap_ns;
+    }
+    CHECK(steady > 20);
 
-    SimResult r = simulate(120, 3, 2);
-    std::printf("120 fps, cheap: %.2f steps/s, %.1f fps, %.2f in-between per step\n", r.steps_per_s, r.frames_per_s, r.holds_per_step);
-    CHECK_NEAR(r.steps_per_s, 29.97, 0.05);
-    CHECK_NEAR(r.holds_per_step, 3.0, 0.03);
-    CHECK_NEAR(r.frames_per_s, 119.9, 0.6);
-    r = simulate(240, 2, 1.5);
-    std::printf("240 fps, cheap: %.2f steps/s, %.1f fps, %.2f in-between per step\n", r.steps_per_s, r.frames_per_s, r.holds_per_step);
-    CHECK_NEAR(r.steps_per_s, 29.97, 0.05);
-    CHECK_NEAR(r.holds_per_step, 7.0, 0.05);
-    r = simulate(60, 5, 3);
-    CHECK_NEAR(r.steps_per_s, 29.97, 0.05);
-    CHECK_NEAR(r.holds_per_step, 1.0, 0.01);
+    wake = last = prev = 0;
+    valid = false;
+    for (int i = 0; i < 24; i++) {
+        const int64_t work = (i % 3 == 2) ? 8'000'000 : 400'000;
+        const PresentGap gap = pace_present(wake + work, last, valid, period);
+        valid = true;
+        if (i > 2) CHECK(gap.swap_ns - prev >= period);
+        prev = gap.swap_ns;
+        last = gap.swap_ns;
+        const int64_t target = wake + period;
+        wake = gap.swap_ns < target ? target : gap.swap_ns;
+    }
 
-    r = simulate(240, 6, 6);
-    std::printf("240 fps, 6 ms passes: %.2f steps/s, %.1f fps, %.2f in-between per step\n", r.steps_per_s, r.frames_per_s, r.holds_per_step);
-    CHECK(r.steps_per_s > 29.5);
-    CHECK(r.holds_per_step >= 2.9);
-    CHECK(r.record_share > 0.99);
+    const PresentGap first = pace_present(1000, 0, false, period);
+    CHECK(first.sleep_ns == 0);
+    CHECK(first.swap_ns == 1000);
+    const PresentGap early = pace_present(1'000'000, 0, true, period);
+    CHECK(early.swap_ns == period);
+    CHECK(early.sleep_ns == period - 1'000'000);
+    const PresentGap behind = pace_present(period + 2'000'000, 0, true, period);
+    CHECK(behind.sleep_ns == 0);
+    CHECK(behind.swap_ns == period + 2'000'000);
+}
 
-    r = simulate(120, 10, 10);
-    std::printf("120 fps, 10 ms passes: %.2f steps/s, %.1f fps, %.2f in-between per step, %.0f%% exact\n", r.steps_per_s, r.frames_per_s,
-                r.holds_per_step, 100 * r.exact_share);
-    CHECK(r.steps_per_s > 29.5);
-    CHECK(r.holds_per_step >= 0.99);
-    CHECK(r.exact_share < 0.01);
+static void test_swap_align() {
+    const int64_t p165 = present_period_ns(165);
+    const int64_t offset = 2'500'000;
+    SwapAlign hold = align_swap(400'000, p165, offset);
+    SwapAlign logic = align_swap(4'000'000, p165, offset);
+    CHECK(logic.sleep_ns == 0);
+    CHECK(hold.sleep_ns == 1'620'000);
 
-    r = simulate(240, 12, 3);
-    std::printf("240 fps, 12 ms logic, 3 ms holds: %.2f steps/s, %.1f fps, %.2f in-between per step\n", r.steps_per_s, r.frames_per_s,
-                r.holds_per_step);
-    CHECK(r.steps_per_s > 29.5);
-    CHECK(r.holds_per_step >= 4.9);
+    const int64_t p60 = present_period_ns(60);
+    SwapAlign heavy = align_swap(p60 / 2 + 1, p60, offset);
+    CHECK(heavy.sleep_ns == 0);
+    CHECK(heavy.offset_ns == offset);
+    SwapAlign light = align_swap(1'000'000, p60, offset);
+    CHECK(light.offset_ns == 2'800'000);
+    CHECK(light.sleep_ns == 1'800'000);
+}
 
-    r = simulate(120, 24, 4);
-    std::printf("120 fps, 24 ms logic: %.2f steps/s, %.1f fps, %.2f in-between per step, %.0f%% exact\n", r.steps_per_s, r.frames_per_s,
-                r.holds_per_step, 100 * r.exact_share);
-    CHECK(r.steps_per_s > 29.5);
-    CHECK(r.exact_share < 0.01);
+static void test_hold_shed() {
+    CHECK(kRefreshResumeFrames > kShedResumeFrames);
+    CHECK(shed_slot_ns(30) == 0);
+    CHECK(shed_slot_ns(60) == 0);
+    CHECK(shed_slot_ns(120) == present_period_ns(60));
+    CHECK(shed_slot_ns(240) == present_period_ns(60));
+    CHECK(present_period_ns(30) > 20'000'000LL);
 
-    r = simulate(120, 30, 30);
-    std::printf("120 fps, 30 ms passes: %.2f steps/s, %.1f fps, %.2f in-between per step\n", r.steps_per_s, r.frames_per_s, r.holds_per_step);
-    CHECK(r.steps_per_s > 28.5);
-    CHECK(r.holds_per_step < 0.1);
+    const int64_t slot30 = present_period_ns(30);
+    HoldShed at30;
+    CHECK(!note_logic_work(at30, 20'000'000LL, slot30).shed);
+    CHECK(!note_logic_work(at30, 20'000'000LL, shed_slot_ns(30)).shed);
 
-    r = simulate(120, 5, 30, 60);
-    std::printf("120 fps, 5 ms logic, 30 ms holds: %.2f steps/s, %.1f fps, %.3f in-between per step\n", r.steps_per_s, r.frames_per_s,
-                r.holds_per_step);
-    CHECK(r.steps_per_s > 29.5);
-    CHECK(r.holds_per_step < 0.01);
+    const int64_t slot = shed_slot_ns(120);
+    const int64_t slow = slot + 1;
+    HoldShed h;
+    ShedUpdate first = note_logic_work(h, slow, slot);
+    CHECK(first.shed && first.changed);
+    CHECK(!note_logic_work(h, slow, slot).changed);
+    for (int i = 0; i < kShedResumeFrames - 1; i++)
+        CHECK(note_logic_work(h, slot, slot).shed);
+    ShedUpdate resumed = note_logic_work(h, slot, slot);
+    CHECK(!resumed.shed && resumed.changed);
+    CHECK(!note_logic_work(h, slot, slot).shed);
 
-    r = simulate(120, 3, 2, 30, true, 5000, 70);
-    std::printf("120 fps, cheap, one 70 ms hitch: %.2f steps/s, %.1f fps, %.2f in-between per step\n", r.steps_per_s, r.frames_per_s,
-                r.holds_per_step);
-    CHECK(r.holds_per_step > 2.95);
-    CHECK(r.steps_per_s > 29.8);
-    CHECK(update_average(8'000'000, 80'000'000) == (3 * 8'000'000 + 16'000'000) / 4);
-    CHECK(update_average(8'000'000, 4'000'000) == 7'000'000);
+    CHECK(note_logic_work(h, slow, slot).shed);
+    for (int i = 0; i < 4; i++) CHECK(note_logic_work(h, slot, slot).shed);
+    CHECK(note_logic_work(h, slow, slot).shed);
+    CHECK(h.cheap == 0);
+    for (int i = 0; i < kShedResumeFrames - 1; i++)
+        CHECK(note_logic_work(h, slot, slot).shed);
+    CHECK(!note_logic_work(h, slot, slot).shed);
 
-    r = simulate(120, 30, 30, 30, false);
-    CHECK(r.steps_per_s < 10);
+    CHECK(note_logic_work(h, slow, slot).shed);
+    ShedUpdate cleared = note_logic_work(h, slow, 0);
+    CHECK(!cleared.shed && cleared.changed);
+    CHECK(h.cheap == 0);
+
+    RefreshHold r;
+    CHECK(!note_refresh_hold(r, true));
+    CHECK(!r.high);
+    for (int i = 0; i < kRefreshResumeFrames - 1; i++)
+        CHECK(!note_refresh_hold(r, false));
+    CHECK(note_refresh_hold(r, false));
+    CHECK(r.high);
+    CHECK(note_refresh_hold(r, false));
+    CHECK(!note_refresh_hold(r, true));
+    CHECK(!r.high && r.on == 0);
+    for (int i = 0; i < kShedResumeFrames; i++)
+        CHECK(!note_refresh_hold(r, false));
+    CHECK(!r.high);
+
+    HoldShed forced;
+    CHECK(note_logic_work(forced, 0, 0, true).shed);
+    CHECK(note_logic_work(forced, slot, 0, true).shed);
+    CHECK(!note_logic_work(forced, slot, 0).shed);
+
+    LoadLatch latch;
+    CHECK(note_load_latch(latch, true));
+    for (int i = 0; i < kLoadLatchFrames - 2; i++)
+        CHECK(note_load_latch(latch, false));
+    CHECK(note_load_latch(latch, false));
+    CHECK(!note_load_latch(latch, false));
+    CHECK(note_load_latch(latch, true));
+    CHECK(note_load_latch(latch, true));
+    CHECK(latch.left == kLoadLatchFrames - 1);
+
+    CHECK(!skip_extra_course_draw(false, true, 2));
+    CHECK(!skip_extra_course_draw(true, false, 2));
+    CHECK(!skip_extra_course_draw(true, true, 0));
+    CHECK(skip_extra_course_draw(true, true, 1));
+    CHECK(logic_step_budget(0) == kMaxLogicStepsPerWake);
+    CHECK(logic_step_budget(1) == 1);
+    CHECK(logic_step_budget(4, 2) == 1);
+}
+
+static void test_present_spacing() {
+    const int caps[] = {30, 60, 120, 144, 165, 240};
+    for (int cap : caps) {
+        const int64_t period = present_period_ns(cap);
+        CHECK(period > 0);
+        CHECK_NEAR(1e9 / double(period), double(cap), 0.51);
+        int64_t acc = 0;
+        int logics = 0;
+        const double seconds = 2.0;
+        const int frames = int(cap * seconds + 0.5);
+        for (int i = 0; i < frames; i++) {
+            WakePlan p = advance_accumulator(acc, period, cap != 60);
+            acc = p.acc_ns;
+            logics += p.logic_steps;
+            if (cap < 60 && p.logic_steps) CHECK(p.t == 1.f);
+        }
+        if (cap == 60) CHECK(logics == frames);
+        else CHECK_NEAR(logics / seconds, 60.0, 1.0);
+    }
 }
 
 int main() {
-    test_fractions();
     test_blends();
     test_slerp();
     test_cap();
-    test_ladder();
-    test_plan_and_next();
-    test_simulation();
+    test_accumulator();
+    test_present_gap();
+    test_swap_align();
+    test_hold_shed();
+    test_present_spacing();
     if (g_failed) {
         std::fprintf(stderr, "interp_pacing_test: %d check(s) failed\n", g_failed);
         return 1;

@@ -1,0 +1,58 @@
+# Downloads the Android-hosted clang, lld, and llvm-ar from the android-clang GitHub Release
+# in nsmbu-recomp/ci-assets into build/compiler/package. That repo's manual workflow builds
+# the release. This action never compiles LLVM.
+#
+# Needs: Python 3, gh, and contents: read so the workflow token can download the release.
+name: Android-hosted compiler
+description: Download the Android-hosted clang/lld from the android-clang GitHub Release
+inputs:
+  abi:
+    description: arm64-v8a or x86_64
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ABI: ${{ inputs.abi }}
+        ASSETS_REPO: nsmbu-recomp/ci-assets
+      run: |
+        set -euo pipefail
+        case "$ABI" in
+          arm64-v8a|x86_64) ;;
+          *) echo "::error::abi must be arm64-v8a or x86_64"; exit 1 ;;
+        esac
+        mkdir -p build/compiler
+        if ! gh release download android-clang --repo "$ASSETS_REPO" \
+            --pattern "android-clang-${ABI}.tar.gz" \
+            --pattern "android-clang-${ABI}.tar.gz.sha256" \
+            --pattern android-clang.json \
+            --dir build/compiler --clobber; then
+          echo "::error::The android-clang release is missing from nsmbu-recomp/ci-assets. Run the Android compiler workflow in that repo."
+          exit 1
+        fi
+        (cd build/compiler && sha256sum -c "android-clang-${ABI}.tar.gz.sha256")
+        python3 - <<'PY'
+        import hashlib, json, os, tarfile
+        from pathlib import Path
+        import sys
+        sys.path.insert(0, "tools/android")
+        import build_toolchain as pins
+        root = Path("build/compiler")
+        abi = os.environ["ABI"]
+        manifest = json.loads((root / "android-clang.json").read_text())
+        script = hashlib.sha256(Path("tools/android/build_toolchain.py").read_bytes()).hexdigest()
+        if manifest.get("llvm_revision") != pins.LLVM_REVISION or manifest.get("ndk_revision") != pins.NDK_REVISION:
+            raise SystemExit("android-clang release pins do not match tools/android/build_toolchain.py")
+        if manifest.get("build_toolchain_sha256") != script:
+            raise SystemExit("android-clang release was built from a different build_toolchain.py; run the Android compiler workflow in nsmbu-recomp/ci-assets")
+        archive = root / ("android-clang-%s.tar.gz" % abi)
+        with tarfile.open(archive) as tar:
+            meta = json.load(tar.extractfile("build.json"))
+        if meta.get("abi") != abi or meta.get("llvm_revision") != pins.LLVM_REVISION or meta.get("ndk_revision") != pins.NDK_REVISION:
+            raise SystemExit("android-clang archive metadata does not match this ABI and the pinned LLVM/NDK")
+        PY
+        mkdir -p build/compiler/package
+        tar -xzf "build/compiler/android-clang-${ABI}.tar.gz" -C build/compiler/package
+        echo "compiler downloaded from the android-clang release ($ABI)"

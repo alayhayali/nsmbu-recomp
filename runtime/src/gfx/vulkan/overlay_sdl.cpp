@@ -12,6 +12,9 @@
 #include "overlay/hostui.h"
 #include "platform/host.h"
 #include "platform/perf_hint.h"
+#ifdef __ANDROID__
+#include "platform/heat_guard.h"
+#endif
 #include "core/runtime.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -199,11 +202,14 @@ void graphics_changed() {
 #ifdef __ANDROID__
 
     put("fps60", {env::INTERP, env::INTERP_FPS}, interp::mode() == 1 || perf_hint::fps60_chosen() ? "1" : "0");
+    put("heatGuard", {env::HEAT_GUARD}, heat_guard::name(heat_guard::to_setting(heat_guard::choice.load())));
 #else
     put("fps60", {env::INTERP, env::INTERP_FPS}, std::to_string(interp::mode()));
 #endif
 
-    put("interpFps", {env::INTERP_FPS}, std::to_string(interp::fps()));
+    put("fpsUnlocked", {env::INTERP_FPS}, interp::unlocked() ? "1" : "0");
+    put("fpsCustom", {env::INTERP_FPS}, interp::custom_on() ? "1" : "0");
+    put("interpFps", {env::INTERP_FPS}, std::to_string(interp::custom_on() ? interp::custom_fps() : interp::fps()));
     put("fps60Paced", {env::INTERP_PACED}, interp::paced_interpolation_at(60) ? "1" : "0");
     put("scaleFilter", {env::SCALE_FILTER}, std::to_string(gfxvk::scale_filter()));
     char aspect[32];
@@ -232,9 +238,15 @@ void load_saved_options() {
     if (saved("resScale", {env::RES_SCALE})) gfxvk::set_res_scale((float)num("resScale"));
     if (saved("aniso", {env::ANISO})) gfxvk::set_aniso(num("aniso") != 0);
     if (saved("fxaa", {env::FXAA})) gfxvk::set_fxaa(num("fxaa") != 0);
-    if (saved("interpFps", {env::INTERP_FPS})) interp::set_fps((int)num("interpFps"));
+    if (saved("fpsCustom", {env::INTERP_FPS}) && num("fpsCustom") != 0 && v.count("interpFps"))
+        interp::set_custom_fps((int)num("interpFps"));
+    else if (saved("interpFps", {env::INTERP_FPS})) interp::set_fps((int)num("interpFps"));
     if (saved("fps60", {env::INTERP, env::INTERP_FPS})) interp::set_mode((int)num("fps60"));
     if (saved("fps60Paced", {env::INTERP_PACED})) interp::set_paced_interpolation_at(60, num("fps60Paced") != 0);
+    if (saved("fpsUnlocked", {env::INTERP_FPS}) && num("fpsUnlocked") != 0) interp::set_unlocked(true);
+#ifdef __ANDROID__
+    if (saved("heatGuard", {env::HEAT_GUARD})) heat_guard::choice = heat_guard::parse(v["heatGuard"].c_str());
+#endif
     if (saved("scaleFilter", {env::SCALE_FILTER})) gfxvk::set_scale_filter((int)num("scaleFilter"));
     if (saved("aspect", {env::ASPECT})) aspect::apply_choice(v["aspect"].c_str());
     if (saved("vkPresentMode", {env::VK_PRESENT_MODE})) {

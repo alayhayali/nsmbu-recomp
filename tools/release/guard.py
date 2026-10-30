@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Release guard: fails if a release artifact contains anything derived from the game or any key.
 
-usage: guard.py ARTIFACT.zip|DIR [...]
+usage: guard.py [--allow-android-test-fixtures] ARTIFACT.zip|DIR [...]
 
 Release packages may contain only this project's runtime, tools and installer (plus third-party
 licenses). This check rejects, by name and by content:
@@ -12,11 +12,27 @@ licenses). This check rejects, by name and by content:
   - shader caches and head starts (shaders.bin, headstart.bin, template.bin, testcache.bin, *.metallib);
   - in every text file: a 32-hex-digit string (the shape of a Wii U key; SHA-256 sums are 64 digits
     and git hashes 40, which do not match).
+Release packages may contain only this project's runtime, tools and installer (plus third-party
+licenses). This check rejects, by name and by content:
+  - generated/recompiled game code (code_NNN.c, funcs.h with guest functions, table.c, imports.c,
+    imports.json, report.txt from tools/recomp), and real-looking generated code inside any file;
+  - game files: *.rpx, *.rpl, *.wux, *.wud, disc keys (*.key), tickets/TMDs (title.tik, title.tmd),
+    saves (cking*.sav, *.sav), anything under a game/ code/ content/ meta/ tree;
+  - shader caches and head starts (shaders.bin, headstart.bin, template.bin, testcache.bin, *.metallib);
+  - in every text file: a 32-hex-digit string (the shape of a Wii U key; SHA-256 sums are 64 digits
+    and git hashes 40, which do not match).
 The Windows release's tools/python/ (the official embeddable Python) must hold exactly the files listed
-in tools/release/python-windows-files.json, each with its listed SHA-256.
+in tools/release/python-windows-files.json (python-windows-arm64-files.json in a windows-arm64 release),
+each with its listed SHA-256.
+An AppImage tree (a folder with AppRun at its root, e.g. the extracted squashfs-root) must carry the
+AppImage runtime's license texts (tools/release/appimage-runtime-licenses, copied by appimage.py)
+unchanged in third-party-licenses/.
+Android Python source archives must not contain debug fixture registration or smoke
+entry points. Only debug CI artifacts may opt in with --allow-android-test-fixtures.
 Exit status 1 lists every problem.
 """
 import hashlib
+import io
 import json
 import os
 import re
@@ -46,14 +62,20 @@ KEYLIKE = re.compile(rb"(?<![0-9A-Fa-f])[0-9A-Fa-f]{32}(?![0-9A-Fa-f])")
 GEN_CODE = re.compile(rb"void f_[0-9A-F]{8}\(Cpu\* __restrict c\) \{\n")
 
 PYTHON_FILES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "python-windows-files.json")
+PYTHON_FILES_ARM64 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "python-windows-arm64-files.json")
 PYTHON_DIR = re.compile(r"(?:^|/)tools/python/(.+)$")
 
-def check_python(name, data, seen, problems):
+def python_files(path):
+    """The file list of the embeddable Python this release must ship: the ARM64 one in a windows-arm64
+    release (its name: NSMBU-<version>-windows-arm64[.zip])."""
+    return PYTHON_FILES_ARM64 if "windows-arm64" in os.path.basename(os.path.normpath(path)) else PYTHON_FILES
+
+def check_python(name, data, seen, problems, files=PYTHON_FILES):
     """tools/python/...: only the pinned embeddable Python's own files, unmodified. Returns True when it was one."""
     m = PYTHON_DIR.search(name.replace("\\", "/"))
     if not m:
         return False
-    with open(PYTHON_FILES) as f:
+    with open(files) as f:
         expected = json.load(f)["files"]
     rel = m.group(1)
     if rel not in expected:
@@ -76,12 +98,46 @@ def check_entry(name, data, problems):
     if GEN_CODE.search(data):
         problems.append("%s: contains recompiled game functions" % name)
 
-def scan(path):
+ANDROID_TEST_FILES = {
+    "tools/android/debug_fixture_build.py", "tools/android/service_fixture.py",
+    "tools/android/embedding_smoke.py", "tools/recomp/android_fixture.py",
+    "tools/android/extraction-fixture.bin", "tools/android/runtime_fixture.c",
+}
+
+RUNTIME_LICENSES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "appimage-runtime-licenses")
+
+def check_appimage_licenses(path, problems):
+    """An AppImage tree has the runtime's license texts, byte for byte (appimage.py add_runtime_licenses)."""
+    names = sorted(f for f in os.listdir(RUNTIME_LICENSES) if f.startswith("AppImage-runtime-") and f.endswith(".txt"))
+    if not names:
+        problems.append("no AppImage runtime license texts in " + RUNTIME_LICENSES)
+    for name in names:
+        shipped = os.path.join(path, "third-party-licenses", name)
+        if not os.path.isfile(shipped):
+            problems.append("third-party-licenses/%s: the AppImage runtime's license text is missing" % name)
+            continue
+        with open(shipped, "rb") as a, open(os.path.join(RUNTIME_LICENSES, name), "rb") as b:
+            if a.read() != b.read():
+                problems.append("third-party-licenses/%s: differs from tools/release/appimage-runtime-licenses" % name)
+
+def scan(path, allow_android_test_fixtures=False):
     problems, count, python = [], 0, set()
+    files = python_files(path)
 
     def entry(name, data):
-        check_python(name, data, python, problems)
+        check_python(name, data, python, problems, files)
         check_entry(name, data, problems)
+        if name.replace("\\", "/").endswith("python-source.zip"):
+            try:
+                with zipfile.ZipFile(io.BytesIO(data)) as source:
+                    forbidden = ANDROID_TEST_FILES.intersection(source.namelist())
+                    if forbidden and not allow_android_test_fixtures:
+                        problems.append("%s: debug-only Android resources: %s" % (name, ", ".join(sorted(forbidden))))
+            except zipfile.BadZipFile:
+                problems.append("%s: invalid Android Python source archive" % name)
+
+    if os.path.isdir(path) and os.path.isfile(os.path.join(path, "AppRun")):
+        check_appimage_licenses(path, problems)
 
     if os.path.isdir(path):
         for dp, _, fns in os.walk(path):
@@ -98,18 +154,22 @@ def scan(path):
                 entry(info.filename, z.read(info))
                 count += 1
     if python:
-        with open(PYTHON_FILES) as f:
+        with open(files) as f:
             missing = sorted(set(json.load(f)["files"]) - python)
         if missing:
             problems.append("tools/python/ lacks files of the pinned embeddable Python: " + ", ".join(missing))
     return problems, count
 
 def main():
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+    allow_tests = "--allow-android-test-fixtures" in args
+    if allow_tests:
+        args.remove("--allow-android-test-fixtures")
+    if not args:
         sys.exit(__doc__)
     bad = False
-    for p in sys.argv[1:]:
-        problems, count = scan(p)
+    for p in args:
+        problems, count = scan(p, allow_android_test_fixtures=allow_tests)
         if problems:
             bad = True
             print("REJECTED %s (%d files):" % (p, count))

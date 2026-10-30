@@ -4,10 +4,26 @@ This project compiles Wii U game assets into a standalone, native executable.
 The release package includes the necessary runtime, build tools, and installer script.  
 You must supply your own copy of the game files, disc image, and encryption keys.  
 
+> [!IMPORTANT]
+> There is no Nintendo code, no assets and no game data anywhere in this project or its releases.  
+> You need your own legally dumped copy of the game.  
+> Nothing in this repo, in any release, or in the build process contains or downloads Nintendo IP.  
+
 ## Controls
 
-Press `F12` to open the settings overlay.  
-**F1**–**F5** load save states; **Shift+F1**–**F5** save.  
+Press `` ` `` or `F12` to open or close the settings overlay.
+
+On a controller, press **Home** or click the right stick (**R3**), or press **Start** and **Select** together (Xbox **Menu** + **View**, Wii U **+** and **−**).
+
+Hold **Select** (−) for half a second to open Settings when the overlay is closed; press **Select** again to close it.
+
+With the default keyboard layout, press **Enter** and **Tab** together for the same menu.
+
+On Android, the system **Back** gesture also opens and closes Settings; see [New Super Mario Bros. U on Android](docs/android.md).
+
+While Settings is open, touch the menu directly or use a controller: D-pad or left stick to move, **A** to activate, **B** to go back, **LB**/**RB** for tabs, **Start+Select** to close.
+
+**F1**–**F5** load save states; **Shift+F1**–**F5** save.
 Open **Audio** for mute, volume, and TV / GamePad output.  
 Open **Controls** to change keys and controller buttons.  
 
@@ -82,6 +98,8 @@ Start **NSMBU**:
 | Windows, x86-64, Windows 10 or 11, Vulkan | `NSMBU.exe` |
 | Linux, x86-64, glibc 2.35 or newer, Vulkan | `nsmbu-launcher`  |
 | Linux, arm64, glibc 2.35 or newer, Vulkan | `nsmbu-launcher`   |
+
+On Android, install the APK instead and follow [New Super Mario Bros. U on Android](docs/android.md).
 
 The first start opens the installer.
 Each later start launches the game.

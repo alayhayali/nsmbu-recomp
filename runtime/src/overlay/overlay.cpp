@@ -25,6 +25,7 @@
 #include "imgui.h"
 #include "hostui.h"
 #include "controls_view.h"
+#include "controller_shortcuts.h"
 #include "text_entry.h"
 #include "gfx/aspect.h"
 #include "gfx/display_modes.h"
@@ -34,6 +35,9 @@
 #include "../gfx/renderer.h"
 #ifdef __ANDROID__
 #include "../gfx/vulkan/android_driver.h"
+#include "../platform/heat_guard.h"
+#include "../platform/phone_rumble.h"
+#include "../platform/touch_buttons.h"
 #endif
 #ifdef NSMBU_HAS_VULKAN
 #include "../gfx/vulkan/settings.h"
@@ -42,6 +46,9 @@ namespace gfxvk { bool buffer_cache_enabled(); }
 #endif
 #include "input/input.h"
 #include "input/input_map.h"
+#include "controller_shortcuts.h"
+#include "gamepad_nav.h"
+#include "mobile_ui.h"
 #include "../mods/mods.h"
 #include "../mods/sdk/nsmbu.h"
 #include "../mods/lua_gui.h"
@@ -51,6 +58,7 @@ namespace gfxvk { bool buffer_cache_enabled(); }
 #include "audio/audio_out.h"
 #include "input/rumble.h"
 #include "hooks/interp.h"
+#include "hooks/interp_pacing.h"
 #include "hooks/collision_wireframe.h"
 #include "hooks/course_hot_reload.h"
 #include "core/runtime.h"
@@ -72,6 +80,7 @@ double now_s() { return std::chrono::duration<double>(clock::now().time_since_ep
 
 std::atomic<bool> g_open{false};
 std::atomic<bool> g_perf{false};
+std::atomic<bool> g_perf_extended{false};
 std::atomic<bool> g_perf_detail{false};
 PerfAverage g_average;
 std::atomic<float> g_density{1.0f};
@@ -83,11 +92,13 @@ const bool g_no_host_keys = g_no_host && !env::TEST_POST_KEYS();
 bool g_pad_b_used = false;
 
 struct Event {
-    enum Kind { Key, MousePos, MouseButton, Wheel, Focus } kind;
+    enum Kind { Key, MousePos, MouseButton, Wheel, Text, Focus } kind;
     int code = 0;
     bool down = false;
     float x = 0, y = 0;
     int mods = 0;
+    bool touch = false;
+    std::string text;
 };
 std::mutex g_mu;
 std::vector<Event> g_events;
@@ -145,6 +156,10 @@ struct Ui {
 
     float values[input_map::kPadCount] = {};
     float prev[input_map::kPadCount] = {};
+    float nav_values[input_map::kPadCount] = {};
+    float nav_prev[input_map::kPadCount] = {};
+    GamepadNavigation gamepad_navigation;
+    ImVec2 mouse_position = {};
     double options_since = -1;
     bool options_latched = false;
 
@@ -160,7 +175,8 @@ struct Ui {
 
     double fps_t0 = 0, fps = 0;
     uint64_t fps_n0 = 0;
-    float frame_ms[120] = {};
+    float frame_ms[FrameHistoryAverages::kFrames] = {};
+    uint32_t frame_logic[FrameHistoryAverages::kFrames] = {};
     int frame_i = 0;
     double last_present = 0;
     double sample_restore = 0;
@@ -175,6 +191,7 @@ struct Ui {
     bool list_view = false;
     int hover_action = -1;
     int control_player = 0;
+    float options_height = 0;
 };
 Ui U;
 
@@ -348,8 +365,29 @@ void read_controller() {
     using namespace input_map;
     const double t = now_s();
 
-    if (controller_pressed(kPadHome)) set_open(!is_open());
-    if (controller_down(kPadOptions)) {
+    if (U.cap_action < 0 &&
+        overlay_shortcuts::settings_controller_press(controller_pressed(kPadHome), controller_pressed(kPadR3)))
+        set_open(!is_open());
+
+    const bool menu = controller_down(kPadMenu);
+    const bool options = controller_down(kPadOptions);
+    const bool prev_menu = U.prev[kPadMenu] > 0.5f;
+    const bool prev_options = U.prev[kPadOptions] > 0.5f;
+    const bool pad_combo = overlay_shortcuts::combo_edge(menu, options, prev_menu, prev_options);
+
+    bool keys[256];
+    input::held_keys(keys);
+    const bool kb_combo = overlay_shortcuts::keyboard_start_select(input_map::current(), keys);
+    static bool prev_kb_combo = false;
+    const bool kb_edge = kb_combo && !prev_kb_combo;
+    prev_kb_combo = kb_combo;
+
+    if (!g_capturing_keys.load() && (pad_combo || kb_edge)) set_open(!is_open());
+
+    if (menu && options) {
+        U.options_since = -1;
+        U.options_latched = true;
+    } else if (controller_down(kPadOptions)) {
         if (!U.options_latched) {
             if (is_open()) {
                 set_open(false);
@@ -373,26 +411,12 @@ void read_controller() {
     }
 }
 
-void feed_gamepad(ImGuiIO& io, bool enabled) {
-    using namespace input_map;
-    auto key = [&](ImGuiKey k, int p) { io.AddKeyAnalogEvent(k, enabled && U.values[p] > 0.5f, enabled ? U.values[p] : 0.0f); };
-    key(ImGuiKey_GamepadFaceDown, kPadA);
-    key(ImGuiKey_GamepadFaceRight, kPadB);
-    key(ImGuiKey_GamepadFaceLeft, kPadX);
-    key(ImGuiKey_GamepadFaceUp, kPadY);
-    key(ImGuiKey_GamepadDpadUp, kPadDUp);
-    key(ImGuiKey_GamepadDpadDown, kPadDDown);
-    key(ImGuiKey_GamepadDpadLeft, kPadDLeft);
-    key(ImGuiKey_GamepadDpadRight, kPadDRight);
-    key(ImGuiKey_GamepadLStickUp, kPadLSUp);
-    key(ImGuiKey_GamepadLStickDown, kPadLSDown);
-    key(ImGuiKey_GamepadLStickLeft, kPadLSLeft);
-    key(ImGuiKey_GamepadLStickRight, kPadLSRight);
-    key(ImGuiKey_GamepadRStickUp, kPadRSUp);
-    key(ImGuiKey_GamepadRStickDown, kPadRSDown);
-    key(ImGuiKey_GamepadL2, kPadLT);
-    key(ImGuiKey_GamepadR2, kPadRT);
-    key(ImGuiKey_GamepadStart, kPadMenu);
+void feed_gamepad(ImGuiIO& io, bool enabled, bool mouse_used) {
+    const int face[4] = {input_map::face_input(input_map::kA), input_map::face_input(input_map::kB),
+                         input_map::face_input(input_map::kX), input_map::face_input(input_map::kY)};
+    std::copy(std::begin(U.prev), std::end(U.prev), std::begin(U.nav_prev));
+    std::copy(std::begin(U.values), std::end(U.values), std::begin(U.nav_values));
+    U.gamepad_navigation.feed(io, U.nav_values, U.nav_prev, enabled, mouse_used, face);
 }
 
 void wrapped_tooltip(const char* text) {
@@ -604,11 +628,12 @@ std::string performance_device() {
 }
 
 std::string performance_report() {
-    float sum = 0, worst = 0;
-    for (float f : U.frame_ms) { sum += f; worst = std::max(worst, f); }
+    float avg_ms = 0, worst = 0, avg_fps = 0;
+    double avg_logic = 0;
+    FrameHistoryAverages::compute(U.frame_ms, U.frame_logic, avg_ms, worst, avg_fps, avg_logic);
     char frame[180];
     snprintf(frame, sizeof frame, "FPS %.1f (average %.1f), frame %.2f ms (worst %.2f), average logic steps/s %.1f\n",
-             U.fps, g_average.fps, sum / 120.0f, worst, g_average.logic);
+             U.fps, avg_fps, avg_ms, worst, avg_logic);
     std::string report = std::string(frame) + perf::summary();
 #ifdef __ANDROID__
     static AndroidTelemetry telemetry;
@@ -684,70 +709,86 @@ void tab_graphics() {
             if (ImGui::Button("Restart now")) hostui::post([] { render::restart(); });
         }
     }
-#ifdef NSMBU_HAS_VULKAN
-    if (render::vulkan() && !gfxvk::device_inventory.empty()) {
-        heading("Graphics card (next start)");
-        const bool env = env::VK_GPU() != nullptr;
-        const std::string saved = gfxvk::device_setting();
-        const bool dedicated = saved.empty() || saved == "dedicated" || saved == "discrete";
-        bool haveDiscrete = false, haveIntegrated = false;
-        for (const auto& gpu : gfxvk::device_inventory) {
-            if (!gpu.usable()) continue;
-            if (gpu.kind == gfxvk::kGpuDiscrete) haveDiscrete = true;
-            if (gpu.kind == gfxvk::kGpuIntegrated) haveIntegrated = true;
-        }
-        auto choose = [](const std::string& value) {
-            gfxvk::set_device_setting(value);
-            hostui::set("gpu", value.empty() ? "dedicated" : value);
-        };
-        if (radio("Prefer dedicated", dedicated, !env)) post_changed([choose] { choose(""); });
-        ImGui::SameLine();
-        if (radio("Prefer integrated", saved == "integrated", !env)) post_changed([choose] { choose("integrated"); });
-        for (size_t i = 0; i < gfxvk::device_inventory.size(); i++) {
-            const auto& gpu = gfxvk::device_inventory[i];
-            ImGui::PushID(int(i));
-            const std::string label = gpu.name + " (" + gfxvk::gpu_kind_name(gpu.kind) + ")";
-            if (radio(label.c_str(), saved == gpu.identity, !env && gpu.usable())) {
-                const std::string identity = gpu.identity;
-                post_changed([choose, identity] { choose(identity); });
-            }
-            if (!gpu.usable()) note("%s", gpu.unavailable.c_str());
-            ImGui::PopID();
-        }
-        note("This start uses %s. A different choice applies the next time the game starts.",
-             gfxvk::active_gpu_name.c_str());
-        if (env) note("NSMBU_VK_GPU=%s is set for this start and takes precedence.", env::VK_GPU());
-#ifndef _WIN32
-        else if (gfxvk::gpu_restart_pending(saved, gfxvk::active_gpu_identity, gfxvk::active_gpu_kind, haveDiscrete, haveIntegrated)) {
-            note("Progress since your last save is lost if you restart now.");
-            if (ImGui::Button("Restart now##gpu")) hostui::post([] { render::restart(); });
-        }
-#endif
-        if (!gfxvk::gpu_fallback.empty()) note("%s", gfxvk::gpu_fallback.c_str());
-        help("Prefer dedicated uses a separate graphics card when one can draw the game windows.\n"
-             "Prefer integrated keeps the GPU built into the processor.\n"
-             "A listed card is used on the next start when it is still available.");
-    }
-#endif
     heading("Frame rate (experimental)");
     int m = interp::mode(), f = interp::fps();
-    static const int rates[] = {60, 120, 144, 165, 240};
-    for (int r : rates) {
-        if (r != rates[0]) ImGui::SameLine();
+    const bool ff = gx2::uncapped();
+    const bool custom = interp::custom_on() && !ff;
+    static int custom_value = -1;
+    static char custom_buf[8] = "";
+    static bool was_custom = false;
+    if (custom_value < 0) custom_value = interp::custom_fps();
+    if (custom && !was_custom) custom_value = interp::custom_fps();
+    was_custom = custom;
+    int n_rates = 0;
+    const int* rates = interp::pacing::fps_ladder(n_rates);
+    const bool free = interp::unlocked() && !ff;
+    ImGui::BeginDisabled(ff);
+    if (radio("Unlocked", free)) post_changed([] {
+        interp::set_fast_forward(false);
+        interp::set_unlocked(true);
+    });
+    for (int i = 0; i < n_rates; i++) {
+        const int r = rates[i];
+        ImGui::SameLine();
         char label[16];
         snprintf(label, sizeof label, "%d fps", r);
-        const bool on = r == 60 ? m != 1 : m == 1 && f == r;
+        const bool on = !custom && !free && (r == 60 ? m != 1 : m == 1 && f == r);
         if (radio(label, on)) post_changed([r] {
-            if (r == 60) interp::set_mode(0);
+            interp::set_unlocked(false);
+            interp::set_fast_forward(false);
+            if (r == 60) { interp::set_fps(60); interp::set_mode(0); }
             else { interp::set_fps(r); interp::set_mode(1); }
         });
     }
-    help("60 fps is the game rate. 120, 144, 165 and 240 fps add in-between frames for the steps in between.\n"
-         "The game logic still runs at 60 steps a second.\n"
-         "The display shows at most its refresh rate. Hotkeys: 6 = 60 fps, 7 = cycle rates,\n"
-         "9 = toggle 60 fps and the last non-60 rate.");
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(ff);
+    if (radio("Custom", custom && !free)) {
+        interp::set_unlocked(false);
+        interp::set_fast_forward(false);
+        interp::set_custom_fps(custom_value);
+        post_changed([] {});
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(ImGui::CalcTextSize("9999").x + ImGui::GetStyle().FramePadding.x * 2.0f + 10.0f);
+    ImGui::InputText("##fps-custom", custom_buf, sizeof custom_buf, ImGuiInputTextFlags_CharsDecimal);
+    if (ImGui::IsItemActivated()) {
+        interp::set_unlocked(false);
+        interp::set_fast_forward(false);
+        interp::set_custom_fps(custom_value);
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        int v = atoi(custom_buf);
+        v = interp::pacing::clamp_custom_fps(v);
+        custom_value = v;
+        snprintf(custom_buf, sizeof custom_buf, "%d", v);
+        interp::set_unlocked(false);
+        interp::set_fast_forward(false);
+        interp::set_custom_fps(v);
+        post_changed([] {});
+    }
+    if (!ImGui::IsItemActive()) {
+        if (custom) custom_value = interp::custom_fps();
+        snprintf(custom_buf, sizeof custom_buf, "%d", custom_value);
+    }
+    ImGui::EndDisabled();
+    bool ff_ui = ff;
+    if (check("Fast forward (debug)", ff_ui, &ff_ui)) {
+        if (ff_ui) post_changed([] { interp::set_fast_forward(true); });
+        else post_changed([] { interp::set_fast_forward(false); });
+    }
+    help("30 fps draws half as often: two logic steps per picture, so the game keeps its speed.\n"
+         "60 fps is the game rate. 120, 144, 165 and 240 are present caps: more draws between\n"
+         "fixed 60 Hz logic steps, blended from wall-clock time left in the open step.\n"
+         "Custom is any rate from 60 to 1000. Unlocked draws pictures as fast as the machine can while the game stays at 60 logic steps per second.\n"
+         "The fps number is that render rate, even when the display cannot show every picture. 30 fps is only the preset. Fast forward (debug) runs the game as fast as this\n"
+         "computer can: each picture is one game step, with no frame limit. Hotkeys: 6 = 60 fps,\n"
+         "7 = cycle caps, 9 = toggle 60 fps and the last non-60 cap.");
 
-    if (const int hz = interp::display_hz(); hz > 0) {
+    if (ff)
+        note("Fast forward runs the game as fast as this computer can.");
+    else if (free)
+        note("Unlocked draws as many pictures as this device can. The fps number is that render rate. The display may show fewer.");
+    else if (const int hz = interp::display_hz(); hz > 0) {
         const int out = interp::output_fps();
         if (m == 1 && out < f)
             note("Your display: %d Hz. %d fps needs a %d Hz display; %d fps are drawn (the display cannot show more).", hz, f, f, out);
@@ -758,13 +799,24 @@ void tab_graphics() {
     } else if (m == 1 && f > 60) {
         note("Display refresh rate unknown: %d fps are drawn; frames beyond the display's rate are not shown.", f);
     }
-    bool unc;
-    if (check("Uncapped (debug: the game runs too fast)", gx2::uncapped(), &unc)) hostui::post([unc] { gx2::set_uncapped(unc); });
-    help("Debug only, to see how many frames a second this computer can draw: no frame limit and no\n"
-         "vsync. The game counts frames, so it runs faster than normal. The frame rate is in the\n"
-         "performance overlay. Not saved. (At frame targets above 60 fps the game logic still keeps\n"
-         "60 steps a second.)");
-
+#ifdef __ANDROID__
+    {
+        const int hg = heat_guard::choice.load();
+        const bool editable = !heat_guard::env_override();
+        ImGui::TextUnformatted("Heat guard");
+        static const char* const hgNames[] = {"Normal", "Relaxed", "Off"};
+        for (int i = heat_guard::kNormal; i <= heat_guard::kOff; i++) {
+            ImGui::SameLine();
+            char label[24];
+            snprintf(label, sizeof label, "%s##heatguard", hgNames[i]);
+            if (radio(label, hg == i, editable)) post_changed([i] { heat_guard::choice = i; });
+        }
+        help(editable ? "When the device gets hot, the in-between frames pause and the game keeps 60 fps until it\n"
+                        "cools down. Relaxed and Off keep the higher rate longer, but the device may slow down or get\n"
+                        "warm. Off never pauses the in-between frames for heat."
+                      : "Set by NSMBU_HEAT_GUARD for this start.");
+    }
+#endif
     heading("Internal resolution");
     float cur = hostui::res_scale();
     for (size_t i = 0; i < gfx::res_preset_count(); i++) {
@@ -813,23 +865,6 @@ void tab_graphics() {
     ImGui::EndDisabled();
     note("This build has no Vulkan renderer.");
 #endif
-    heading("Overlay");
-    if (check("Performance overlay (FPS, frame time)", perf_shown(), &v)) set_perf_shown(v);
-    if (check("Performance overlay detail (lag breakdown)", perf_detail_shown(), &v, perf_shown())) set_perf_detail_shown(v);
-    if (!perf_shown()) help("Needs the performance overlay on");
-    if (ImGui::Button("Reset performance averages")) { g_average.reset(); perf::reset(); }
-
-    static double copiedAt = -10;
-    if (ImGui::Button("Copy performance report")) {
-        std::string report = performance_report();
-        hostui::post([report] { hostui::set_clipboard(report); });
-        copiedAt = ImGui::GetTime();
-    }
-    if (ImGui::GetTime() - copiedAt < 2.0) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("Copied");
-    }
-    help("Where the renderer spends its time over the last few seconds, as text for a bug report");
 }
 
 void tab_audio() {
@@ -1233,6 +1268,15 @@ void tab_controls() {
     const int p = sync ? 0 : std::clamp(U.control_player, 0, input_map::kPlayers - 1);
     input_map::Mapping m = input_map::player(p);
 
+#ifdef __ANDROID__
+    const float page_h = ImGui::GetContentRegionAvail().y;
+    const float status_h = ImGui::GetTextLineHeightWithSpacing() + 4.0f;
+    const float options_est = std::max(U.options_height, ImGui::GetFrameHeightWithSpacing() * 2.5f) + 8.0f;
+    const float diagram_h = std::max(240.0f, (page_h - status_h - options_est) * 0.72f);
+    const float header_h = std::max(80.0f, page_h - diagram_h - status_h - options_est);
+    ImGui::BeginChild("controls_header", ImVec2(0, header_h), ImGuiChildFlags_None, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+#endif
+
     if (check("Same controls for every player", sync, &v)) {
         input_map::set_sync_players(v, p);
         if (v) U.control_player = 0;
@@ -1307,6 +1351,10 @@ void tab_controls() {
         ImGui::TextDisabled("(custom)");
     }
 
+#ifdef __ANDROID__
+    ImGui::EndChild();
+#endif
+
     std::string status;
     ImVec4 sc(0.70f, 0.78f, 0.84f, 1.0f);
     if (U.cap_action >= 0) {
@@ -1335,9 +1383,14 @@ void tab_controls() {
             status = "Select a button on the controller or a chip to rebind it. Changes are saved to controls.json.";
         }
     }
-    const float bottom = ImGui::GetFrameHeightWithSpacing() * 2 + 4;
+    const float bottom = ImGui::GetTextLineHeightWithSpacing() + std::max(U.options_height, ImGui::GetFrameHeightWithSpacing() * 2) + 4;
     const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const float h = std::max(160.0f, avail.y - bottom);
+#ifdef __ANDROID__
+    const float h = std::min(diagram_h, std::max(avail.y - bottom, 1.0f));
+#else
+    const float room = std::max(0.0f, avail.y - bottom);
+    const float h = std::max(room, 1.0f);
+#endif
     U.hover_action = -1;
     if (U.list_view) {
         controls_list(m, h, p == 0);
@@ -1381,6 +1434,7 @@ void tab_controls() {
     ImGui::PushStyleColor(ImGuiCol_Text, sc);
     ImGui::TextUnformatted(status.c_str());
     ImGui::PopStyleColor();
+    const float options_top = ImGui::GetCursorPosY();
     float dz = m.deadzone * 100.0f;
     ImGui::SetNextItemWidth(200);
     if (ImGui::SliderFloat("Stick dead zone", &dz, 0.0f, 90.0f, "%.0f%%")) {
@@ -1402,6 +1456,49 @@ void tab_controls() {
                              : "Controller vibration: this host does not drive controller motors yet.");
     ImGui::SameLine(0, 24);
     if (ImGui::Button("Reset to defaults")) input_map::set_player(p, input_map::Mapping::defaults());
+#ifdef __ANDROID__
+    heading("Touch controls");
+    if (check("On-screen controls", touch_buttons::controls.load(), &v))
+        hostui::post([v] {
+            touch_buttons::controls = v;
+            hostui::set("touchControls", v ? "1" : "0");
+        });
+    help("The buttons and sticks drawn over the game. The small button under the view button also shows or\n"
+         "hides them; hold it to move and resize them.");
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Touch buttons");
+    static const char* const touchNames[] = {"Automatic", "Always show", "Hide"};
+    for (int i = touch_buttons::Automatic; i <= touch_buttons::Hide; i++) {
+        ImGui::SameLine();
+        char label[32];
+        snprintf(label, sizeof label, "%s##touchbuttons", touchNames[i]);
+        if (radio(label, touch_buttons::mode.load() == i))
+            hostui::post([i] {
+                touch_buttons::mode = i;
+                hostui::set("touchButtons", std::to_string(i));
+            });
+    }
+    help("Automatic hides the touch buttons while a controller is connected; a touch in the top left\n"
+         "corner brings them back for a few seconds.");
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Phone vibration");
+    static const char* const phoneNames[] = {"Off", "Touch controls", "No controller motor"};
+    const bool phoneEditable = !phone_rumble::env_override();
+    for (int i = phone_rumble::kOff; i <= phone_rumble::kFallback; i++) {
+        ImGui::SameLine();
+        char label[40];
+        snprintf(label, sizeof label, "%s##phonerumble", phoneNames[i]);
+        if (radio(label, phone_rumble::choice.load() == i, phoneEditable))
+            hostui::post([i] {
+                phone_rumble::choice = static_cast<phone_rumble::Mode>(i);
+                hostui::set("phoneRumble", std::to_string(i));
+            });
+    }
+    help(phoneEditable ? "Touch controls: the phone vibrates while you play with the on-screen controls.\n"
+                         "No controller motor: also while the connected controller has no motor."
+                       : "Set by NSMBU_PHONE_RUMBLE for this start.");
+#endif
+    U.options_height = ImGui::GetCursorPosY() - options_top;
 }
 
 int saved_language() {
@@ -1450,8 +1547,36 @@ void restart_button(const char* why) {
 }
 
 void tab_debug() {
-    heading("Course debug");
+    heading("Overlay");
     bool v;
+    if (check("Performance overlay (FPS summary)", perf_shown(), &v)) set_perf_shown(v);
+    if (check("Performance overlay detail (GPU and graph)", perf_extended_shown(), &v, perf_shown())) set_perf_extended_shown(v);
+    if (check("Performance overlay lag breakdown", perf_detail_shown(), &v, perf_shown() && perf_extended_shown()))
+        set_perf_detail_shown(v);
+    if (!perf_shown()) help("Shows a compact FPS and frame-time summary in the corner.");
+    else if (!perf_extended_shown()) help("Compact view only. Enable detail for GPU lines and the frame-time graph.");
+    else if (!perf_detail_shown()) help("Enable lag breakdown for per-frame wait times.");
+    if (ImGui::Button("Reset performance averages")) {
+        g_average.reset();
+        perf::reset();
+        std::memset(U.frame_ms, 0, sizeof U.frame_ms);
+        std::memset(U.frame_logic, 0, sizeof U.frame_logic);
+        U.frame_i = 0;
+    }
+
+    static double copiedAt = -10;
+    if (ImGui::Button("Copy performance report")) {
+        std::string report = performance_report();
+        hostui::post([report] { hostui::set_clipboard(report); });
+        copiedAt = ImGui::GetTime();
+    }
+    if (ImGui::GetTime() - copiedAt < 2.0) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("Copied");
+    }
+    help("Where the renderer spends its time over the last few seconds, as text for a bug report");
+
+    heading("Course debug");
     const bool env_locked = env::COLLISION_VIEWER.present();
     if (check("Collision Viewer", collision_wireframe::enabled(), &v, !env_locked)) {
         collision_wireframe::set_enabled(v);
@@ -1478,6 +1603,51 @@ void tab_debug() {
         if (ImGui::Button("Reload now")) course_hot_reload::request_reload();
         help("Rebuilds the active course from disk and restarts it at the course entrance.");
     }
+#ifdef NSMBU_HAS_VULKAN
+    if (render::vulkan() && !gfxvk::device_inventory.empty()) {
+        heading("Graphics card (next start)");
+        const bool env = env::VK_GPU() != nullptr;
+        const std::string saved = gfxvk::device_setting();
+        const bool dedicated = saved.empty() || saved == "dedicated" || saved == "discrete";
+        bool haveDiscrete = false, haveIntegrated = false;
+        for (const auto& gpu : gfxvk::device_inventory) {
+            if (!gpu.usable()) continue;
+            if (gpu.kind == gfxvk::kGpuDiscrete) haveDiscrete = true;
+            if (gpu.kind == gfxvk::kGpuIntegrated) haveIntegrated = true;
+        }
+        auto choose = [](const std::string& value) {
+            gfxvk::set_device_setting(value);
+            hostui::set("gpu", value.empty() ? "dedicated" : value);
+        };
+        if (radio("Prefer dedicated", dedicated, !env)) post_changed([choose] { choose(""); });
+        ImGui::SameLine();
+        if (radio("Prefer integrated", saved == "integrated", !env)) post_changed([choose] { choose("integrated"); });
+        for (size_t i = 0; i < gfxvk::device_inventory.size(); i++) {
+            const auto& gpu = gfxvk::device_inventory[i];
+            ImGui::PushID(int(i));
+            const std::string label = gpu.name + " (" + gfxvk::gpu_kind_name(gpu.kind) + ")";
+            if (radio(label.c_str(), saved == gpu.identity, !env && gpu.usable())) {
+                const std::string identity = gpu.identity;
+                post_changed([choose, identity] { choose(identity); });
+            }
+            if (!gpu.usable()) note("%s", gpu.unavailable.c_str());
+            ImGui::PopID();
+        }
+        note("This start uses %s. A different choice applies the next time the game starts.",
+             gfxvk::active_gpu_name.c_str());
+        if (env) note("NSMBU_VK_GPU=%s is set for this start and takes precedence.", env::VK_GPU());
+#ifndef _WIN32
+        else if (gfxvk::gpu_restart_pending(saved, gfxvk::active_gpu_identity, gfxvk::active_gpu_kind, haveDiscrete, haveIntegrated)) {
+            note("Progress since your last save is lost if you restart now.");
+            if (ImGui::Button("Restart now##gpu")) hostui::post([] { render::restart(); });
+        }
+#endif
+        if (!gfxvk::gpu_fallback.empty()) note("%s", gfxvk::gpu_fallback.c_str());
+        help("Prefer dedicated uses a separate graphics card when one can draw the game windows.\n"
+             "Prefer integrated keeps the GPU built into the processor.\n"
+             "A listed card is used on the next start when it is still available.");
+    }
+#endif
 }
 
 void tab_about() {
@@ -1524,6 +1694,24 @@ static void lag_row(const char* name, double ms, double frameMs, const ImVec4& c
     ImGui::Text("%.1f ms %s", ms, name);
 }
 
+static void perf_device_lines(const std::string& device) {
+    const size_t driver = device.find(", driver ");
+    const size_t vulkan = device.find(", Vulkan ");
+    if (driver != std::string::npos && vulkan != std::string::npos && driver < vulkan) {
+        ImGui::TextUnformatted(device.substr(0, driver).c_str());
+        ImGui::TextUnformatted(device.substr(driver + 2, vulkan - driver - 2).c_str());
+        ImGui::TextUnformatted(device.substr(vulkan + 2).c_str());
+        return;
+    }
+    const size_t driver_colon = device.find(", driver: ");
+    if (driver_colon != std::string::npos) {
+        ImGui::TextUnformatted(device.substr(0, driver_colon).c_str());
+        ImGui::TextUnformatted(device.substr(driver_colon + 2).c_str());
+        return;
+    }
+    ImGui::TextUnformatted(device.c_str());
+}
+
 void perf_window(bool menu_open) {
     const double t = now_s();
     static std::string metrics;
@@ -1537,15 +1725,21 @@ void perf_window(bool menu_open) {
         metrics = perf::summary();
         device = performance_device();
     }
-    float worst = 0, sum = 0;
-    for (float f : U.frame_ms) { worst = std::max(worst, f); sum += f; }
+    float avg_ms = 0, worst = 0, avg_fps = 0;
+    double avg_logic = 0;
+    FrameHistoryAverages::compute(U.frame_ms, U.frame_logic, avg_ms, worst, avg_fps, avg_logic);
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.55f);
+    ImGui::SetNextWindowBgAlpha(0.70f);
     ImGuiWindowFlags fl = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
                           ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##perf", nullptr, fl)) {
-        ImGui::Text("%.0f fps   %.1f ms (worst %.1f)", U.fps, sum / 120.0f, worst);
-        ImGui::Text("Average %.1f fps   %.1f logic steps/s", g_average.fps, g_average.logic);
+        ImGui::Text("%.0f fps   %.1f ms (worst %.1f)", U.fps, avg_ms, worst);
+        ImGui::Text("Average %.1f fps   %.1f logic steps/s", avg_fps, avg_logic);
+        if (!perf_extended_shown()) {
+            ImGui::End();
+            (void)menu_open;
+            return;
+        }
         {
             static double t0 = 0; static uint64_t s0 = 0; static double rate = 60;
             static int slowWindows = 0;
@@ -1570,9 +1764,10 @@ void perf_window(bool menu_open) {
         ImGui::Separator();
         if (device.empty()) device = performance_device();
         if (metrics.empty()) metrics = perf::summary();
-        ImGui::TextUnformatted(device.c_str());
+        perf_device_lines(device);
         ImGui::TextUnformatted(metrics.c_str());
-        ImGui::PlotLines("##ft", U.frame_ms, 120, U.frame_i, nullptr, 0.0f, 50.0f, ImVec2(220, 36));
+        ImGui::PlotLines("##ft", U.frame_ms, FrameHistoryAverages::kFrames, U.frame_i, nullptr, 0.0f, 50.0f,
+                         ImVec2(220, 36));
         rprof::Breakdown b;
         if (perf_detail_shown() && rprof::latest_breakdown(b)) {
             ImGui::SeparatorText("Lag breakdown");
@@ -1607,7 +1802,11 @@ void perf_window(bool menu_open) {
 void settings_window() {
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 ds = io.DisplaySize;
+#ifdef __ANDROID__
+    const ImVec2 size(ds.x * 0.98f, ds.y * 0.97f);
+#else
     const ImVec2 size(std::min(1040.0f, ds.x * 0.96f), std::min(620.0f, ds.y * 0.92f));
+#endif
     ImGui::SetNextWindowPos(ImVec2(ds.x * 0.5f, ds.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
     ImGuiWindowFlags fl = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
@@ -1618,9 +1817,40 @@ void settings_window() {
         U.just_opened = false;
     }
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+#ifdef __ANDROID__
+    const bool begun = ImGui::Begin(app_title::kSettings, nullptr, fl);
+#else
     const bool begun = ImGui::Begin(app_title::kSettings, &open, fl);
+#endif
     ImGui::PopStyleVar();
     if (begun) {
+#ifdef __ANDROID__
+        const float close_sz = ImGui::GetFrameHeight();
+        const ImVec2 close_back = ImGui::GetCursorScreenPos();
+        const ImVec2 win = ImGui::GetWindowPos();
+        const ImVec2 close_at(win.x + ImGui::GetWindowWidth() - close_sz, win.y);
+        ImGui::PushClipRect(win, ImVec2(win.x + ImGui::GetWindowWidth(), win.y + ImGui::GetWindowHeight()), false);
+        ImGui::SetCursorScreenPos(close_at);
+        ImGui::PushItemFlag(ImGuiItemFlags_NoNav, true);
+        const bool close_pressed = ImGui::InvisibleButton("##settings-close", ImVec2(close_sz, close_sz));
+        ImGui::PopItemFlag();
+        const bool close_hot = ImGui::IsItemHovered() || ImGui::IsItemActive();
+        ImDrawList* close_dl = ImGui::GetWindowDrawList();
+        if (close_hot)
+            close_dl->AddRectFilled(close_at, ImVec2(close_at.x + close_sz, close_at.y + close_sz),
+                                    ImGui::GetColorU32(ImGui::IsItemActive() ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered));
+        const ImVec2 close_c(close_at.x + close_sz * 0.5f, close_at.y + close_sz * 0.5f);
+        const float close_e = close_sz * 0.22f;
+        const float close_th = std::max(2.0f, close_sz * 0.08f);
+        const ImU32 close_col = ImGui::GetColorU32(ImGuiCol_Text);
+        close_dl->AddLine(ImVec2(close_c.x - close_e, close_c.y - close_e), ImVec2(close_c.x + close_e, close_c.y + close_e), close_col, close_th);
+        close_dl->AddLine(ImVec2(close_c.x + close_e, close_c.y - close_e), ImVec2(close_c.x - close_e, close_c.y + close_e), close_col, close_th);
+        ImGui::PopClipRect();
+        ImGui::SetCursorScreenPos(close_back);
+        if (close_pressed) open = false;
+#endif
+        note("Touch or point at the menu, or use a controller: D-pad or left stick to move, A to activate, B to go back, "
+             "LB/RB change tabs, Start+Select closes.");
         const ImVec2 wp = ImGui::GetWindowPos();
         const float th = ImGui::GetFrameHeight();
         ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(wp.x, wp.y + th - 2),
@@ -1637,7 +1867,8 @@ void settings_window() {
                 if (ImGui::BeginTabItem(kTabNames[i], nullptr, f)) {
                     if (U.tab != i) U.cap_action = -1, g_capturing_keys = false, U.cap_note.clear();
                     U.tab = i;
-                    ImGui::BeginChild("page", ImVec2(0, 0), ImGuiChildFlags_NavFlattened);
+                    ImGui::BeginChild("page", ImVec2(0, 0), ImGuiChildFlags_NavFlattened,
+                                      i == kControls ? ImGuiWindowFlags_NoScrollbar : ImGuiWindowFlags_None);
                     switch (i) {
                     case kControls: tab_controls(); break;
                     case kGraphics: tab_graphics(); break;
@@ -1660,7 +1891,8 @@ void settings_window() {
     ImGui::End();
 
     if (!open) set_open(false);
-    if (U.cap_action < 0 && controller_pressed(input_map::kPadB) && !g_pad_b_used && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId))
+    if (U.cap_action < 0 && controller_pressed(input_map::face_input(input_map::kB)) && !g_pad_b_used &&
+        !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId))
         set_open(false);
     g_pad_b_used = false;
 }
@@ -1668,6 +1900,10 @@ void settings_window() {
 }
 
 bool is_open() { return g_open.load(std::memory_order_relaxed); }
+bool wants_text_input() {
+    if (!is_open() || !ImGui::GetCurrentContext()) return false;
+    return ImGui::GetIO().WantTextInput;
+}
 void set_open(bool open) {
     if (g_open.exchange(open) == open) return;
     for (auto& k : g_held_keys) k = false;
@@ -1677,6 +1913,7 @@ void set_open(bool open) {
         mods::mouse_release();
         U.just_opened = true;
         U.slots_time = -1;
+        U.gamepad_navigation.reset();
     }
     LOG("[overlay] %s", open ? "opened" : "closed");
 }
@@ -1687,6 +1924,15 @@ bool perf_shown() { return g_perf.load(std::memory_order_relaxed); }
 void set_perf_shown(bool on) {
     g_perf = on;
     hostui::post([on] { hostui::set("perfOverlay", on ? "1" : "0"); });
+}
+bool perf_extended_shown() { return g_perf_extended.load(std::memory_order_relaxed); }
+void set_perf_extended_shown(bool on) {
+    g_perf_extended = on;
+    if (!on) g_perf_detail = false;
+    hostui::post([on] {
+        hostui::set("perfExtended", on ? "1" : "0");
+        if (!on) hostui::set("perfDetail", "0");
+    });
 }
 bool perf_detail_shown() { return g_perf_detail.load(std::memory_order_relaxed); }
 void set_perf_detail_shown(bool on) {
@@ -1730,14 +1976,14 @@ bool key(int code, bool down, bool repeat, int mods) {
     push({Event::Key, code, down, 0, 0, mods});
     return true;
 }
-bool mouse_move(float nx, float ny) {
+bool mouse_move(float nx, float ny, bool touch) {
     if (!captures() || g_no_host) return false;
-    push({Event::MousePos, 0, false, nx, ny, 0});
+    push({Event::MousePos, 0, false, nx, ny, 0, touch});
     return true;
 }
-bool mouse_button(int button, bool down) {
+bool mouse_button(int button, bool down, bool touch) {
     if (!captures() || g_no_host) return false;
-    push({Event::MouseButton, button, down, 0, 0, 0});
+    push({Event::MouseButton, button, down, 0, 0, 0, touch});
     return true;
 }
 bool mouse_wheel(float dx, float dy) {
@@ -1745,12 +1991,21 @@ bool mouse_wheel(float dx, float dy) {
     push({Event::Wheel, 0, false, dx, dy, 0});
     return true;
 }
+bool text(const char* utf8) {
+    if (!utf8 || !*utf8 || !is_open() || g_no_host) return false;
+    Event e;
+    e.kind = Event::Text;
+    e.text = utf8;
+    push(e);
+    return true;
+}
 void set_density(float d) { g_density = d > 0.5f ? d : 1.0f; }
 
 void undo_frame_sample() {
     if (U.sample_undo) {
-        U.frame_i = (U.frame_i + 119) % 120;
+        U.frame_i = (U.frame_i + FrameHistoryAverages::kFrames - 1) % FrameHistoryAverages::kFrames;
         U.frame_ms[U.frame_i] = 0;
+        U.frame_logic[U.frame_i] = 0;
     }
     U.last_present = U.sample_restore;
     U.sample_undo = false;
@@ -1763,7 +2018,12 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         prefs_read = true;
         std::string v;
         if (hostui::get("perfOverlay", v)) g_perf = v == "1";
+        std::string extended;
+        const bool haveExtended = hostui::get("perfExtended", extended);
+        if (haveExtended) g_perf_extended = extended == "1";
+        else if (g_perf) g_perf_extended = true;
         if (hostui::get("perfDetail", v)) g_perf_detail = v == "1";
+        if (g_perf_detail && !g_perf_extended) g_perf_extended = true;
         if (!env::COLLISION_VIEWER.present() && hostui::get("collisionViewer", v))
             collision_wireframe::set_enabled(v == "1");
         if (!env::HOT_RELOAD_COURSES.present() && hostui::get("hotReloadCourses", v))
@@ -1773,6 +2033,11 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
             hostui::post([pro = v == "1"] { hostui::set_pro_controller(pro); });
 
         if (!rumble::env_override() && hostui::get("rumble", v)) rumble::set_enabled(v != "0");
+#ifdef __ANDROID__
+        if (hostui::get("touchButtons", v) && !v.empty()) touch_buttons::mode = std::clamp(atoi(v.c_str()), 0, 2);
+        if (hostui::get("touchControls", v)) touch_buttons::controls = v != "0";
+        if (!phone_rumble::env_override() && hostui::get("phoneRumble", v)) phone_rumble::choice = phone_rumble::parse(v.c_str());
+#endif
 
         if (!audio::mute_env_override() && hostui::get("audioMute", v)) audio::set_muted(v == "1");
         if (!audio::volume_env_override() && hostui::get("audioVolume", v) && !v.empty())
@@ -1823,17 +2088,22 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
     }
 #endif
     const double t = now_s();
+    static uint64_t prev_logic_steps = 0;
+    const uint64_t logic_steps = interp::logic_steps();
     if (U.last_present > 0) {
         U.frame_ms[U.frame_i] = (float)((t - U.last_present) * 1000.0);
-        U.frame_i = (U.frame_i + 1) % 120;
+        const uint64_t prev = prev_logic_steps;
+        U.frame_logic[U.frame_i] = prev ? (uint32_t)(logic_steps - prev) : 0;
+        U.frame_i = (U.frame_i + 1) % FrameHistoryAverages::kFrames;
         U.sample_undo = true;
     } else {
         U.sample_undo = false;
     }
     U.sample_restore = U.last_present;
     U.last_present = t;
+    prev_logic_steps = logic_steps;
     g_last_frame = t;
-    g_average.sample(t, gx2::flips_presented(), interp::logic_steps(), int(render::active()),
+    g_average.sample(t, gx2::flips_presented(), logic_steps, int(render::active()),
                      interp::mode(), interp::fps(), hostui::res_scale());
     read_controller();
 
@@ -1858,7 +2128,14 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
     }
     ImGuiIO& io = ImGui::GetIO();
 
-    const float scale = std::max({1.0f, g_density.load(), ph / 820.0f});
+#ifdef __ANDROID__
+    const mobile_ui::Layout touch_ui =
+        mobile_ui::android_settings(g_density.load() * 160.0f, g_density.load(), float(pw), float(ph));
+    mobile_ui::apply_touch_style(ImGui::GetStyle(), touch_ui);
+    const float scale = touch_ui.scale;
+#else
+    const float scale = mobile_ui::desktop_scale(g_density.load(), float(ph));
+#endif
     io.DisplaySize = ImVec2(pw / scale, ph / scale);
     io.DisplayFramebufferScale = ImVec2(scale, scale);
     io.DeltaTime = U.last_time > 0 ? (float)std::clamp(t - U.last_time, 1e-4, 0.25) : 1.0f / 60.0f;
@@ -1868,6 +2145,7 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
         std::lock_guard<std::mutex> lk(g_mu);
         events.swap(g_events);
     }
+    bool mouse_used = false;
     for (const Event& e : events) {
         switch (e.kind) {
         case Event::Key:
@@ -1877,14 +2155,27 @@ ImDrawData* frame(float pw, float ph, void (*renderer_init)()) {
             io.AddKeyEvent(ImGuiMod_Super, e.mods & kSuper);
             if (ImGuiKey k = imgui_key(e.code); k != ImGuiKey_None) io.AddKeyEvent(k, e.down);
             break;
-        case Event::MousePos: io.AddMousePosEvent(e.x * io.DisplaySize.x, e.y * io.DisplaySize.y); break;
-        case Event::MouseButton: io.AddMouseButtonEvent(e.code, e.down); break;
-        case Event::Wheel: io.AddMouseWheelEvent(e.x, e.y); break;
+        case Event::MousePos:
+            io.AddMouseSourceEvent(e.touch ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
+            mouse_used |= e.x != U.mouse_position.x || e.y != U.mouse_position.y;
+            U.mouse_position = ImVec2(e.x, e.y);
+            io.AddMousePosEvent(e.x * io.DisplaySize.x, e.y * io.DisplaySize.y);
+            break;
+        case Event::MouseButton:
+            io.AddMouseSourceEvent(e.touch ? ImGuiMouseSource_TouchScreen : ImGuiMouseSource_Mouse);
+            mouse_used = true;
+            io.AddMouseButtonEvent(e.code, e.down);
+            break;
+        case Event::Wheel:
+            mouse_used |= e.x != 0 || e.y != 0;
+            io.AddMouseWheelEvent(e.x, e.y);
+            break;
+        case Event::Text: io.AddInputCharactersUTF8(e.text.c_str()); break;
         default: break;
         }
     }
     apply_capture();
-    feed_gamepad(io, open && U.cap_action < 0);
+    feed_gamepad(io, open && U.cap_action < 0, mouse_used);
     ImGui::NewFrame();
     if (open) settings_window();
     if (text) {

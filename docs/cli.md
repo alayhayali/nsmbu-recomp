@@ -85,6 +85,7 @@ The CLI exports `NSMBU_CLI=1` and `NSMBU_USER_DIR=<repo>/nsmbu` on every dev com
 | `nsmbu record <course> [name]` / `replay [--release] [--uncapped] [--no-exit-on-input] [--exit-at N] [--log PATH] <name>` | env + launch (see [automation.md](automation.md)) |
 | `nsmbu profile` / `perf` | profiling helpers |
 | `nsmbu installer [--version VERSION] [--no-open]` | builds this Linux host's GitHub Release folder (the zip contents) at `build/installer` with the release workflow's pinned zig toolchain, then opens that folder's setup window; `--no-open` returns after the package is ready; does not publish |
+| `nsmbu apk` | builds a **debug** APK from `android/` with your recompiled `build/gen`, installs it on a USB device (`adb`), and copies the active dump to `Android/data/org.nsmbrecomp.nsmbu/files/game/` when it is not already there unless `--no-push`; `--force-push` copies even when up to date; `--push-only` copies assets only; `--stub` builds placeholder code like CI; `--build-only` skips adb. With a local unpack, the debug APK uses `meta/iconTex.tga` as the launcher icon (`android/app/local-res`, never in CI or release builds). |
 | `nsmbu lint` / `recomp` | TypeScript mod build, recomp only |
 | `nsmbu scripted <name>` | wraps `tools/run/scripted-run.sh` |
 | `nsmbu test [--list] [name…]` | boots a game per playtest and runs selected cases in parallel ([automation.md](automation.md)); only `--list` is a valid flag |
@@ -114,11 +115,12 @@ On Linux, `tools/build/build.py` adds the `libstdc++` path when it finds `libstd
 `nsmbu build` runs the recompiler when `game/code/red-pro2.rpx` is newer than `build/gen`.
 When that RPX is absent, the build fills `build/gen` with `tools/recomp/stubgen.py` so the tree still links.
 
+Set `NSMBU_VERBOSE_BUILD=1` to print full CMake configure output (pkg-config checks and other `--` status lines).
+
 An RPX from a disc that lacks the 1.3.0 update has different addresses.
 Those addresses miss `references/headers` and `tools/recomp/headers_names.txt`.
 
-A warm `nsmbu build` still runs `cmake -S` and regenerates guest stubs.
-Configure only when the cache or compiler flags are missing.
+A warm `nsmbu build` skips `cmake -S` when the build cache already matches the compiler flags and CMake options.
 Regenerate guest stubs only when `hooks.txt`, `hooks_*.txt`, or the recomp inputs changed.
 The `0 hooks` line from stub generation is normal.
 Hooks live in `build/gen`.

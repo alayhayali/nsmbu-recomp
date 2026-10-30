@@ -108,7 +108,11 @@ static void ImGui_ImplSDL3_UpdateIme()
     ImGuiPlatformImeData* data = &bd->ImeData;
     SDL_Window* window = SDL_GetKeyboardFocus();
 
+#if defined(__ANDROID__)
+    if ((!data->WantTextInput || bd->ImeWindow != window) && bd->ImeWindow != nullptr)
+#else
     if ((!(data->WantVisible || data->WantTextInput) || bd->ImeWindow != window) && bd->ImeWindow != nullptr)
+#endif
     {
         SDL_StopTextInput(bd->ImeWindow);
         bd->ImeWindow = nullptr;
@@ -127,7 +131,11 @@ static void ImGui_ImplSDL3_UpdateIme()
         SDL_SetTextInputArea(window, &r, 0);
         bd->ImeWindow = window;
     }
+#if defined(__ANDROID__)
+    if (!SDL_TextInputActive(window) && data->WantTextInput)
+#else
     if (!SDL_TextInputActive(window) && (data->WantVisible || data->WantTextInput))
+#endif
         SDL_StartTextInput(window);
 }
 

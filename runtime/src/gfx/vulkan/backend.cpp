@@ -71,6 +71,7 @@ namespace gx2 { void checkpoint_vulkan_caches(); }
 namespace render { bool shader_warm_tick(uint64_t activity); }
 #include "hooks/interp.h"
 #include "hooks/interp_pacing.h"
+#include "test/script_frame.h"
 #include "gfx/renderer.h"
 
 namespace gfxvk {
@@ -1415,11 +1416,12 @@ static void frame_dumps(uint64_t frame) {
       }
     return f;
   }();
-  if (std::find(frames.begin(), frames.end(), frame) != frames.end()) {
-    dump_scan(R.tv, "frame_" + std::to_string(frame) + ".png");
-    dump_scan(R.drc, "frame_" + std::to_string(frame) + "_drc.png");
+  const uint64_t dumpFrame = script_frame::frame(frame);
+  if (std::find(frames.begin(), frames.end(), dumpFrame) != frames.end()) {
+    dump_scan(R.tv, "frame_" + std::to_string(dumpFrame) + ".png");
+    dump_scan(R.drc, "frame_" + std::to_string(dumpFrame) + "_drc.png");
     if (env::DUMP_PRESENT())
-      request_present_dump("frame_" + std::to_string(frame) + "_present.png");
+      request_present_dump("frame_" + std::to_string(dumpFrame) + "_present.png");
   }
 
   static const std::vector<uint64_t> loadFrames = [] {
@@ -1562,6 +1564,7 @@ void repeat_present() {
       drcScan, drcScan ? float(drcScan->extent.width) : 0, drcScan ? float(drcScan->extent.height) : 0,
       layerW, layerH, R.frame);
   set_present_plan(&plan);
+  gx2::pace_host_present();
   set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
   g_acquire_timeout_ns = 0;
   g_presented = false;
@@ -1607,7 +1610,10 @@ void swap() {
   set_present_plan(&plan);
 
   if (delay > 0) set_overlay_draw(nullptr);
-  else set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
+  else {
+    gx2::pace_host_present();
+    set_overlay_draw(overlay::frame(plan.dw > 0 ? plan.dw : layerW, plan.dh > 0 ? plan.dh : layerH, overlay_renderer_init));
+  }
   take_screenshots(plan);
   bool sampled[2] = {};
   if (plan.sample_auto && drcScan) {
@@ -2384,6 +2390,7 @@ static void set_window_icons() {
 void init() {
 #ifdef __ANDROID__
   SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+  SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 #endif
 
   if (hidden_windows())
@@ -2510,15 +2517,42 @@ static void view_button_released() {
 }
 #ifdef __ANDROID__
 static bool synthHeld = false;
-static SDL_FingerID touchFinger = 0, buttonFinger = 0;
+static SDL_FingerID touchFinger = 0, buttonFinger = 0, overlayMenuFinger = 0;
+
+static bool overlay_menu_finger(const SDL_Event& event) {
+  const SDL_TouchFingerEvent& f = event.tfinger;
+  switch (event.type) {
+  case SDL_EVENT_FINGER_DOWN:
+    if (input::touch_from_controller(f.touchID)) return true;
+    if (overlayMenuFinger) return true;
+    overlayMenuFinger = f.fingerID;
+    overlay::mouse_move(f.x, f.y, true);
+    overlay::mouse_button(0, true, true);
+    return true;
+  case SDL_EVENT_FINGER_MOTION:
+    if (!overlayMenuFinger || f.fingerID != overlayMenuFinger) return false;
+    overlay::mouse_move(f.x, f.y, true);
+    return true;
+  case SDL_EVENT_FINGER_UP:
+  case SDL_EVENT_FINGER_CANCELED:
+    if (!overlayMenuFinger || f.fingerID != overlayMenuFinger) return false;
+    overlayMenuFinger = 0;
+    overlay::mouse_move(f.x, f.y, true);
+    overlay::mouse_button(0, false, true);
+    return true;
+  default:
+    return false;
+  }
+}
+
 static bool finger_touch(const SDL_Event& event) {
   const SDL_TouchFingerEvent& f = event.tfinger;
   if (f.windowID != SDL_GetWindowID(R.tv.window)) return false;
+  if (overlay::captures()) return overlay_menu_finger(event);
   float tx = 0, ty = 0;
   switch (event.type) {
   case SDL_EVENT_FINGER_DOWN:
     if (input::touch_from_controller(f.touchID)) return true;
-    if (overlay::captures()) return false;
     if (!buttonFinger && gfx::view_button_hit(f.x, f.y)) {
       buttonFinger = f.fingerID;
       buttonDown = std::max<uint64_t>(SDL_GetTicks(), 1);
@@ -2790,7 +2824,7 @@ void run_main_loop() {
       char title[window_title::kCap];
       window_title::format_base(title, sizeof title);
       if (build::dev() && gx2::uncapped())
-        std::strncat(title, " | UNCAPPED (debug)", sizeof title - std::strlen(title) - 1);
+        std::strncat(title, " | FAST FORWARD", sizeof title - std::strlen(title) - 1);
       static char lastTitle[window_title::kCap];
       if (strcmp(title, lastTitle)) {
         memcpy(lastTitle, title, sizeof lastTitle);

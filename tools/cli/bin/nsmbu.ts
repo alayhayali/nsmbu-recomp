@@ -3,6 +3,7 @@ import { findRepoRoot } from "../src/repo.ts";
 import { HELP } from "../src/help.ts";
 import { flagString, hasFlag, parseArgv } from "../src/parse.ts";
 import {
+    cmdApk,
     cmdBuild,
     cmdCrash,
     cmdExtract,
@@ -162,6 +163,9 @@ async function main(): Promise<void> {
                 break;
             case "installer":
                 cmdInstaller(repo, rest);
+                break;
+            case "apk":
+                await cmdApk(repo, rest);
                 break;
             case "lint":
                 cmdLint(repo);

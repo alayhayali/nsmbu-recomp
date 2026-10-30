@@ -145,6 +145,17 @@ class KeyFiles(unittest.TestCase):
                 self.assertIn("16 raw bytes", setup.key_file_problem(p, kind))
             self.assertIn("cannot be read", setup.key_file_problem(os.path.join(d, "missing"), "common"))
 
+    def test_key_bytes_without_a_file(self):
+        text = ("common = %s\ndisc = %s\n" % (KEY_HEX, OTHER_HEX)).encode()
+        self.assertEqual(setup.key_from_data(text, "disc"), bytes.fromhex(OTHER_HEX))
+        self.assertEqual(setup.named_key_from_data(text, "common"), bytes.fromhex(KEY_HEX))
+        self.assertEqual(setup.key_from_data(bytes(range(16)), "common"), bytes(range(16)))
+        self.assertIsNone(setup.named_key_from_data(bytes(range(16)), "common"))
+        self.assertIsNone(setup.key_from_data(b"garbage", "disc"))
+        self.assertIn("16 raw bytes", setup.key_data_problem(b"garbage", "disc"))
+        self.assertIn("larger than 4096", setup.key_data_problem(b"0" * 4097, "common"))
+        self.assertIsNone(setup.key_data_problem(text, "common"))
+
     def test_discovery(self):
         if any(os.path.isfile(os.path.join(setup.PKG, n)) for n in ("common.key", "keys.txt")):
             self.skipTest("a key file is in the release folder")
@@ -513,6 +524,21 @@ class Recipe(unittest.TestCase):
         self.assertEqual(setup.sub("-O3", m), "-O3")
         self.assertEqual(setup.fwd("C:\\a\\b"), "C:/a/b")
 
+    def test_link_recipe_and_glue(self):
+        tc = setup.Toolchain(["cc"], ["c++"], ["ar"], rsp=False)
+        calls = []
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.object(setup, "run_logged", side_effect=lambda cmd, **k: calls.append(cmd)), \
+             mock.patch.object(setup, "IS_LINUX", False):
+            out = os.path.join(d, "libgame.so")
+            open(out, "wb").close()
+            setup.link_game(tc, {"link": ["unused"]}, ["a.o"], d, out,
+                            recipe=["-shared", "{glue}", "{gamecode}", "-o", "{out}"], glue=["x.o", "y.o"])
+            self.assertEqual(calls[-1], ["c++", "-shared", "x.o", "y.o", setup.fwd(os.path.join(d, "libgamecode.a")),
+                                         "-o", setup.fwd(out)])
+            setup.link_game(tc, {"link": ["{gamecode}", "-o", "{out}"]}, ["a.o"], d, out)
+            self.assertEqual(calls[-1][1:], [setup.fwd(os.path.join(d, "libgamecode.a")), "-o", setup.fwd(out)])
+
     def test_toolchains_pinned(self):
         tcs = setup.load_toolchains()
         for name, tc in tcs["toolchains"].items():
@@ -655,6 +681,179 @@ class ShaderWarm(unittest.TestCase):
                 with self.assertRaisesRegex(setup.SetupError, "shader precompile"):
                     setup.precompile_shaders(exe, d, d)
 
+class LongPaths(unittest.TestCase):
+    """Windows' "Extract All" puts the release folder into a folder of the same name, which can put the
+    deepest files of llvm-mingw beyond MAX_PATH. Setup's file operations on the compiler use extended-length
+    paths (longpath); a data folder too deep for the game and its tools stops setup before any download."""
+
+    RELEASE = "C:\\Users\\player\\Downloads\\" + "\\".join(["NSMBU-v0.7.0-windows-x86_64"] * 2)
+
+    def test_longpath_windows(self):
+        lp = lambda p: setup.longpath(p, windows=True)
+        self.assertEqual(lp("C:\\Games\\NSMBU\\data"), "\\\\?\\C:\\Games\\NSMBU\\data")
+        self.assertEqual(lp("C:/Games/NSMBU/./x/../data/"), "\\\\?\\C:\\Games\\NSMBU\\data")
+        self.assertEqual(lp("\\\\server\\share\\NSMBU"), "\\\\?\\UNC\\server\\share\\NSMBU")
+        self.assertEqual(lp("\\\\?\\C:\\already"), "\\\\?\\C:\\already")
+        self.assertEqual(lp("\\\\.\\pipe\\x"), "\\\\.\\pipe\\x")
+        from pathlib import PureWindowsPath
+        self.assertEqual(lp(PureWindowsPath("C:\\a\\b")), "\\\\?\\C:\\a\\b")
+        self.assertEqual(lp("D:/a/_temp/msys64/tmp/x/code-builds/bbbb"), "\\\\?\\D:\\a\\_temp\\msys64\\tmp\\x\\code-builds\\bbbb")
+        self.assertEqual(lp("D:\\a/b\\\\c//d"), "\\\\?\\D:\\a\\b\\c\\d")
+        self.assertEqual(lp("//server/share/NSMBU/../x"), "\\\\?\\UNC\\server\\share\\x")
+        for root in ("D:/", "D:\\", "D:", "D:/a/.."):
+            self.assertEqual(lp(root), "\\\\?\\D:\\")
+        self.assertEqual(lp("C:/../.."), "\\\\?\\C:\\")
+        for p in ("C:/x/y", "\\\\server\\share\\y"):
+            self.assertNotIn("/", lp(p))
+            self.assertEqual(setup.plain_path(lp(p)), setup.windows_path(p))
+
+    def test_windows_path(self):
+        self.assertEqual(setup.windows_path("C:/Games//NSMBU/./data/"), "C:\\Games\\NSMBU\\data")
+        self.assertEqual(setup.windows_path("relative/./dir/../x"), "relative\\x")
+        self.assertEqual(setup.windows_path("//srv/share"), "\\\\srv\\share\\")
+
+    def test_msys2_python_keeps_ordinary_paths(self):
+        with mock.patch.object(setup, "NATIVE_WINDOWS_PATHS", False):
+            p = "D:/a/_temp/msys64/tmp/x"
+            self.assertIs(setup.longpath(p), p)
+        self.assertEqual(setup.NATIVE_WINDOWS_PATHS, setup.IS_WIN and os.path.join("a", "b") == "a\\b")
+
+    def test_longpath_other_platforms_unchanged(self):
+        for p in ("/home/player/nsmbu", "relative/dir", "C:\\x"):
+            self.assertIs(setup.longpath(p, windows=False), p)
+        if not setup.IS_WIN:
+            p = "/Users/player/nsmbu"
+            self.assertIs(setup.longpath(p), p)
+
+    def test_messages_show_normal_paths(self):
+        for p in ("C:\\Games\\NSMBU", "\\\\server\\share\\NSMBU"):
+            self.assertEqual(setup.plain_path(setup.longpath(p, windows=True)), p)
+        err = FileNotFoundError(2, "No such file or directory")
+        err.filename = setup.longpath("C:\\Users\\player\\Downloads\\x\\data\\toolchain", windows=True)
+        text = setup.plain_text(err)
+        self.assertNotIn("\\\\?\\", text)
+        self.assertIn("'C:\\\\Users\\\\player\\\\Downloads", text)
+        with mock.patch.object(setup, "GUI", None), mock.patch("builtins.print") as out:
+            setup.say("Removed \\\\?\\C:\\Users\\player\\x and \\\\?\\UNC\\srv\\s\\y")
+        out.assert_called_once_with("Removed C:\\Users\\player\\x and \\\\srv\\s\\y", flush=True)
+
+    def test_measured_depths(self):
+        self.assertEqual(setup.DEEPEST_DATA_PATH, 79)
+        self.assertEqual(setup.MAX_DATA_DIR_CHARS, 179)
+        cache = "nsmbu\\shadercache\\vulkan-%s-%s-%s.bin" % ("0" * 8, "0" * 8, "f" * 32)
+        self.assertEqual(len(cache), setup.DEEPEST_DATA_PATH)
+        game = "game\\content\\Common\\layout\\ChallengeImage\\ChallengeImage_132.gtx"
+        self.assertLessEqual(len(game), setup.DEEPEST_DATA_PATH)
+        self.assertLessEqual(len(game.replace("game", "game.partial", 1)), setup.DEEPEST_DATA_PATH)
+        compilers = 0
+        for tc in setup.load_toolchains()["toolchains"].values():
+            if tc["kind"] == "llvm-mingw":
+                triple = tc.get("triple", "x86_64-w64-mingw32")
+                for program in ("-clang.exe", "-clang++.exe"):
+                    exe = "toolchain\\%s\\bin\\%s%s" % (tc["dir"], triple, program)
+                    self.assertLessEqual(len(exe), setup.DEEPEST_DATA_PATH, exe)
+                    compilers += 1
+        self.assertGreaterEqual(compilers, 4)
+        own = [
+            "nsmbu\\shadercache\\vulkan-shaders\\spirv.bin",
+            "nsmbu\\screenshots\\NSMBU_2026-10-26_17-28-42_3.png",
+            "nsmbu\\save\\user\\rp_personal_savedata.dat",
+            "work\\shader-warm\\save\\user\\rp_personal_savedata.dat",
+        ]
+        for path in own:
+            self.assertLessEqual(len(path), setup.DEEPEST_DATA_PATH, path)
+
+    def test_deepest_accepted_folder(self):
+        pkg = "C:\\" + "p" * (setup.MAX_DATA_DIR_CHARS - len("\\data") - 3)
+        self.assertEqual(len(pkg), 174)
+        self.assertGreater(len(pkg + "\\data\\toolchain\\unpack.tmp\\") + 100, setup.WINDOWS_MAX_PATH)
+        for folder in (self.RELEASE, self.RELEASE.replace("player", "a.much.longer.account.name"), "C:\\Games\\NSMBU", pkg):
+            self.assertIsNone(setup.path_length_problem(folder + "\\data", folder, windows=True), folder)
+        deeper = pkg + "p"
+        self.assertEqual(setup.path_length_problem(deeper + "\\data", deeper, windows=True),
+                         "This folder's path is too long for Windows (175 characters, at most 174 work). Move the NSMBU "
+                         "folder to a shorter place such as C:\\Games\\NSMBU and start it again.")
+        self.assertIsNone(setup.path_length_problem("/x" * 200, "/x" * 199, windows=False))
+
+    def test_limit_boundary(self):
+        pkg = "C:\\" + "p" * (setup.MAX_DATA_DIR_CHARS - len("\\data") - 3)
+        self.assertEqual(len(pkg + "\\data"), setup.MAX_DATA_DIR_CHARS)
+        self.assertIsNone(setup.path_length_problem(pkg + "\\data", pkg, windows=True))
+        self.assertIsNotNone(setup.path_length_problem(pkg + "p\\data", pkg + "p", windows=True))
+        self.assertIn("(175 characters, at most 174 work)",
+                      setup.path_length_problem(setup.longpath(pkg + "p\\data", windows=True), "c" + pkg[1:] + "p",
+                                                windows=True))
+
+    def test_install_folder_outside_the_release(self):
+        data = "D:\\" + "\\".join(["games"] * 30)
+        msg = setup.path_length_problem(data, self.RELEASE, windows=True)
+        self.assertIn("The install folder's path is too long for Windows (%d characters, at most 179 work)" % len(data), msg)
+
+    def test_setup_stops_before_anything_else(self):
+        with tempfile.TemporaryDirectory() as d:
+            data = os.path.join(d, "x" * (setup.MAX_DATA_DIR_CHARS - len(d)), "data")
+            args = mock.Mock(data_dir=data, app_dir=None)
+            saved = setup.LOG.f
+            try:
+                with mock.patch.object(setup, "IS_WIN", True), mock.patch.object(setup, "PKG", os.path.dirname(data)), \
+                        mock.patch.object(setup, "load_manifest", return_value={"version": "v0", "exe": "nsmbu"}):
+                    with self.assertRaises(setup.SetupError) as e:
+                        setup.Ctx(args)
+                self.assertTrue(str(e.exception).startswith("This folder's path is too long for Windows"))
+                with open(os.path.join(data, "setup.log"), encoding="utf-8") as f:
+                    self.assertIn("too long for Windows", f.read())
+            finally:
+                if setup.LOG.f is not saved:
+                    setup.LOG.f.close()
+                setup.LOG.f = saved
+
+    def test_unpacks_a_deep_compiler_archive_into_a_deep_folder(self):
+        import shutil
+        import zipfile
+        top = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(setup.longpath(top), ignore_errors=True))
+        deep = setup.NATIVE_WINDOWS_PATHS or not setup.IS_WIN
+        data = os.path.join(top, "d" * max(1, (120 if deep else 20) - len(top) - 1))
+        os.makedirs(data)
+        member = "llvm-mingw-test/" + "/".join(["python-lib-site-packages-%02d" % i for i in range(5 if deep else 2)]) + "/deep_module.pyd"
+        arc = os.path.join(top, "src.zip")
+        with zipfile.ZipFile(arc, "w") as z:
+            z.writestr(member, b"deep")
+            z.writestr("llvm-mingw-test/bin/aarch64-w64-mingw32-clang.exe", b"")
+        sha = setup.file_sha256(arc)
+        pins = {"toolchains": {"test-mingw": {"kind": "llvm-mingw", "url": "https://example.invalid/llvm-mingw-test.zip",
+                                              "sha256": sha, "size": os.path.getsize(arc), "dir": "llvm-mingw-test",
+                                              "triple": "aarch64-w64-mingw32"}}}
+        env = {k: v for k, v in os.environ.items() if k != "NSMBU_TOOLCHAIN_DIR"}
+        fetch = lambda url, dst, *a, **k: shutil.copyfile(arc, dst)
+        with mock.patch.object(setup, "load_toolchains", return_value=pins), mock.patch.object(setup, "download", fetch), \
+                mock.patch.dict(os.environ, env, clear=True), mock.patch.object(setup, "say"):
+            tc = setup.get_toolchain("test-mingw", data, setup.UI(False))
+        root = os.path.join(data, "toolchain")
+        deep = os.path.join(root, *member.split("/"))
+        if setup.NATIVE_WINDOWS_PATHS:
+            self.assertGreater(len(os.path.join(root, "unpack.tmp", *member.split("/"))), 260)
+        with open(setup.longpath(deep), "rb") as f:
+            self.assertEqual(f.read(), b"deep")
+        self.assertEqual(tc.cc, [os.path.join(root, "llvm-mingw-test", "bin", "aarch64-w64-mingw32-clang.exe")])
+        self.assertEqual(tc.cxx, [os.path.join(root, "llvm-mingw-test", "bin", "aarch64-w64-mingw32-clang++.exe")])
+        self.assertEqual(sorted(os.listdir(root)), ["llvm-mingw-test"])
+        marker = os.path.join(root, "llvm-mingw-test", ".nsmbu-toolchain")
+        self.assertEqual(setup.folder_size(root), 4 + os.path.getsize(setup.longpath(marker)))
+        with mock.patch.object(setup, "say"):
+            setup.remove_toolchain(data)
+        self.assertFalse(os.path.exists(root))
+
+    def test_pinned_toolchains_name_their_triple(self):
+        tcs = setup.load_toolchains()["toolchains"]
+        self.assertEqual(tcs["llvm-mingw-20260922-aarch64"]["triple"], "aarch64-w64-mingw32")
+        self.assertNotIn("triple", tcs["llvm-mingw-20260922"])
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"NSMBU_TOOLCHAIN_DIR": d}):
+            tc = setup.get_toolchain("llvm-mingw-20260922-aarch64", d, setup.UI(False))
+            self.assertEqual(os.path.basename(tc.cc[0]), "aarch64-w64-mingw32-clang.exe")
+            tc = setup.get_toolchain("llvm-mingw-20260922", d, setup.UI(False))
+            self.assertEqual(os.path.basename(tc.cxx[0]), "x86_64-w64-mingw32-clang++.exe")
+
 class BracketsInInstallFolder(unittest.TestCase):
     def test_recompile_counts_generated_code_in_a_folder_with_brackets(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -672,6 +871,7 @@ class BracketsInInstallFolder(unittest.TestCase):
 
             with mock.patch.object(setup.subprocess, "Popen", return_value=FakeProc()):
                 self.assertEqual(setup.recompile(os.path.join(temporary, "game"), gen_dir), 2)
+
 
 class NonInteractive(unittest.TestCase):
     def test_ui_refuses_to_prompt(self):
