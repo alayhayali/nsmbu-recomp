@@ -28,6 +28,7 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 ### Fixed
 
 - High frame rates no longer stall on black loading screens or make Mario jitter, and they hold the rate you pick.
+  A logic step that runs a little long no longer drops the picture rate back to 60.
 - On Android, the Controls diagram no longer overlaps the options.
 - 30 fps no longer crashes on some screen changes, and switching back to 60 fps stays at 60.
 - Settings text fields accept keyboard input while the overlay is open.

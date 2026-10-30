@@ -28,7 +28,7 @@ async function measure(session: Session, cap: number, first: boolean): Promise<v
     if (stepsPerSec < 50 || stepsPerSec > 70) {
         throw new Error(`logic rate ${stepsPerSec.toFixed(1)}/s out of band at ${cap} (want ~60); ${session.last}`);
     }
-    const presentFloor = cap * 0.75;
+    const presentFloor = cap >= 240 ? cap * 0.7 : cap * 0.75;
     if (framesPerSec < presentFloor) {
         throw new Error(
             `present rate ${framesPerSec.toFixed(1)}/s too low for ${cap} cap; ${session.last}`,

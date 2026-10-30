@@ -317,10 +317,20 @@ static void sched_tick_thread() {
 static const bool g_log_longwait = env::LOG_LONGWAIT() != nullptr;
 static thread_local std::chrono::steady_clock::time_point t_block_start;
 static std::atomic<int> g_draw_lock_waiters{0};
+static std::atomic<int64_t> g_draw_lock_wait_since{0};
 
 namespace threads {
 
 int draw_lock_waiters() { return g_draw_lock_waiters.load(std::memory_order_relaxed); }
+
+int64_t draw_lock_wait_ns() {
+    if (g_draw_lock_waiters.load(std::memory_order_relaxed) <= 0) return 0;
+    const int64_t since = g_draw_lock_wait_since.load(std::memory_order_relaxed);
+    if (since <= 0) return 0;
+    const int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    return now > since ? now - since : 0;
+}
 
 void report_sched() {
     static auto last = std::chrono::steady_clock::now();
@@ -411,10 +421,16 @@ static bool park_wait(std::unique_lock<std::mutex>& lk, std::condition_variable&
         void arm(bool v) {
             if (on || !v) return;
             on = true;
-            g_draw_lock_waiters.fetch_add(1, std::memory_order_relaxed);
+            if (g_draw_lock_waiters.fetch_add(1, std::memory_order_relaxed) == 0) {
+                const int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count();
+                g_draw_lock_wait_since.store(now, std::memory_order_relaxed);
+            }
         }
         ~DrawLockWait() {
-            if (on) g_draw_lock_waiters.fetch_sub(1, std::memory_order_relaxed);
+            if (!on) return;
+            if (g_draw_lock_waiters.fetch_sub(1, std::memory_order_relaxed) == 1)
+                g_draw_lock_wait_since.store(0, std::memory_order_relaxed);
         }
     } draw_lock_wait;
     while (!pred()) {

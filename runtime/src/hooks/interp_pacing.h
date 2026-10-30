@@ -138,7 +138,7 @@ inline int logic_step_budget(int frames_queued, int max_steps = kMaxLogicStepsPe
 
 inline int64_t shed_slot_ns(int chosen_fps) {
     if (chosen_fps <= 60) return 0;
-    return present_period_ns(chosen_fps);
+    return present_period_ns(60);
 }
 
 struct HoldShed {
@@ -229,6 +229,11 @@ inline bool collapse_duplicate_vsync(bool presented_since_wake, bool wake_valid,
     (void)since_wake_ns;
     if (presented_since_wake || !wake_valid) return false;
     return true;
+}
+
+inline bool yield_blocked_draw_lock(bool course_setup, int64_t wait_ns) {
+    if (course_setup) return true;
+    return wait_ns >= 32'000'000;
 }
 
 inline int64_t absorb_late_wake(int64_t last_ns, int64_t now_ns, int64_t period_ns) {

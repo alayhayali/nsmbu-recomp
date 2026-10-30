@@ -852,7 +852,7 @@ static void capped_vsync_ready_flip_last_wake(uint64_t granule) {
     capped_vsync_note_wake(granule);
 }
 static void capped_vsync_wait_for_wake(uint64_t granule, bool preciseSleep, void (*before_resume)()) {
-    if (interp::course_setup_active() || threads::draw_lock_waiters() > 0)
+    if (interp::pacing::yield_blocked_draw_lock(interp::course_setup_active(), threads::draw_lock_wait_ns()))
         threads::park_sleep_until(std::chrono::steady_clock::now() + std::chrono::milliseconds(8), false, nullptr);
     const auto now = std::chrono::steady_clock::now();
     if (capped_vsync_same_frame(granule, now)) {

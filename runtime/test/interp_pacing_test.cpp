@@ -125,6 +125,10 @@ static void test_cap() {
     CHECK(absorb_late_wake(0, period / 2, period) == 0);
     CHECK(absorb_late_wake(0, period + period / 3, period) == period);
     CHECK(absorb_late_wake(0, period * 3 + 100, period) == period * 3);
+    CHECK(yield_blocked_draw_lock(true, 0));
+    CHECK(!yield_blocked_draw_lock(false, 0));
+    CHECK(!yield_blocked_draw_lock(false, 8'000'000));
+    CHECK(yield_blocked_draw_lock(false, 32'000'000));
     int64_t last = 0;
     for (int i = 0; i < 165; i++) {
         const int64_t now = last + period + period / 10;
@@ -263,7 +267,8 @@ static void test_hold_shed() {
     CHECK(kRefreshResumeFrames > kShedResumeFrames);
     CHECK(shed_slot_ns(30) == 0);
     CHECK(shed_slot_ns(60) == 0);
-    CHECK(shed_slot_ns(120) == present_period_ns(120));
+    CHECK(shed_slot_ns(120) == present_period_ns(60));
+    CHECK(shed_slot_ns(240) == present_period_ns(60));
     CHECK(present_period_ns(30) > 20'000'000LL);
 
     const int64_t slot30 = present_period_ns(30);

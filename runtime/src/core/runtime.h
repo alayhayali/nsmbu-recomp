@@ -67,6 +67,7 @@ void release_core();
 void set_service_core(uint32_t core);
 void report_sched();
 int draw_lock_waiters();
+int64_t draw_lock_wait_ns();
 }
 struct BlockingScope {
     BlockingScope() { threads::block_begin(); }
