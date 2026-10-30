@@ -322,6 +322,20 @@ def make_zip(src_dir, zip_path):
                 with open(full, "rb") as f:
                     z.writestr(info, f.read(), compresslevel=9)
 
+def sdk_manifest(version, platform, toolchain, exe, driver, cflags, link, runtime_files=()):
+    """sdk/manifest.json: what the installer replays to compile and link the player's game code."""
+    return {
+        "format": 1,
+        "version": version,
+        "platform": platform,
+        "toolchain": toolchain,
+        "exe": exe,
+        "built_with": os.path.basename(driver),
+        "gamecode_cflags": cflags,
+        "link": link,
+        "runtime_files": list(runtime_files),
+    }
+
 def copy_sdk_headers(pkg):
     shutil.copytree(os.path.join(ROOT, "runtime", "include"), os.path.join(pkg, "sdk", "include"))
 
@@ -360,17 +374,8 @@ def main():
         toolchains = json.load(f)
     if a.toolchain not in toolchains["toolchains"]:
         sys.exit("unknown toolchain " + a.toolchain)
-    manifest = {
-        "format": 1,
-        "version": a.version,
-        "platform": a.platform,
-        "toolchain": a.toolchain,
-        "exe": "nsmbu" + exe_suffix,
-        "built_with": os.path.basename(driver),
-        "gamecode_cflags": cflags,
-        "link": link,
-        "runtime_files": runtime_files,
-    }
+    manifest = sdk_manifest(a.version, a.platform, a.toolchain, "nsmbu" + exe_suffix, driver, cflags, link,
+                            runtime_files)
     with open(os.path.join(pkg, "sdk", "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=1)
 

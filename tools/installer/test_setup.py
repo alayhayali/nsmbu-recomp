@@ -145,6 +145,17 @@ class KeyFiles(unittest.TestCase):
                 self.assertIn("16 raw bytes", setup.key_file_problem(p, kind))
             self.assertIn("cannot be read", setup.key_file_problem(os.path.join(d, "missing"), "common"))
 
+    def test_key_bytes_without_a_file(self):
+        text = ("common = %s\ndisc = %s\n" % (KEY_HEX, OTHER_HEX)).encode()
+        self.assertEqual(setup.key_from_data(text, "disc"), bytes.fromhex(OTHER_HEX))
+        self.assertEqual(setup.named_key_from_data(text, "common"), bytes.fromhex(KEY_HEX))
+        self.assertEqual(setup.key_from_data(bytes(range(16)), "common"), bytes(range(16)))
+        self.assertIsNone(setup.named_key_from_data(bytes(range(16)), "common"))
+        self.assertIsNone(setup.key_from_data(b"garbage", "disc"))
+        self.assertIn("16 raw bytes", setup.key_data_problem(b"garbage", "disc"))
+        self.assertIn("larger than 4096", setup.key_data_problem(b"0" * 4097, "common"))
+        self.assertIsNone(setup.key_data_problem(text, "common"))
+
     def test_discovery(self):
         if any(os.path.isfile(os.path.join(setup.PKG, n)) for n in ("common.key", "keys.txt")):
             self.skipTest("a key file is in the release folder")
@@ -512,6 +523,21 @@ class Recipe(unittest.TestCase):
         self.assertEqual(setup.sub("{gamecode}", m), "/w/libgamecode.a")
         self.assertEqual(setup.sub("-O3", m), "-O3")
         self.assertEqual(setup.fwd("C:\\a\\b"), "C:/a/b")
+
+    def test_link_recipe_and_glue(self):
+        tc = setup.Toolchain(["cc"], ["c++"], ["ar"], rsp=False)
+        calls = []
+        with tempfile.TemporaryDirectory() as d, \
+             mock.patch.object(setup, "run_logged", side_effect=lambda cmd, **k: calls.append(cmd)), \
+             mock.patch.object(setup, "IS_LINUX", False):
+            out = os.path.join(d, "libgame.so")
+            open(out, "wb").close()
+            setup.link_game(tc, {"link": ["unused"]}, ["a.o"], d, out,
+                            recipe=["-shared", "{glue}", "{gamecode}", "-o", "{out}"], glue=["x.o", "y.o"])
+            self.assertEqual(calls[-1], ["c++", "-shared", "x.o", "y.o", setup.fwd(os.path.join(d, "libgamecode.a")),
+                                         "-o", setup.fwd(out)])
+            setup.link_game(tc, {"link": ["{gamecode}", "-o", "{out}"]}, ["a.o"], d, out)
+            self.assertEqual(calls[-1][1:], [setup.fwd(os.path.join(d, "libgamecode.a")), "-o", setup.fwd(out)])
 
     def test_toolchains_pinned(self):
         tcs = setup.load_toolchains()

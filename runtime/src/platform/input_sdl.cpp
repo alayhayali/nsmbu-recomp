@@ -32,6 +32,13 @@
 #include <utility>
 #include <vector>
 #include "core/env.h"
+#ifdef __ANDROID__
+#include <jni.h>
+#include "phone_rumble.h"
+#include "touch_buttons.h"
+#include "android_controller.h"
+#include "../overlay/hostui.h"
+#endif
 namespace render { uint64_t frame_count(); }
 namespace gfxvk { bool graphics_hotkey(char key, bool activate); }
 namespace gfx { void display_plus_pressed(); }
@@ -237,13 +244,41 @@ static void rumble_stop_locked(){
   g_rumble_sent[id]=0;
  }
 }
+#ifdef __ANDROID__
+static void phone_rumble_level(Uint16 level){
+ static phone_rumble::Refresh refresh;
+ if(!refresh.send(level,SDL_GetTicks()))return;
+ auto* env=static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
+ if(!env)return;
+ jobject activity=static_cast<jobject>(SDL_GetAndroidActivity());
+ if(!activity)return;
+ if(jclass cls=env->GetObjectClass(activity)){
+  if(jmethodID method=env->GetStaticMethodID(cls,"phoneRumble","(I)V"))env->CallStaticVoidMethod(cls,method,(jint)level);
+  env->DeleteLocalRef(cls);
+ }
+ if(env->ExceptionCheck())env->ExceptionClear();
+ env->DeleteLocalRef(activity);
+}
+#endif
 static void apply_rumble(){
  g_rumble_update_ms=SDL_GetTicks();
+#ifdef __ANDROID__
+ const auto mode=phone_rumble::choice.load();
+ const bool touch=phone_rumble::touch_selected(mode!=phone_rumble::kOff&&touch_buttons::controls,
+                  phone_rumble::last_input_touch.load())&&touch_buttons::visible_now();
+ const bool phone=phone_rumble::allowed(mode,touch,!g_rumble_controllers.empty());
+ if(!phone)phone_rumble_level(0);
+ if((g_rumble_controllers.empty()&&!phone)||g_rumble_quit)return;
+#else
  if(g_rumble_controllers.empty()||g_rumble_quit)return;
+#endif
 
  const bool silent=overlay::is_open()||!SDL_GetKeyboardFocus();
  float levels[input::kMaxPlayers];
  for(int i=0;i<input::kMaxPlayers;i++)levels[i]=silent?0.f:rumble::host_level(i,1000000/60);
+#ifdef __ANDROID__
+ if(phone)phone_rumble_level((Uint16)(std::clamp(levels[0],0.f,1.f)*0xFFFFu));
+#endif
  std::lock_guard lk(g_pads_mu);
  if(!SDL_WasInit(SDL_INIT_GAMEPAD))return;
  for(int slot=0;slot<input::kMaxPlayers;slot++){
@@ -339,11 +374,35 @@ static int free_slot_locked(){
  return -1;
 }
 static void open_controller(SDL_JoystickID id){
+#ifdef __ANDROID__
+ if(!SDL_IsJoystickVirtual(id))phone_rumble::last_input_touch=false;
+#endif
  std::lock_guard lk(g_pads_mu);
  if(g_controllers.contains(id))return;
+#ifdef __ANDROID__
+ const uint16_t vendor=SDL_GetGamepadVendorForID(id);
+ const uint16_t product=SDL_GetGamepadProductForID(id);
+ if(android_controller::ayaneo(vendor)) {
+  if(char* original=SDL_GetGamepadMappingForID(id)) {
+   LOG("[input] AYANEO SDL mapping before correction: %s",original);
+   const auto corrected=android_controller::mapping(vendor,product,original);
+   if(SDL_AddGamepadMapping(corrected.c_str())>=0)LOG("[input] applied AYANEO %04X:%04X gamepad mapping",(unsigned)vendor,(unsigned)product);
+   else LOG("[input] AYANEO mapping correction failed: %s",SDL_GetError());
+   SDL_free(original);
+  }
+ }
+#endif
  if(auto* pad=SDL_OpenGamepad(id)){g_controllers[id]=pad;
   const int slot=free_slot_locked();
   if(slot>=0){g_slot[slot]=id;const char* name=SDL_GetGamepadName(pad);g_slot_name[slot]=name?name:"";}
+#ifdef __ANDROID__
+  LOG("[input] controller connected: %s (id %u, vendor %04X, product %04X, type %d)",SDL_GetGamepadName(pad)?SDL_GetGamepadName(pad):"?",(unsigned)id,
+      SDL_GetGamepadVendor(pad),SDL_GetGamepadProduct(pad),(int)SDL_GetGamepadType(pad));
+  if(char* map=SDL_GetGamepadMapping(pad)){
+   LOG("[input] SDL gamepad mapping: %s",map);
+   SDL_free(map);
+  }
+#endif
   if(SDL_RumbleGamepad(pad,0,0,0))g_rumble_controllers.insert(id);
   if(g_sensors_on)set_sensors_locked(pad,true);}
 }
@@ -443,6 +502,12 @@ static bool text_entry_event(const SDL_Event& event){
  }
 }
 void handle_event(const SDL_Event& event){
+#ifdef __ANDROID__
+ if(event.type==SDL_EVENT_KEY_DOWN||
+    (event.type==SDL_EVENT_GAMEPAD_BUTTON_DOWN&&!SDL_IsJoystickVirtual(event.gbutton.which))||
+    (event.type==SDL_EVENT_GAMEPAD_AXIS_MOTION&&std::abs(int(event.gaxis.value))>8192&&!SDL_IsJoystickVirtual(event.gaxis.which)))
+  phone_rumble::last_input_touch=false;
+#endif
  if(overlay::captures())mods::update_mouse();
  else if(mods::handle_mouse_event(event))return;
  if(event.type==SDL_EVENT_GAMEPAD_ADDED&&!env::NO_CONTROLLERS())open_controller(event.gdevice.which);
@@ -465,6 +530,13 @@ void handle_event(const SDL_Event& event){
   }return;
  }
  if(env::NO_HOST_INPUT()&&!test_event(event))return;
+#ifdef __ANDROID__
+ if((event.type==SDL_EVENT_KEY_DOWN||event.type==SDL_EVENT_KEY_UP)&&event.key.scancode==SDL_SCANCODE_AC_BACK){
+  if(overlay::is_open())overlay::key(kVK_Escape,event.type==SDL_EVENT_KEY_DOWN,event.key.repeat,0);
+  else if(event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat&&!text_entry::active())overlay::set_open(true);
+  return;
+ }
+#endif
  if(overlay_event(event))return;
 
  if(event.type==SDL_EVENT_KEY_DOWN&&!event.key.repeat){int code=keycode(event.key.scancode);if(code>=0&&screenshot::key_down(code))return;}
@@ -523,7 +595,7 @@ void update(){
   }
  }
  static bool overlay_text=false;
- const bool overlay_wants_text=overlay::is_open()&&!text_entry::active()&&!g_done;
+ const bool overlay_wants_text=overlay::is_open()&&overlay::wants_text_input()&&!text_entry::active()&&!g_done;
  if(overlay_wants_text!=overlay_text){
   overlay_text=overlay_wants_text;
   if(g_prompt_window){

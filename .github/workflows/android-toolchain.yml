@@ -1,0 +1,62 @@
+name: Android-hosted compiler
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - tools/android/**
+      - tools/installer/setup.py
+      - tools/release/package.py
+      - tools/recomp/**
+      - android/python/**
+      - android/app/build.gradle
+      - tools/release/guard.py
+      - android/app/src/main/**
+      - .github/workflows/android-toolchain.yml
+      - .github/workflows/release.yml
+      - runtime/src/platform/**
+      - .github/actions/android-compiler/**
+  push:
+    branches: [main]
+    paths:
+      - tools/android/**
+      - tools/installer/setup.py
+      - tools/release/package.py
+      - tools/recomp/**
+      - android/python/**
+      - android/app/build.gradle
+      - tools/release/guard.py
+      - android/app/src/main/**
+      - .github/workflows/android-toolchain.yml
+      - .github/workflows/release.yml
+      - runtime/src/platform/**
+      - .github/actions/android-compiler/**
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android setup unit tests
+        working-directory: tools/android
+        run: python3 -m unittest discover -s . -p 'test_*.py' -v
+
+  compiler-cache:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, x86_64]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/android-compiler
+        with:
+          abi: ${{ matrix.abi }}
+          lookup-only: "true"

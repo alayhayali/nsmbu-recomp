@@ -216,6 +216,13 @@ const char* face_layout_label(FaceLayout l) {
     }
 }
 
+int face_input(int action) {
+    if (action < kA || action > kY) return kPadNone;
+    const int p = current().pad[action];
+    if (p != kPadNone) return p;
+    return kFaceByPosition[action - kA];
+}
+
 std::vector<int> key_users(const Mapping& m, int code, int except) {
     std::vector<int> v;
     if (code == kNoKey) return v;

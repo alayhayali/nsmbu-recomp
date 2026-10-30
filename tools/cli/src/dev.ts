@@ -609,6 +609,82 @@ export function cmdInstaller(repo: string, rest: string[]): void {
     runPythonInherit(repo, "tools/release/host_artifacts.py", rest);
 }
 
+export async function cmdApk(repo: string, rest: string[]): Promise<void> {
+    const { flags, positional } = parseArgv(
+        rest,
+        ["abi", "device", "build-only", "install-only", "push-only", "stub", "no-push", "push-game", "force-push", "yes"],
+        ["abi", "device"],
+    );
+    if (positional.length > 0) {
+        throw new Error(
+            "usage: nsmbu apk [--abi arm64-v8a|x86_64] [--device SERIAL] [--build-only] [--install-only] [--push-only] [--stub] [--no-push] [--push-game] [--force-push] [--yes]",
+        );
+    }
+    const buildOnly = hasFlag(flags, "build-only");
+    const installOnly = hasFlag(flags, "install-only");
+    if (buildOnly && installOnly) {
+        throw new Error("use either --build-only or --install-only, not both");
+    }
+    const abi = flagString(flags, "abi");
+    if (abi !== undefined && abi !== "arm64-v8a" && abi !== "x86_64") {
+        throw new Error("usage: nsmbu apk --abi arm64-v8a|x86_64");
+    }
+    const args: string[] = [];
+    if (abi) {
+        args.push("--abi", abi);
+    }
+    let device = flagString(flags, "device");
+    if (hasFlag(flags, "build-only")) {
+        args.push("--build-only");
+    }
+    if (hasFlag(flags, "install-only")) {
+        args.push("--install-only");
+    }
+    if (hasFlag(flags, "push-only")) {
+        args.push("--push-only");
+    }
+    if (hasFlag(flags, "stub")) {
+        args.push("--stub");
+    }
+    if (hasFlag(flags, "no-push")) {
+        args.push("--no-push");
+    }
+    if (hasFlag(flags, "push-game")) {
+        args.push("--push-game");
+    }
+    if (hasFlag(flags, "force-push")) {
+        args.push("--force-push");
+    }
+    const yes = hasFlag(flags, "yes");
+    if (!buildOnly && !installOnly && !device) {
+        const listed = runPythonCapture(repo, "tools/android/apk.py", ["--list-devices"]);
+        if (listed.status !== 0) {
+            throw new Error((listed.stderr || listed.stdout || "adb device list failed").trim());
+        }
+        const devices = JSON.parse(listed.stdout) as { serial: string; model: string | null }[];
+        if (devices.length === 0) {
+            throw new Error("no adb device in 'device' state; plug one in and enable USB debugging");
+        }
+        if (devices.length === 1) {
+            device = devices[0].serial;
+        } else if (yes) {
+            throw new Error("multiple adb devices; pass --device SERIAL or drop --yes");
+        } else {
+            device = await selectOption(
+                "Android device",
+                devices.map((d) => ({
+                    value: d.serial,
+                    label: d.model ? `${d.serial} (${d.model})` : d.serial,
+                })),
+            );
+        }
+    }
+    if (device) {
+        args.push("--device", device);
+    }
+    runPythonInherit(repo, "tools/android/apk.py", args);
+}
+
 export function cmdLint(repo: string): void {
     const verify = existsSync(join(repo, "modding", "node_modules", "typescript-to-lua")) ? "" : "npm --prefix modding ci && ";
     runShell(

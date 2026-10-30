@@ -1,4 +1,5 @@
 #include "core/runtime.h"
+#include "hooks/interp.h"
 #include "mods/packages.h"
 #include "mods/sdk/nsmbu.h"
 #include "guest_addr.h"
@@ -276,7 +277,9 @@ extern "C" void hook_029CBBB4(Cpu*) {}
 
 extern "C" void hook_024BD86C(Cpu* c) {
     if (mods::lua_sdk::story_leave_pending()) return;
+    interp::begin_course_setup();
     f_024BD86C_orig(c);
+    interp::end_course_setup();
 }
 
 extern "C" void hook_025CF020(Cpu* c) {

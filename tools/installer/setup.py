@@ -572,35 +572,48 @@ def read_key_data(path):
     except OSError:
         return None
 
-def read_key_file(path, kind):
-    """The disc key or common key of a key file: 16 raw bytes, one line of 32 hex digits, or a keys.txt line."""
-    data = read_key_data(path)
-    if data is None:
-        return None
+def key_from_data(data, kind):
+    """The disc key or common key of a key file's bytes: 16 raw bytes, one line of 32 hex digits, or a keys.txt line."""
     if len(data) == 16:
         return data
     found = keys_in_text(decode_key_text(data))
     return found[kind] or found["bare"]
 
-def read_named_key_file(path, kind):
-    """The common or disc line of a line-oriented key file (a Cemu keys.txt); None without that line."""
-    data = read_key_data(path)
-    if data is None or len(data) == 16:
+def named_key_from_data(data, kind):
+    """The common or disc line of a line-oriented key file's bytes (a Cemu keys.txt); None without that line."""
+    if len(data) == 16:
         return None
     return keys_in_text(decode_key_text(data))[kind]
 
+def read_key_file(path, kind):
+    """The disc key or common key of a key file: 16 raw bytes, one line of 32 hex digits, or a keys.txt line."""
+    data = read_key_data(path)
+    return None if data is None else key_from_data(data, kind)
+
+def read_named_key_file(path, kind):
+    """The common or disc line of a line-oriented key file (a Cemu keys.txt); None without that line."""
+    data = read_key_data(path)
+    return None if data is None else named_key_from_data(data, kind)
+
 def key_file_problem(path, kind):
     """Why read_key_file(path, kind) found no key; None when it holds one."""
+    try:
+        if os.path.getsize(path) > 4096:
+            return key_data_problem(None, kind)
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError as e:
+        return "That file cannot be read: %s" % e
+    return key_data_problem(data, kind)
+
+def key_data_problem(data, kind):
+    """Why key_from_data(data, kind) found no key (data None: larger than 4096 bytes); None when it holds one."""
     what = "the Wii U common key" if kind == "common" else "the disc key"
     hint = ("That file does not contain %s: it must hold 16 raw bytes or one line of 32 hex digits, "
             "or be a Cemu keys.txt with a line for it." % what)
-    try:
-        if os.path.getsize(path) > 4096:
-            return "%s This file is larger than 4096 bytes." % hint
-        with open(path, "rb") as f:
-            found = keys_in_text(decode_key_text(f.read()))
-    except OSError as e:
-        return "That file cannot be read: %s" % e
+    if data is None or len(data) > 4096:
+        return "%s This file is larger than 4096 bytes." % hint
+    found = keys_in_text(decode_key_text(data))
     if found[kind] or found["bare"]:
         return None
     if found["title"]:
@@ -1381,7 +1394,9 @@ def compile_gamecode(tc, manifest, gen_dir, obj_dir, jobs, cancel=None, progress
     pr.done("%d files" % total)
     return sorted(objs)
 
-def link_game(tc, manifest, objs, work, out_exe):
+def link_game(tc, manifest, objs, work, out_exe, recipe=None, glue=()):
+    """recipe: a link line other than manifest["link"] (the Android runtime SDK), whose {glue} stands
+    for the objects `glue`"""
     lib = os.path.join(work, "libgamecode.a")
     if os.path.exists(lib):
         os.remove(lib)
@@ -1393,7 +1408,9 @@ def link_game(tc, manifest, objs, work, out_exe):
     else:
         run_logged(tc.ar + ["rcs", lib] + objs, env=tc.env, what="archiving the game code")
     m = {"sdk": fwd(os.path.join(PKG, "sdk")), "gamecode": fwd(lib), "out": fwd(out_exe)}
-    args = [sub(a, m) for a in manifest["link"]]
+    args = []
+    for a in (recipe or manifest["link"]):
+        args += [fwd(g) for g in glue] if a == "{glue}" else [sub(a, m)]
     if IS_LINUX:
         args += ["-Wl,-rpath,$ORIGIN"]
     if tc.rsp:

@@ -65,6 +65,7 @@ Done when the version branch is on `main` in this checkout, `nsmbu test` and `ns
 | --- | --- |
 | version | Sets `VERSION` from the tag; on the nightly schedule starts a development build when `main` moved since the `devel-build` tag |
 | macos / windows-x86_64 / windows-arm64 / linux-x86_64 / linux-aarch64 | Build, package, unit tests |
-| publish | Upload zips / AppImage and `gh release create` |
+| android-arm64 / android-x86_64 | Signed setup APK without game code (`ANDROID_KEYSTORE_B64` secrets) |
+| publish | Upload zips / AppImage / APKs and `gh release create` |
 
 Any failed package job skips publish.

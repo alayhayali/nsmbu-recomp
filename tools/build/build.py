@@ -11,6 +11,7 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "recomp"))
 import builds
+import dev_game_icon
 import game_versions as gv
 import slot
 
@@ -210,6 +211,8 @@ def main():
     )
     debug_build = not args.release and not args.no_debug
     ensure_gen_dir()
+    if debug_build:
+        dev_game_icon.refresh_android_local_icon()
     libdir = libstdcxx_libdir()
     if not libdir:
         sys.exit(

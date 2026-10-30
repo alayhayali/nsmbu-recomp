@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "recomp_table.h"
+#include "guest_addr.h"
 #include "core/runtime.h"
 #include "save/savestate.h"
 #include "core/scheduler_tick.h"
@@ -315,8 +316,11 @@ static void sched_tick_thread() {
 
 static const bool g_log_longwait = env::LOG_LONGWAIT() != nullptr;
 static thread_local std::chrono::steady_clock::time_point t_block_start;
+static std::atomic<int> g_draw_lock_waiters{0};
 
 namespace threads {
+
+int draw_lock_waiters() { return g_draw_lock_waiters.load(std::memory_order_relaxed); }
 
 void report_sched() {
     static auto last = std::chrono::steady_clock::now();
@@ -402,6 +406,17 @@ template <class Pred>
 static bool park_wait(std::unique_lock<std::mutex>& lk, std::condition_variable& cv, Pred pred, uint8_t kind, uint32_t obj,
                       const std::chrono::steady_clock::time_point* deadline = nullptr) {
     HostThread* t = t_self;
+    struct DrawLockWait {
+        bool on = false;
+        void arm(bool v) {
+            if (on || !v) return;
+            on = true;
+            g_draw_lock_waiters.fetch_add(1, std::memory_order_relaxed);
+        }
+        ~DrawLockWait() {
+            if (on) g_draw_lock_waiters.fetch_sub(1, std::memory_order_relaxed);
+        }
+    } draw_lock_wait;
     while (!pred()) {
         if (g_reboot_kill.load(std::memory_order_relaxed)) {
             if (t) park_gate(t);
@@ -417,6 +432,8 @@ static bool park_wait(std::unique_lock<std::mutex>& lk, std::condition_variable&
         lk.unlock();
         threads::block_begin();
         lk.lock();
+        const bool draw_lock = kind == W_MUTEX && t && t->cpu.lr >= GC(0x02A07A54) && t->cpu.lr < GC(0x02A07AF8);
+        draw_lock_wait.arm(draw_lock);
         auto stop = [&] { return pred() || g_reboot_kill.load(std::memory_order_relaxed); };
         if (deadline) {
             threads::SchedulerTick::TimedWait timed(g_tick);

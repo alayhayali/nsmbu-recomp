@@ -123,6 +123,86 @@ inline int64_t present_period_ns(int present_cap) {
     return 1'000'000'000LL / present_cap;
 }
 
+constexpr int kShedResumeFrames = 8;
+constexpr int kRefreshResumeFrames = 48;
+constexpr int kLoadLatchFrames = 300;
+
+inline bool skip_extra_course_draw(bool hold, bool course_play, int frames_queued) {
+    return hold && course_play && frames_queued > 0;
+}
+
+inline int logic_step_budget(int frames_queued, int max_steps = kMaxLogicStepsPerWake) {
+    if (frames_queued > 0) return 1;
+    return std::max(1, max_steps);
+}
+
+inline int64_t shed_slot_ns(int chosen_fps) {
+    if (chosen_fps <= 60) return 0;
+    return present_period_ns(chosen_fps);
+}
+
+struct HoldShed {
+    bool shed = false;
+    int cheap = 0;
+};
+
+struct ShedUpdate {
+    bool shed = false;
+    bool changed = false;
+};
+
+inline ShedUpdate note_logic_work(HoldShed& h, int64_t work_ns, int64_t slot_ns, bool force = false) {
+    const bool before = h.shed;
+    if (force) {
+        h.cheap = 0;
+        h.shed = true;
+    } else if (slot_ns <= 0) {
+        h.shed = false;
+        h.cheap = 0;
+    } else if (work_ns > slot_ns) {
+        h.cheap = 0;
+        h.shed = true;
+    } else if (h.shed) {
+        if (++h.cheap >= kShedResumeFrames) {
+            h.shed = false;
+            h.cheap = 0;
+        }
+    } else {
+        h.cheap = 0;
+    }
+    ShedUpdate u;
+    u.shed = h.shed;
+    u.changed = h.shed != before;
+    return u;
+}
+
+struct RefreshHold {
+    bool high = false;
+    int on = 0;
+};
+
+struct LoadLatch {
+    int left = 0;
+};
+
+inline bool note_load_latch(LoadLatch& l, bool trip) {
+    if (trip) l.left = kLoadLatchFrames;
+    if (l.left <= 0) return false;
+    l.left--;
+    return true;
+}
+
+inline bool note_refresh_hold(RefreshHold& r, bool shed) {
+    if (shed) {
+        r.on = 0;
+        r.high = false;
+        return false;
+    }
+    if (r.high) return true;
+    if (++r.on >= kRefreshResumeFrames) r.high = true;
+    return r.high;
+}
+
 inline int present_granule(int present_cap) {
     present_cap = std::max(1, present_cap);
     if (present_cap <= 60) return 4;
