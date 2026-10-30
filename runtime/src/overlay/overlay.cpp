@@ -1268,6 +1268,15 @@ void tab_controls() {
     const int p = sync ? 0 : std::clamp(U.control_player, 0, input_map::kPlayers - 1);
     input_map::Mapping m = input_map::player(p);
 
+#ifdef __ANDROID__
+    const float page_h = ImGui::GetContentRegionAvail().y;
+    const float status_h = ImGui::GetTextLineHeightWithSpacing() + 4.0f;
+    const float options_est = std::max(U.options_height, ImGui::GetFrameHeightWithSpacing() * 2.5f) + 8.0f;
+    const float diagram_h = std::max(240.0f, (page_h - status_h - options_est) * 0.72f);
+    const float header_h = std::max(80.0f, page_h - diagram_h - status_h - options_est);
+    ImGui::BeginChild("controls_header", ImVec2(0, header_h), ImGuiChildFlags_None, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+#endif
+
     if (check("Same controls for every player", sync, &v)) {
         input_map::set_sync_players(v, p);
         if (v) U.control_player = 0;
@@ -1342,6 +1351,10 @@ void tab_controls() {
         ImGui::TextDisabled("(custom)");
     }
 
+#ifdef __ANDROID__
+    ImGui::EndChild();
+#endif
+
     std::string status;
     ImVec4 sc(0.70f, 0.78f, 0.84f, 1.0f);
     if (U.cap_action >= 0) {
@@ -1372,12 +1385,12 @@ void tab_controls() {
     }
     const float bottom = ImGui::GetTextLineHeightWithSpacing() + std::max(U.options_height, ImGui::GetFrameHeightWithSpacing() * 2) + 4;
     const ImVec2 avail = ImGui::GetContentRegionAvail();
-    const float room = std::max(0.0f, avail.y - bottom);
-    float h = std::max(160.0f, room);
 #ifdef __ANDROID__
-    h = std::max(std::min(ImGui::GetIO().DisplaySize.y * 0.52f, room), std::min(160.0f, room));
+    const float h = std::min(diagram_h, std::max(avail.y - bottom, 1.0f));
+#else
+    const float room = std::max(0.0f, avail.y - bottom);
+    const float h = std::max(room, 1.0f);
 #endif
-    if (h > room) h = room;
     U.hover_action = -1;
     if (U.list_view) {
         controls_list(m, h, p == 0);
@@ -1804,9 +1817,38 @@ void settings_window() {
         U.just_opened = false;
     }
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+#ifdef __ANDROID__
+    const bool begun = ImGui::Begin(app_title::kSettings, nullptr, fl);
+#else
     const bool begun = ImGui::Begin(app_title::kSettings, &open, fl);
+#endif
     ImGui::PopStyleVar();
     if (begun) {
+#ifdef __ANDROID__
+        const float close_sz = ImGui::GetFrameHeight();
+        const ImVec2 close_back = ImGui::GetCursorScreenPos();
+        const ImVec2 win = ImGui::GetWindowPos();
+        const ImVec2 close_at(win.x + ImGui::GetWindowWidth() - close_sz, win.y);
+        ImGui::PushClipRect(win, ImVec2(win.x + ImGui::GetWindowWidth(), win.y + ImGui::GetWindowHeight()), false);
+        ImGui::SetCursorScreenPos(close_at);
+        ImGui::PushItemFlag(ImGuiItemFlags_NoNav, true);
+        const bool close_pressed = ImGui::InvisibleButton("##settings-close", ImVec2(close_sz, close_sz));
+        ImGui::PopItemFlag();
+        const bool close_hot = ImGui::IsItemHovered() || ImGui::IsItemActive();
+        ImDrawList* close_dl = ImGui::GetWindowDrawList();
+        if (close_hot)
+            close_dl->AddRectFilled(close_at, ImVec2(close_at.x + close_sz, close_at.y + close_sz),
+                                    ImGui::GetColorU32(ImGui::IsItemActive() ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered));
+        const ImVec2 close_c(close_at.x + close_sz * 0.5f, close_at.y + close_sz * 0.5f);
+        const float close_e = close_sz * 0.22f;
+        const float close_th = std::max(2.0f, close_sz * 0.08f);
+        const ImU32 close_col = ImGui::GetColorU32(ImGuiCol_Text);
+        close_dl->AddLine(ImVec2(close_c.x - close_e, close_c.y - close_e), ImVec2(close_c.x + close_e, close_c.y + close_e), close_col, close_th);
+        close_dl->AddLine(ImVec2(close_c.x + close_e, close_c.y - close_e), ImVec2(close_c.x - close_e, close_c.y + close_e), close_col, close_th);
+        ImGui::PopClipRect();
+        ImGui::SetCursorScreenPos(close_back);
+        if (close_pressed) open = false;
+#endif
         note("Touch or point at the menu, or use a controller: D-pad or left stick to move, A to activate, B to go back, "
              "LB/RB change tabs, Start+Select closes.");
         const ImVec2 wp = ImGui::GetWindowPos();

@@ -109,6 +109,10 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ### Fixed
 
+- The Controls page keeps the binding diagram in the space above the options.
+  On Android the diagram uses most of the tab and the top settings scroll.
+  The option rows no longer sit on top of the controller drawing.
+- The settings close button fills the title bar on Android.
 - Black loading screens at a higher frame rate no longer sit still while a loader waits on the draw lock.
   That covers the first load, the save file, and a level.
   Each picture still uses the frame rate you picked.

@@ -132,19 +132,14 @@ Geo layout(bool pro, FaceLayout fl, ImVec2 org, float w, float h) {
     Geo g;
     g.org = org;
 
-#ifdef __ANDROID__
-    const float ref_h = 400.0f;
-#else
-    const float ref_h = 520.0f;
-#endif
-    g.k = std::clamp(std::min(w / 1060.0f, h / ref_h), 0.55f, 1.3f);
+    g.k = controls_fit_scale(w, h);
     const float k = g.k;
     ControllerDef d = controller_def(pro);
     g.colLx = org.x + kMargin * k;
     g.colRx = org.x + w - (kMargin + kColW) * k;
     float drawL = g.colLx + (kColW + 30) * k, drawR = g.colRx - 30 * k;
     float top = org.y + (kHeaderH + 10) * k, bottom = org.y + h - 12 * k;
-    float aw = std::max(drawR - drawL, 100.0f), ah = std::max(bottom - top, 100.0f), uh = d.maxY - d.minY;
+    float aw = std::max(drawR - drawL, 1.0f), ah = std::max(bottom - top, 1.0f), uh = d.maxY - d.minY;
     g.s = std::min({aw, ah / uh, 640.0f * k});
     g.o = ImVec2((drawL + drawR) / 2 - g.s / 2, (top + bottom) / 2 - g.s * uh / 2 - g.s * d.minY);
     const float s = g.s;
@@ -364,6 +359,7 @@ void draw_controls(ControlsView& v, float w, float h) {
     const Geo g = layout(v.pro, face_layout(v.m), org, w, h);
     const float k = g.k, s = g.s;
     ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->PushClipRect(org, ImVec2(org.x + w, org.y + h), true);
     const Mapping& m = v.m;
     const float pulse = 0.55f + 0.45f * std::sin((float)v.t * 7);
     auto lit = [&](int a) { return a >= 0 && v.act[a] > 0.5f; };
@@ -634,6 +630,7 @@ void draw_controls(ControlsView& v, float w, float h) {
         ImU32 tc = held ? P.white : capturing ? P.accent : conflict ? P.warn : P.label;
         text_fit(dl, text, ImVec2(ch.a.x + 3, ch.a.y), ImVec2(ch.b.x - 3, ch.b.y), fs, tc);
     }
+    dl->PopClipRect();
     ImGui::SetCursorScreenPos(ImVec2(org.x, org.y + h));
     ImGui::Dummy(ImVec2(w, 0));
 }
