@@ -37,7 +37,7 @@ to relink it with a modified libfuse):
   - zstd, zlib, mimalloc and musl: the Alpine Linux 3.21 source packages (zstd, zlib, mimalloc2,
     musl), https://gitlab.alpinelinux.org/alpine/aports/-/tree/3.21-stable
 The runtime files themselves (the exact bytes in this AppImage) are kept at
-https://github.com/nsmbu-recomp/nsmbu-recomp/releases/tag/appimage-runtime-8f39b89
+https://github.com/nsmbu-recomp/ci-assets/releases/tag/appimage-runtime-8f39b89
 and in the AppImage project's release https://github.com/AppImage/type2-runtime/releases.
 To rebuild: scripts/chroot/chroot_build.sh or scripts/docker/ in the type2-runtime tree.
 

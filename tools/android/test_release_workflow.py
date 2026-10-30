@@ -43,12 +43,17 @@ class ReleaseWorkflow(unittest.TestCase):
         self.assertIn("*.apk > SHA256SUMS.txt", publish)
         self.assertIn("dist/*.apk dist/SHA256SUMS.txt", publish)
 
-    def test_nightly_run_only_warms_the_compiler_cache(self):
-        self.assertIn("schedule:", WORKFLOW)
-        self.assertIn("if: github.event_name != 'schedule'", job("version"))
-        cache = job("android-compiler-cache")
-        self.assertIn("if: github.event_name == 'schedule'", cache)
-        self.assertIn('lookup-only: "true"', cache)
+    def test_release_downloads_the_compiler_release(self):
+        android = job("android")
+        self.assertIn("uses: ./.github/actions/android-compiler", android)
+        self.assertNotIn("build_toolchain.py", WORKFLOW)
+        self.assertNotIn("lookup-only", WORKFLOW)
+        self.assertNotIn("android-compiler-cache", WORKFLOW)
+        action = (ROOT / ".github/actions/android-compiler/action.yml").read_text()
+        self.assertIn("gh release download android-clang", action)
+        self.assertIn("nsmbu-recomp/ci-assets", action)
+        self.assertNotIn("build_toolchain.py --source", action)
+        self.assertIn("nsmbu-recomp/ci-assets", (ROOT / "tools/release/appimage.py").read_text())
 
 
 if __name__ == "__main__":

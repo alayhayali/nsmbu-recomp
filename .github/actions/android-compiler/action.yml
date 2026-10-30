@@ -1,73 +1,58 @@
-# The compiler that runs on Android (tools/android/build_toolchain.py, about an hour per ABI), cached.
-# Leaves the validated build in build/compiler/package; tools/android/package_toolchain.py (cheap, run by
-# the caller) turns it into the APK's compiler files. The cache key is the ABI, the pinned LLVM revision
-# and NDK, and build_toolchain.py itself, so the compiler is rebuilt only when one of those changes.
+# Downloads the Android-hosted clang, lld, and llvm-ar from the android-clang GitHub Release
+# in nsmbu-recomp/ci-assets into build/compiler/package. That repo's manual workflow builds
+# the release. This action never compiles LLVM.
 #
-# Cache scope (GitHub): a run restores caches saved on its own branch or tag and on the default branch
-# (main), and a pull request also those of its base branch. Builds on main and pull requests to it share
-# main's cache; release tags see main's, which release.yml's nightly run on main keeps warm. Without a
-# hit the compiler is built here (and saved for this ref).
-#
-# Needs: the Android SDK ($ANDROID_HOME, as on GitHub's Ubuntu runners), Ninja, Python 3.
+# Needs: Python 3, gh, and contents: read so the workflow token can download the release.
 name: Android-hosted compiler
-description: Restore or build the Android-hosted clang/lld (build/compiler/package)
+description: Download the Android-hosted clang/lld from the android-clang GitHub Release
 inputs:
   abi:
     description: arm64-v8a or x86_64
     required: true
-  lookup-only:
-    description: "true: only make sure the cache exists (build and save it when it does not), restore nothing"
-    default: "false"
-outputs:
-  cache-hit:
-    description: "true when the compiler came from the cache"
-    value: ${{ steps.restore.outputs.cache-hit }}
 runs:
   using: composite
   steps:
-    - id: pins
-      shell: bash
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ABI: ${{ inputs.abi }}
+        ASSETS_REPO: nsmbu-recomp/ci-assets
       run: |
-        read -r LLVM NDK < <(python3 -c "
-        import sys; sys.path.insert(0, 'tools/android'); import build_toolchain as b
-        print(b.LLVM_REVISION, b.NDK_REVISION)")
-        echo "llvm=$LLVM" >> "$GITHUB_OUTPUT"
-        echo "ndk=$NDK" >> "$GITHUB_OUTPUT"
-        echo "key=android-clang-v1-${{ inputs.abi }}-$ImageOS-llvm-$LLVM-ndk-$NDK-${{ hashFiles('tools/android/build_toolchain.py') }}" >> "$GITHUB_OUTPUT"
-
-    - id: restore
-      uses: actions/cache/restore@v5
-      with:
-        path: build/compiler/package
-        key: ${{ steps.pins.outputs.key }}
-        lookup-only: ${{ inputs.lookup-only }}
-
-    - if: steps.restore.outputs.cache-hit != 'true'
-      uses: actions/checkout@v5
-      with:
-        repository: llvm/llvm-project
-        ref: ${{ steps.pins.outputs.llvm }}
-        path: build/llvm-source
-
-    - if: steps.restore.outputs.cache-hit != 'true'
-      name: Build compiler that runs on Android (no cache for this key)
-      shell: bash
-      run: |
-        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${{ steps.pins.outputs.ndk }}" > /dev/null
-        start=$SECONDS
-        python3 tools/android/build_toolchain.py --source build/llvm-source \
-          --ndk "$ANDROID_HOME/ndk/${{ steps.pins.outputs.ndk }}" --abi "${{ inputs.abi }}" \
-          --out build/compiler --jobs 4
-        echo "compiler built in $(( (SECONDS - start) / 60 )) min"
-        rm -rf build/compiler/native build/compiler/target build/llvm-source
-        df -h .
-
-    - if: steps.restore.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v5
-      with:
-        path: build/compiler/package
-        key: ${{ steps.pins.outputs.key }}
-
-    - if: steps.restore.outputs.cache-hit == 'true' && inputs.lookup-only != 'true'
-      shell: bash
-      run: echo "compiler restored from cache ${{ steps.pins.outputs.key }}"
+        set -euo pipefail
+        case "$ABI" in
+          arm64-v8a|x86_64) ;;
+          *) echo "::error::abi must be arm64-v8a or x86_64"; exit 1 ;;
+        esac
+        mkdir -p build/compiler
+        if ! gh release download android-clang --repo "$ASSETS_REPO" \
+            --pattern "android-clang-${ABI}.tar.gz" \
+            --pattern "android-clang-${ABI}.tar.gz.sha256" \
+            --pattern android-clang.json \
+            --dir build/compiler --clobber; then
+          echo "::error::The android-clang release is missing from nsmbu-recomp/ci-assets. Run the Android compiler workflow in that repo."
+          exit 1
+        fi
+        (cd build/compiler && sha256sum -c "android-clang-${ABI}.tar.gz.sha256")
+        python3 - <<'PY'
+        import hashlib, json, os, tarfile
+        from pathlib import Path
+        import sys
+        sys.path.insert(0, "tools/android")
+        import build_toolchain as pins
+        root = Path("build/compiler")
+        abi = os.environ["ABI"]
+        manifest = json.loads((root / "android-clang.json").read_text())
+        script = hashlib.sha256(Path("tools/android/build_toolchain.py").read_bytes()).hexdigest()
+        if manifest.get("llvm_revision") != pins.LLVM_REVISION or manifest.get("ndk_revision") != pins.NDK_REVISION:
+            raise SystemExit("android-clang release pins do not match tools/android/build_toolchain.py")
+        if manifest.get("build_toolchain_sha256") != script:
+            raise SystemExit("android-clang release was built from a different build_toolchain.py; run the Android compiler workflow in nsmbu-recomp/ci-assets")
+        archive = root / ("android-clang-%s.tar.gz" % abi)
+        with tarfile.open(archive) as tar:
+            meta = json.load(tar.extractfile("build.json"))
+        if meta.get("abi") != abi or meta.get("llvm_revision") != pins.LLVM_REVISION or meta.get("ndk_revision") != pins.NDK_REVISION:
+            raise SystemExit("android-clang archive metadata does not match this ABI and the pinned LLVM/NDK")
+        PY
+        mkdir -p build/compiler/package
+        tar -xzf "build/compiler/android-clang-${ABI}.tar.gz" -C build/compiler/package
+        echo "compiler downloaded from the android-clang release ($ABI)"

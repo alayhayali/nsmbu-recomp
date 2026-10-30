@@ -21,7 +21,9 @@ The interpreter runs isolated: no environment or site loading, and no bytecode w
 
 ## Compiler delivery
 
-`tools/android/build_toolchain.py` and `.github/workflows/android-toolchain.yml` build an Android-hosted clang, lld and ar from a pinned LLVM revision with NDK 30.
+`tools/android/build_toolchain.py` builds an Android-hosted clang, lld and ar from a pinned LLVM revision with NDK 30.
+The manual workflow in nsmbu-recomp/ci-assets publishes that build as the `android-clang` GitHub Release.
+Automatic workflows only download that release.
 Apps that target Android 10 or newer cannot run downloaded binaries from writable storage.
 So the APK carries the compiler drivers as native libraries (`libnsmbu-*.so`) and unpacks verified data assets privately.
 `tools/android/package_toolchain.py`, `package_runtime.py` and `package_extractor.py` write the APK packages with content hashes and versioned metadata.
@@ -100,7 +102,8 @@ Only debug CI passes `--allow-android-test-fixtures` to the guard.
 `.github/workflows/release.yml` builds `NSMBU-<version>-android-arm64.apk` and `-android-x86_64.apk` against placeholder guest code.
 It deletes `libmain.so` before it assembles the APK, guards it, checks the packaged assets and verifies the signature.
 A published release needs the `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` secrets, and `vars.ANDROID_CERT_SHA256` pins the certificate when set.
-The nightly scheduled run only keeps the Android-hosted compiler cached on `main`.
+The Android compiler and the pinned AppImage runtime come from [nsmbu-recomp/ci-assets](https://github.com/nsmbu-recomp/ci-assets).
+Run the Android compiler workflow in that repo when the pinned LLVM revision, NDK, or `tools/android/build_toolchain.py` changes.
 
 ## Tests
 

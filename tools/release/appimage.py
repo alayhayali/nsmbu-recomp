@@ -16,7 +16,7 @@ squashes it with the AppImage project's appimagetool. Output: OUT_DIR/<basename 
 The AppImage runtime (the ELF in front of the squashfs) is pinned by SHA-256 (RUNTIME, type2-runtime
 RUNTIME_COMMIT) and passed to appimagetool with --runtime-file; a file or download with another
 SHA-256 fails the build. Upstream's "continuous" release moves, so the runtime files are hosted as
-the release asset "appimage-runtime-<commit>" of this repository (RUNTIME_URLS). That asset must be
+the release asset "appimage-runtime-<commit>" of nsmbu-recomp/ci-assets (RUNTIME_URLS). That asset must be
 published once before a release build can download the runtime: runtime-x86_64, runtime-aarch64 and
 type2-runtime's LICENSE. appimage.py --extract-runtime recovers the exact runtime of a built AppImage
 (the ELF before the squashfs, with the per-image MD5 digest that appimagetool writes zeroed).
@@ -59,7 +59,7 @@ RUNTIME = {
     "aarch64": ("runtime-aarch64", "b4ff0030242d0c3bb12ce40541828303cf167493f4793456f0436edd6255c39d"),
 }
 RUNTIME_URLS = [
-    "https://github.com/nsmbu-recomp/nsmbu-recomp/releases/download/appimage-runtime-%s/" % RUNTIME_COMMIT,
+    "https://github.com/nsmbu-recomp/ci-assets/releases/download/appimage-runtime-%s/" % RUNTIME_COMMIT,
     "https://github.com/ZeldaWWHDRecomp/ZeldaWWHDRecomp/releases/download/appimage-runtime-%s/" % RUNTIME_COMMIT,
 ]
 

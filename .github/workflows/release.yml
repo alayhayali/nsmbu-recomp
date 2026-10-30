@@ -673,7 +673,7 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" "platforms;android-36" "build-tools;35.0.0"
 
-      - name: Compiler that runs on Android (cached)
+      - name: Compiler that runs on Android (android-clang release)
         uses: ./.github/actions/android-compiler
         with:
           abi: ${{ matrix.abi }}
@@ -751,22 +751,6 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
           compression-level: 0
-
-  android-compiler-cache:
-    if: github.event_name == 'schedule'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 150
-    strategy:
-      fail-fast: false
-      matrix:
-        abi: [arm64-v8a, x86_64]
-    steps:
-      - uses: actions/checkout@v5
-      - run: sudo apt-get update && sudo apt-get install -y ninja-build
-      - uses: ./.github/actions/android-compiler
-        with:
-          abi: ${{ matrix.abi }}
-          lookup-only: "true"
 
   publish:
     needs: [version, macos, linux, windows, android]
