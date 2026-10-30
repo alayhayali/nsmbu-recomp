@@ -7,146 +7,33 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-30
+
 ### Added
 
-- Unlocked frame rate draws pictures as fast as the device can while the game stays at 60 logic steps per second.
-  The fps number is how fast those pictures are rendered.
-  The display may show fewer of them.
-- Decomp UI stack for native mod hooks: `Multi2D`, `AnimLayoutBase`, `LayoutAllocator`, `TagProcessor`, and `UtilCursorButtonMgr` in `vendor/decomp/src/layout_sys/`; screen units `AttentionScreen`, `ChangePlayerNum`, `CommonWindowMgr`, `CommonWindow`, `PaCursor`, and `GamesceneBase` in `vendor/decomp/src/layout/`; architecture notes in `vendor/decomp/docs/ui-system.md`.
-- Expand header-only decomp for pause menu and layout shells: `CommonWindow` guest methods, `PlayerCourseHud`, `SelectCursorLayout` / `SelectCursorMiniLayout`, and `layout_sys` `LayoutObj` / `TextBox` types (`vendor/decomp/include/`, `vendor/decomp/docs/ui-system.md`).
-- Document mod hook map for guest UI (pause, `Multi2D`, course HUD) in `vendor/decomp/docs/ui-system.md`; link from `docs/modding/README.md` and `docs/modding/api.md`.
-
-- Press Start and Select together (+ and − on the GamePad, or the matching controller buttons) to open or close the settings overlay, on PC and Android as well as `` ` `` or F12.
-- Press **R3** (right stick click) on a controller to open or close the settings overlay, like **Home** and hold **Select** (−).
-- Original cel-shaded app icon for Android and Linux packages (`android/icon/app_icon_1024.png`), in the same full-bleed style as the WWHD port's launcher art, with `android/bake_app_icon.py` to refresh the mipmaps.
-- The settings overlay uses larger touch targets on Android, direct touch on the menu, and controller navigation that follows your face-button layout (A confirms, B goes back, LB/RB change tabs).
-- Android-hosted LLVM toolchain packaging scripts, unit tests, and CI compiler cache action.
-- Android extractor packaging installs a verified `nsmbu-extract` as an APK native library for on-device setup.
-- Android runtime SDK packaging ships the runtime objects and link recipe (no game code) so the phone links its own `libgame.so`; the installer's link step accepts an alternate recipe.
-- `android/build_native.sh` builds any ABI (`ABI=x86_64` for emulators), and falls back to placeholder game code; custom GPU drivers stay arm64-only.
-- Embedded CPython for Android setup: `libnsmbupython` bridge with the `nsmbu_native` process runner, the NSMBU setup sources bundle, and verified resource caches.
-- Android setup adapter: durable, pausable extract (folder, archive, disc image, optional update folder), translate, compile and link checkpoints around the unchanged installer; the release guard rejects Android debug fixtures.
-- Android setup job runner (`ondevice_setup.py`): one locked worker per job that resumes from checkpoints, honours pause requests, reads disc and common keys from file descriptors into memory only, and leaves a library ready to activate; the installer reads key bytes without a file.
-- Android Gradle build takes the Python, toolchain and extractor packages, ABI and version as properties, signs releases from `NSMBU_KEYSTORE_*`, and refuses release builds whose Python bundle holds debug fixtures.
-- Android setup has no shader head-start stage: the Vulkan renderer keeps its own per-device pipeline cache, so the APK carries no shader template or Yaz0 decoder.
-- Android setup screen and foreground service: choose an extracted folder, a Cemu `.wua` or a `.wud`/`.wux` disc image with its keys and an optional 1.3.0 update folder, then watch, pause and resume setup; heat and battery pauses, recovery after reboot or app update, and the app icon opens setup until a game is ready.
-- Android game loads the phone-linked `libgame.so` with its extracted game folder, so release APKs no longer ship a bundled game library; crash reports add Android's own exit reason (low-memory kills, driver aborts) and skip deliberate stops by the save tools.
-- Android plays full screen into the display cutout, Back opens and closes Settings, setup has a Share log button for the game's log, the files app can browse the app's folders (the game itself stays read-only), and a Graphics > Heat guard setting (`NSMBU_HEAT_GUARD`) pauses the in-between frames when the device runs hot, later on fan-cooled handhelds.
-- Android has on-screen controls (stick, D-pad, A B X Y, L R ZL ZR, + −) that follow your face-button layout, hide while a controller is connected, and can be moved and resized by holding their button; the phone can vibrate while you play with them (Controls > Phone vibration, `NSMBU_PHONE_RUMBLE`).
-- Releases include a signed Android APK for arm64 (and x86_64 for emulators and Chromebooks) that sets the game up on the phone; it carries no game code.
-- Android save import/export looks for NSMBU `user/rp_personal_savedata.dat` instead of the leftover WWHD save name.
-- New [Android guide](docs/android.md) for players and an [on-device setup design](docs/android-implementation.md) for contributors; the device checklist lists the setup, touch and release checks still to run on real hardware.
-- `nsmbu apk` builds the local Android APK, installs it on a USB device (`adb`), and copies the active dump when it is not already on the device unless you pass `--no-push`.
-- Debug builds refresh `android/app/local-res` from your active dump's `meta/iconTex.tga` when it is present (git-ignored; skipped in CI).
-  Release and CI APKs keep the packaged launcher icon.
-- Android and desktop builds each keep their own `libluajit.a` under the CMake build directory so a host LuaJIT build is not linked into an APK by mistake.
-- `nsmbu apk` picks JDK 17 or 21 for Gradle when the default `java` is too new.
-- `nsmbu apk` copies the active dump after install without a prompt; use `--no-push` to skip.
-- `nsmbu apk` skips copying the active dump when it is already on the device (same version and RPX size); use `--force-push` to copy anyway.
-- PC-built APKs can choose an extracted game folder on the device (same checks as setup); the app copies it into private storage for Play.
-- Android AYANEO/Odin built-in controllers get corrected SDL gamepad mappings so analog sticks and face buttons reach the game.
-- Android no longer opens the soft keyboard when Settings opens; it appears only when a text field (such as custom frame rate) is focused.
-- Android Settings uses larger touch targets (9 mm controls, phone-style padding), including on handhelds.
-- Android Settings overlay is nearly full screen with larger UI scale (11 mm controls plus extra scale boost).
-- Android Controls settings gives the controller map a larger share of the tab without a nested scrollbar.
-- A 30 fps choice in Graphics.
-  It draws half as often and runs two logic steps per picture, so the game keeps its speed.
-- Graphics can set any frame rate from 60 to 1000.
-  30 fps is only the preset.
-  Fast forward runs the game as fast as the computer can, with one game step per picture and no frame limit.
-- `nsmbu installer --no-open` packages the installer and returns without opening setup.
-- Scene checks for agents live in the `scenes` skill.
-  The world map, a course pack, and the file menu each have a short boot that stops on `nsmbu status`.
-
-### Fixed
-
-- Linux release packaging keeps the SDL3 license next to the cached SDL3 install so a cache hit no longer fails the Package step.
+- Android setup app for phones and emulators.
+  You add your own game; the download does not include game code.
+  Touch controls, full screen, and save import and export are included.
+- Frame rate choices: unlocked, a custom rate from 60 to 1000, a 30 fps preset, and 360p and 540p internal resolution.
+- Start and Select together, or R3, open Settings, as well as `` ` `` or F12.
+- Windows on ARM64 builds.
 
 ### Changed
 
-- `nsmbu build` and `nsmbu run` skip CMake configure when the build cache is already up to date, and use a quiet log level when configure does run.
-- Graphics frame rate: Custom is a preset radio on its own row with a number field beside it.
-  Preset rates stay selectable while Custom is active.
-- The performance overlay has three levels in Settings > Debug: a compact FPS summary, optional GPU lines and frame-time graph, and optional lag breakdown.
-- Performance overlay controls moved from Graphics to the top of Debug.
-- Graphics card choice moved from Graphics to the bottom of Debug.
-- The performance overlay shows GPU name, driver, and Vulkan version on separate lines.
-- The performance overlay background is slightly less transparent.
-- High frame rates use a present cap with a wall-clock accumulator: logic stays at 60 steps/s, and blend time comes from the open step instead of a per-rate frame ladder.
-- Guest-code notes live in the docs.
-  The guest skill is gone.
 - The GamePad screen starts off.
-  Off is the first choice in Settings.
-- Internal resolution adds 360p and 540p for slower machines.
-  The choices read 360p, 540p, 720p, 1080p, 1440p, and 2160p/4K.
-  720p is the Wii U picture.
-  Lower choices draw fewer pixels and are scaled up to the window.
-  R cycles the list.
-- Translating the game to C uses every CPU core, so install and a full recompile finish sooner.
-- The TV window title shows the NSMBU release version and the installed game build (for example `v0.7.2 - USA v64`, or `0.7.2 git - EU v0` on a local build).
-- A later release tag reuses the Linux compiler cache, so that build compiles less.
-- Each ctest runs with its own `NSMBU_USER_DIR` under `test-users/`, so tests no longer write the `nsmbu/` folder.
-  A new `user_folder_isolation` test checks that a saved `controls.json` lands there and not in the home folder.
-- Each `nsmbu test` case runs with its own user folder (`.tmp/playtest/<name>/user`) for settings, controls, and the shader cache.
-  Cases that use the repo save also get a copy of `settings.ini` and `controls.json`.
-- `tools/run/scripted-run.sh` now uses its own user folder under the run folder (`.tmp/<name>/user`) unless `NSMBU_USER_DIR` is set.
-- Recompiling an unchanged game no longer rewrites every generated C file, so a normal rebuild skips guest code that did not change.
-- Hooked game functions and instruction-level hook sites keep plain register form in the recompiled C (the runtime hook can read and write the Cpu mid-function).
-- `tools/gametest/run_scenario.sh` and `compare.py` compare two scripted runs.
-  The runtime writes a status line per logic step (scene, course, pack, player position) with `NSMBU_TEST_STATUS_TRACE`, and the compare tool aligns the runs on a named scene and prints the first differing step.
-  `NSMBU_TEST_ALIGN_SCENE` names the scene, and `NSMBU_TEST_FIXED_SEED=1` counts scripted presses, sticks, keys, and frame dumps from that scene.
-  A boot that misses the scene is retried and its log is kept.
-- Linux and Windows CI run the benchmark tooling tests, new `tools/test_shaderprep.py` shader preparation tests, and the compare tool tests.
-  CI runs on every branch push only (no separate `pull_request` run); tag pushes do not start it.
-- Windows on ARM64 release: `NSMBU-<version>-windows-arm64.zip`, built and tested on a `windows-11-arm` runner with llvm-mingw `aarch64-w64-mingw32` and the embeddable `python.windows-arm64`.
-  `guard.py` checks its Python files against `tools/release/python-windows-arm64-files.json`.
-- Rolling development build: a nightly check of `main` publishes the `devel-build` pre-release (`<last release>-devel.<sha>`, never marked latest) when `main` moved since the last one.
-  Its notes are the `## [Unreleased]` block (`notes.py --devel`).
-- Windows setup stops before any download when the install folder is too deep for the game (more than 179 characters), and unpacks the compiler with long-path (`\\?\`) paths.
-  `windows.yml` runs `test_setup.py LongPaths` on MSYS2 Python and python.org Python 3.14, and `release.yml` repeats the check in a deep release folder and in one character past the limit.
-- The Windows executables declare `longPathAware`.
-- The Linux AppImage pins the type2 runtime by SHA-256 (`appimage.py` `RUNTIME`, passed to appimagetool with `--runtime-file`) and ships its license texts, which `guard.py` checks.
-  `appimage.py --extract-runtime` recovers the runtime from a built AppImage, and the release workflow checks that the AppImage reports the pinned runtime commit.
-- `nsmbu installer --no-open` packages the installer and returns without opening setup.
-- Decompiled `SndAudioMgr::startSound` / `startSystemSe`, `CourseSelectLayerMgr::createLayers`, and `ReflectionRenderObjLayer::render_` in `vendor/decomp/src`.
-  The frame-loop, map-shadow, and soft-restart notes answer their open claims: the draw-context lock and unlock, the task-manager `afterCalc`, the eleven-node `DualScreenMethodTreeMgr` layout, the TV `"DepthShadow"` creation sites, and the `0x1017C814` `SndAudioMgr` method table.
+- High frame rates keep normal game speed.
+- Android Settings is larger and easier to use with touch or a controller.
+- Setup and a full recompile use every CPU core, so they finish sooner.
 
 ### Fixed
 
-- The Controls page keeps the binding diagram in the space above the options.
-  On Android the diagram uses most of the tab and the top settings scroll.
-  The option rows no longer sit on top of the controller drawing.
-- The settings close button fills the title bar on Android.
-- Black loading screens at a higher frame rate no longer sit still while a loader waits on the draw lock.
-  That covers the first load, the save file, and a level.
-  Each picture still uses the frame rate you picked.
-  While that loader is waiting, the frame wait leaves the lock free so the screen can move on.
-- LuaJIT `make clean` uses the same compiler as the build, so an Android configure does not wipe the desktop `libluajit.a`, and a desktop configure does not wipe the Android one.
-- Windows on ARM64 crash logs list the faulting instruction first in the host backtrace (same CONTEXT unwind as x64), so release CI `crash_log_module` passes on `windows-arm64`.
-- Settings text fields (including the custom frame rate) accept keyboard input while the overlay is open.
-- 30 fps runs a full game step for each picture update, including the wait that finishes the previous picture.
-  Clearing the render list twice without that wait crashed the render thread.
-- 60 fps stays at 60 when a higher rate was used earlier.
-  The performance overlay no longer reports that higher rate.
-- Vulkan prefers a dedicated GPU when one can draw the game windows.
-  Graphics (` or F12) can prefer dedicated, prefer integrated, or one listed card.
-  The choice applies on the next start.
-  `NSMBU_VK_GPU` overrides it for that start.
-- The TV window title uses ASCII separators so punctuation no longer shows as garbled text on some systems.
-- Metal: a new render target starts with the texels already in guest memory.
-  A course's static tiles drawn from its working tileset, such as the used block after hitting a ? block, were invisible.
-- A 165 Hz present cap stays on 165.
-  The present wait was keeping the time it actually woke, so each short overrun started the next frame late and the overlay sat near 162.
-- A late world-map frame no longer starts a second present slot while it waits for the previous flip.
-  That extra wait held the overworld near 108 fps.
-- Frame time stays on the present cap when a light frame would otherwise show early and the next full draw shows late.
-  The present wait keeps running queued GPU loads, so the boot screen can finish.
-- Install and recomp tools find generated code and hook lists when the install path contains square brackets.
-- High present caps keep their cadence when a frame runs late, so the world map no longer drifts well below the selected rate.
-- Logic presents at high frame rates draw the finished step (blend t = 1) instead of the open-step leftover, so Mario no longer jitters while running at 120/165.
-- World-map presents no longer defer or idle-repeat against the present-cap wake schedule, so the overworld can hold the same host frame rate as courses.
-- A hitch can run up to four guest logic steps on one present, and the leftover time stays in the accumulator so the game slows under load.
-- Hold frames blend the course camera across the open logic step, and logic frames still draw the finished step.
+- High frame rates no longer stall on black loading screens or make Mario jitter, and they hold the rate you pick.
+- On Android, the Controls diagram no longer overlaps the options.
+- 30 fps no longer crashes on some screen changes, and switching back to 60 fps stays at 60.
+- Settings text fields accept keyboard input while the overlay is open.
+- You can pick which graphics card Vulkan uses.
+  On Metal, used ? blocks stay visible.
+  The window title no longer shows garbled punctuation.
 
 ## [0.7.2] - 2026-10-27
 
@@ -410,7 +297,8 @@ Append each change under Unreleased as it lands; at release the `changelog` skil
 
 - The TV and GamePad present together on one vsync.
 
-[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/nsmbu-recomp/nsmbu-recomp/compare/v0.6.3...v0.7.0
